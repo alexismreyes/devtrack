@@ -5,7 +5,7 @@
 - Name: DevTrack
 - Purpose: Project and task management for individuals and small teams
 - Architecture: Modular monolith
-- Stage: Foundation Verified
+- Stage: Foundation Verified; `002-authentication` Approved and Held
 
 ## Stack decisions
 
@@ -41,11 +41,13 @@ Verified for `001-foundation`. Do not treat this as product-feature implementati
 
 Implemented: `system` (non-product probe slice, DB reachability for readiness).
 
-Proposed, not implemented: `auth`, `users`, `projects`, `tasks`, `project-members`
+Specified, not implemented: `auth`, `users` (`002-authentication` Approved, Held).
+
+Proposed, not specified: `projects`, `tasks`, `project-members`
 
 ## Proposed backlog
 
-Foundation (Verified) → authentication → projects → tasks → Kanban → dashboard → collaboration.
+Foundation (Verified) → authentication (Approved, Held) → projects → tasks → Kanban → dashboard → collaboration.
 
 Later items are proposed, not specified.
 
@@ -84,20 +86,30 @@ Coordinator re-ran on Node.js 22.22.3:
 
 ## Next approved work
 
-None. Specify the next feature (proposed: authentication) before implementation.
+`002-authentication` T001–T018 are Approved and Held. Start only when explicitly requested.
+
+Decided for that feature (not evidence of implementation):
+
+- HTTP-only session cookie `devtrack_session`; `credentials: 'include'`; CORS origin with credentials, not `*`
+- Login/register issue a session; logout revokes that session; 7-day absolute expiry; no refresh tokens; concurrent sessions allowed
+- Unique identifier: case-insensitive email
+- Profile: stored email + displayName; returned id/email/displayName; updatable displayName only
+- `/health` and `/ready` stay public; probe create/list require authentication; no `SystemProbe` ownership
+- Register also authenticates
 
 ## Open decisions
 
-Deferred, not blocking `001-foundation`:
+Deferred, not blocking `002-authentication`:
 
 - Dev vs production container configuration (Q-006)
 - Probe list retention bound (Q-007)
 - CI and deployment (Q-009)
+- Password complexity beyond non-empty (Q-015)
+- Frontend routing and styling (Q-016)
+- Rate limiting / lockout (Q-017)
 
 Still unresolved for later product work:
 
-- Frontend routing and styling
-- Auth/session strategy
 - Project membership roles and permissions
 
 Do not silently turn an open question into an architectural decision.
