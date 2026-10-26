@@ -1,0 +1,21 @@
+// Prisma Client generation, migrate, and deploy are separate steps.
+// - Generate Client: `npm run prisma:generate` (TypeScript client only; no DB changes)
+// - Development migrate: `npm run prisma:migrate` (create + apply a new versioned migration)
+// - Deploy migrations: `npm run prisma:deploy` (apply existing migrations; use this in shared environments)
+// Do not infer a migrated database from container start order. Do not use migrate reset unless authorized.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SystemProbe {
+  id         String   @id @db.Uuid
+  recordedAt DateTime
+
+  @@map("system_probes")
+}

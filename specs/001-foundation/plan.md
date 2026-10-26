@@ -2,7 +2,7 @@
 
 - **Feature ID:** 001-foundation
 - **Specification:** `spec.md`
-- **Status:** Approved
+- **Status:** Verified
 
 Inspect the repo before filling this in. Do not assume planned components exist. Application source stays under `frontend/` or `backend/`, never under `specs/`.
 
@@ -279,4 +279,6 @@ Do not claim tests passed without running them. Destructive DB resets and volume
 - Architecture reviewed: Yes
 - Risks understood: Yes
 - Approved for task breakdown: Yes
-- Approved to execute tasks: Held — do not start implementation until explicitly requested
+- Approved to execute tasks: Yes
+- Independent review: PASS WITH NON-BLOCKING FINDINGS
+- Verified: Yes; local Compose only (Q-006 deferred)

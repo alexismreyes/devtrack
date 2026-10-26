@@ -5,11 +5,11 @@
 - Name: DevTrack
 - Purpose: Project and task management for individuals and small teams
 - Architecture: Modular monolith
-- Stage: Foundation specified and Approved; implementation Held
+- Stage: Foundation Verified
 
 ## Stack decisions
 
-Recorded as decided for Approved `001-foundation`. Not evidence of implementation.
+Verified for `001-foundation`. Do not treat this as product-feature implementation.
 
 - Frontend: React, TypeScript, Vite
 - Backend: Node.js 22 LTS, Express, TypeScript
@@ -19,14 +19,12 @@ Recorded as decided for Approved `001-foundation`. Not evidence of implementatio
 - API errors: HTTP status plus `{ error: { code, message } }`; no secrets, stack traces, or connection strings
 - Browser to API: published backend port + `VITE_API_URL`; backend CORS for the frontend origin
 - Health: `GET /health` (liveness), `GET /ready` (readiness via `system` repository)
-- ORM: Prisma
+- ORM: Prisma 6 behind the `system` repository
 - Database: PostgreSQL 16
 - Infra: Docker Compose services `frontend`, `backend`, `db`
 - Frontend talks to backend over HTTP
-- Backend talks to Postgres on the Compose network
-- Prisma Client and migrations belong to the backend
-
-Do not assume packages or services exist without inspecting the repo.
+- Backend talks to Postgres on the Compose network using hostname `db`
+- Prisma Client and migrations belong to the backend (`backend/prisma/`)
 
 ## Governing files
 
@@ -39,27 +37,54 @@ Do not assume packages or services exist without inspecting the repo.
 - `.specify/templates/` — spec, plan, and task templates
 - `specs/` — feature artifacts
 
-## Proposed domains
+## Domains
 
-`auth`, `users`, `projects`, `tasks`, `project-members`
+Implemented: `system` (non-product probe slice, DB reachability for readiness).
 
-These are proposed. They are not evidence of implementation.
+Proposed, not implemented: `auth`, `users`, `projects`, `tasks`, `project-members`
 
 ## Proposed backlog
 
-Foundation → authentication → projects → tasks → Kanban → dashboard → collaboration.
+Foundation (Verified) → authentication → projects → tasks → Kanban → dashboard → collaboration.
 
-These are proposed work items, not implemented features.
+Later items are proposed, not specified.
 
 ## Verified status
 
-Foundation documentation and Approved `001-foundation` artifacts only. Implementation is Held: do not start T001–T018 until explicitly requested. The app, Docker environment, Prisma schema, modules, and tests do not exist yet.
+`001-foundation` is Verified. T001–T018 complete. Reviewer verdict: PASS WITH NON-BLOCKING FINDINGS.
 
-Do not claim the app, Docker environment, Prisma schema, modules, or tests exist until inspected.
+Present in the repo:
+
+- `frontend/`, `backend/`, `docker-compose.yml`
+- Prisma schema `SystemProbe` and migration `20261026120000_init_system_probe`
+- Probe UI and API: `POST/GET /api/system/probes`, `GET /health`, `GET /ready`
+
+Coordinator re-ran on Node.js 22.22.3:
+
+- `backend` `npm run typecheck` exit 0
+- `backend` `npm test` 3 files / 21 tests passed
+- `frontend` `npm run typecheck` exit 0
+- `frontend` `npm test` 2 files / 10 tests passed
+
+## Migrations
+
+- `backend/prisma/migrations/20261026120000_init_system_probe/`
+- Applied with `prisma migrate deploy`. No database reset or volume delete.
+
+## Known issues
+
+- Q-006 production images deferred; local Compose uses Vite/tsx dev servers
+- Q-007 probe list retention deferred
+- Q-009 CI/deployment deferred
+- Probe endpoints are unauthenticated (accepted foundation risk)
+- Prisma CLI high advisories left in place to stay on Prisma 6
+- Backend typecheck excludes test files
+- SuperTest persistence/`GET /ready` cases skip if `DATABASE_URL` is missing
+- Agent default PATH may be Node 24 without `docker`; use nvm 22.22.3 and Docker Desktop CLI
 
 ## Next approved work
 
-`001-foundation` T001–T018 are Approved and Held. Start only when explicitly requested.
+None. Specify the next feature (proposed: authentication) before implementation.
 
 ## Open decisions
 
