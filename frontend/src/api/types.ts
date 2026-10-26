@@ -11,6 +11,27 @@ export type HealthResponseDto = {
   status: "ok";
 };
 
+export type PublicUserDto = {
+  id: string;
+  email: string;
+  displayName: string;
+};
+
+export type RegisterRequestDto = {
+  email: string;
+  password: string;
+  displayName: string;
+};
+
+export type LoginRequestDto = {
+  email: string;
+  password: string;
+};
+
+export type UpdateProfileRequestDto = {
+  displayName: string;
+};
+
 export type ErrorEnvelope = {
   error: {
     code: string;

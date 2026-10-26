@@ -19,3 +19,35 @@ model SystemProbe {
 
   @@map("system_probes")
 }
+
+model User {
+  id          String   @id @db.Uuid
+  email       String   @unique // stored canonical lowercase
+  displayName String
+  createdAt   DateTime
+
+  passwordCredential AuthPasswordCredential?
+  sessions           AuthSession[]
+
+  @@map("users")
+}
+
+model AuthPasswordCredential {
+  userId       String @id @db.Uuid
+  passwordHash String
+  user         User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("auth_credentials")
+}
+
+model AuthSession {
+  id        String    @id @db.Uuid
+  userId    String    @db.Uuid
+  createdAt DateTime
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@map("auth_sessions")
+}

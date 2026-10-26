@@ -1,9 +1,14 @@
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../../../app";
 import { loadConfig } from "../../../config/config";
 import { loadEnvFiles } from "../../../config/env";
 import { createPrismaClient } from "../../../infrastructure/prisma/client";
+import { PrismaAuthRepository } from "../../auth/repository/prisma-auth-repository";
+import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
+import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
+import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
 import { DatabaseUnavailableError } from "../domain/errors";
 import { SystemProbe } from "../domain/system-probe";
 import { PrismaSystemRepository } from "../repository/prisma-system-repository";
@@ -44,6 +49,29 @@ class FakeSystemRepository implements SystemRepository {
   }
 }
 
+function createSystemApp(systemRepository: FakeSystemRepository = new FakeSystemRepository()) {
+  const usersRepository = new InMemoryUsersRepository();
+  const authRepository = new InMemoryAuthRepository(usersRepository);
+  const app = createApp({
+    corsOrigin: "http://localhost:5173",
+    systemRepository,
+    usersRepository,
+    authRepository,
+  });
+  return { app, systemRepository, usersRepository, authRepository };
+}
+
+async function registerAgent(app: ReturnType<typeof createApp>, email?: string) {
+  const agent = request.agent(app);
+  const response = await agent.post("/api/auth/register").send({
+    email: email ?? `probe-${randomUUID()}@example.com`,
+    password: "secret-pass",
+    displayName: "Ada",
+  });
+  expect(response.status).toBe(201);
+  return agent;
+}
+
 function envelope(code: string, message?: string) {
   return {
     error: {
@@ -63,15 +91,12 @@ function assertNoLeak(body: unknown): void {
 
 describe("system HTTP API", () => {
   it("GET /health returns 200 without using the repository", async () => {
-    const repository = new FakeSystemRepository();
-    repository.reachable = false;
-    repository.unexpectedError = new Error(
+    const systemRepository = new FakeSystemRepository();
+    systemRepository.reachable = false;
+    systemRepository.unexpectedError = new Error(
       "postgresql://replace-me:replace-me@localhost:5432/replace-me",
     );
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: repository,
-    });
+    const { app } = createSystemApp(systemRepository);
 
     const response = await request(app).get("/health");
 
@@ -80,10 +105,7 @@ describe("system HTTP API", () => {
   });
 
   it("GET /ready returns 200 when the repository reports the database reachable", async () => {
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: new FakeSystemRepository(),
-    });
+    const { app } = createSystemApp();
 
     const response = await request(app).get("/ready");
 
@@ -92,12 +114,9 @@ describe("system HTTP API", () => {
   });
 
   it("GET /ready returns 503 with SERVICE_UNAVAILABLE when the database is not reachable", async () => {
-    const repository = new FakeSystemRepository();
-    repository.reachable = false;
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: repository,
-    });
+    const systemRepository = new FakeSystemRepository();
+    systemRepository.reachable = false;
+    const { app } = createSystemApp(systemRepository);
 
     const response = await request(app).get("/ready");
 
@@ -108,27 +127,35 @@ describe("system HTTP API", () => {
     assertNoLeak(response.body);
   });
 
-  it("GET /api/system/probes returns an empty list", async () => {
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: new FakeSystemRepository(),
-    });
+  it("probe operations require authentication", async () => {
+    const { app } = createSystemApp();
 
-    const response = await request(app).get("/api/system/probes");
+    const list = await request(app).get("/api/system/probes");
+    const create = await request(app).post("/api/system/probes").send({});
+
+    expect(list.status).toBe(401);
+    expect(create.status).toBe(401);
+    expect(list.body).toMatchObject(envelope("UNAUTHENTICATED"));
+    expect(create.body).toMatchObject(envelope("UNAUTHENTICATED"));
+    expect(list.body).not.toHaveProperty("probes");
+    expect(create.body).not.toHaveProperty("id");
+  });
+
+  it("GET /api/system/probes returns an empty list for an authenticated caller", async () => {
+    const { app } = createSystemApp();
+    const agent = await registerAgent(app);
+
+    const response = await agent.get("/api/system/probes");
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ probes: [] });
   });
 
-  it("POST /api/system/probes creates a probe from an empty object", async () => {
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: new FakeSystemRepository(),
-    });
+  it("POST /api/system/probes creates a probe from an empty object when authenticated", async () => {
+    const { app } = createSystemApp();
+    const agent = await registerAgent(app);
 
-    const response = await request(app)
-      .post("/api/system/probes")
-      .send({});
+    const response = await agent.post("/api/system/probes").send({});
 
     expect(response.status).toBe(201);
     expect(response.body.id).toMatch(
@@ -136,16 +163,30 @@ describe("system HTTP API", () => {
     );
     expect(typeof response.body.recordedAt).toBe("string");
     expect(Number.isNaN(Date.parse(response.body.recordedAt))).toBe(false);
+    expect(response.body).not.toHaveProperty("userId");
+    expect(response.body).not.toHaveProperty("ownerId");
+  });
+
+  it("authenticated callers see the same global probe list", async () => {
+    const { app } = createSystemApp();
+    const first = await registerAgent(app, `one-${randomUUID()}@example.com`);
+    const created = await first.post("/api/system/probes").send({});
+    const second = await registerAgent(app, `two-${randomUUID()}@example.com`);
+
+    const listed = await second.get("/api/system/probes");
+
+    expect(created.status).toBe(201);
+    expect(listed.status).toBe(200);
+    expect(listed.body.probes).toEqual([
+      { id: created.body.id, recordedAt: created.body.recordedAt },
+    ]);
   });
 
   it("POST /api/system/probes rejects server-owned fields with VALIDATION_ERROR", async () => {
-    const repository = new FakeSystemRepository();
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: repository,
-    });
+    const { app, systemRepository } = createSystemApp();
+    const agent = await registerAgent(app);
 
-    const response = await request(app).post("/api/system/probes").send({
+    const response = await agent.post("/api/system/probes").send({
       id: "11111111-1111-4111-8111-111111111111",
       recordedAt: "2026-01-01T00:00:00.000Z",
     });
@@ -153,33 +194,27 @@ describe("system HTTP API", () => {
     expect(response.status).toBe(400);
     expect(response.body).toMatchObject(envelope("VALIDATION_ERROR"));
     expect(typeof response.body.error.message).toBe("string");
-    expect(repository.probes).toHaveLength(0);
+    expect(systemRepository.probes).toHaveLength(0);
     assertNoLeak(response.body);
   });
 
   it("POST /api/system/probes rejects a non-object JSON body with VALIDATION_ERROR", async () => {
-    const repository = new FakeSystemRepository();
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: repository,
-    });
+    const { app, systemRepository } = createSystemApp();
+    const agent = await registerAgent(app);
 
-    const response = await request(app)
+    const response = await agent
       .post("/api/system/probes")
       .set("Content-Type", "application/json")
       .send("[]");
 
     expect(response.status).toBe(400);
     expect(response.body).toMatchObject(envelope("VALIDATION_ERROR"));
-    expect(repository.probes).toHaveLength(0);
+    expect(systemRepository.probes).toHaveLength(0);
     assertNoLeak(response.body);
   });
 
   it("POST /api/system/probes rejects invalid JSON with VALIDATION_ERROR", async () => {
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: new FakeSystemRepository(),
-    });
+    const { app } = createSystemApp();
 
     const response = await request(app)
       .post("/api/system/probes")
@@ -192,17 +227,13 @@ describe("system HTTP API", () => {
   });
 
   it("probe operations return 503 when the database is unavailable", async () => {
-    const repository = new FakeSystemRepository();
-    repository.reachable = false;
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: repository,
-    });
+    const systemRepository = new FakeSystemRepository();
+    systemRepository.reachable = false;
+    const { app } = createSystemApp(systemRepository);
+    const agent = await registerAgent(app);
 
-    const createResponse = await request(app)
-      .post("/api/system/probes")
-      .send({});
-    const listResponse = await request(app).get("/api/system/probes");
+    const createResponse = await agent.post("/api/system/probes").send({});
+    const listResponse = await agent.get("/api/system/probes");
 
     expect(createResponse.status).toBe(503);
     expect(listResponse.status).toBe(503);
@@ -213,16 +244,14 @@ describe("system HTTP API", () => {
   });
 
   it("maps unexpected failures to INTERNAL_ERROR without leaking internals", async () => {
-    const repository = new FakeSystemRepository();
-    repository.unexpectedError = new Error(
+    const systemRepository = new FakeSystemRepository();
+    systemRepository.unexpectedError = new Error(
       "connect postgresql://replace-me:replace-me@db:5432/replace-me\n    at SystemService.recordProbe (service.ts:9:11)",
     );
-    const app = createApp({
-      corsOrigin: "http://localhost:5173",
-      systemRepository: repository,
-    });
+    const { app } = createSystemApp(systemRepository);
+    const agent = await registerAgent(app);
 
-    const response = await request(app).post("/api/system/probes").send({});
+    const response = await agent.post("/api/system/probes").send({});
 
     expect(response.status).toBe(500);
     expect(response.body).toEqual(
@@ -245,6 +274,8 @@ describe("system HTTP API persistence", () => {
     app = createApp({
       corsOrigin: process.env.CORS_ORIGIN,
       systemRepository: new PrismaSystemRepository(prisma),
+      usersRepository: new PrismaUsersRepository(prisma),
+      authRepository: new PrismaAuthRepository(prisma),
     });
   }
 
@@ -260,16 +291,16 @@ describe("system HTTP API persistence", () => {
       }
 
       await prisma.$queryRaw`SELECT 1`;
+      const agent = await registerAgent(app);
 
-      const createResponse = await request(app)
-        .post("/api/system/probes")
-        .send({});
+      const createResponse = await agent.post("/api/system/probes").send({});
 
       expect(createResponse.status).toBe(201);
       expect(createResponse.body.id).toEqual(expect.any(String));
       expect(createResponse.body.recordedAt).toEqual(expect.any(String));
+      expect(createResponse.body).not.toHaveProperty("userId");
 
-      const listResponse = await request(app).get("/api/system/probes");
+      const listResponse = await agent.get("/api/system/probes");
 
       expect(listResponse.status).toBe(200);
       expect(Array.isArray(listResponse.body.probes)).toBe(true);

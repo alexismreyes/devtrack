@@ -1,8 +1,12 @@
 import type {
   ErrorEnvelope,
   HealthResponseDto,
+  LoginRequestDto,
   ProbeListResponseDto,
   ProbeResponseDto,
+  PublicUserDto,
+  RegisterRequestDto,
+  UpdateProfileRequestDto,
 } from "./types";
 
 export class ApiError extends Error {
@@ -42,6 +46,10 @@ export function toUserMessage(err: unknown): string {
   return "Could not reach the API";
 }
 
+export function isUnauthenticated(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "UNAUTHENTICATED";
+}
+
 export async function getHealth(): Promise<HealthResponseDto> {
   const body = await request("GET", "/health");
   if (!isHealthResponse(body)) {
@@ -66,16 +74,43 @@ export async function createProbe(): Promise<ProbeResponseDto> {
   return body;
 }
 
+export async function register(input: RegisterRequestDto): Promise<PublicUserDto> {
+  const body = await request("POST", "/api/auth/register", input);
+  return requirePublicUser(body, "Unexpected register response");
+}
+
+export async function login(input: LoginRequestDto): Promise<PublicUserDto> {
+  const body = await request("POST", "/api/auth/login", input);
+  return requirePublicUser(body, "Unexpected login response");
+}
+
+export async function logout(): Promise<void> {
+  await request("POST", "/api/auth/logout");
+}
+
+export async function getProfile(): Promise<PublicUserDto> {
+  const body = await request("GET", "/api/users/me");
+  return requirePublicUser(body, "Unexpected profile response");
+}
+
+export async function updateProfile(
+  input: UpdateProfileRequestDto,
+): Promise<PublicUserDto> {
+  const body = await request("PATCH", "/api/users/me", input);
+  return requirePublicUser(body, "Unexpected profile response");
+}
+
 async function request(
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PATCH",
   path: string,
-  jsonBody?: Record<string, never>,
+  jsonBody?: object,
 ): Promise<unknown> {
   const url = `${getApiBaseUrl()}${path}`;
   let response: Response;
   try {
     response = await fetch(url, {
       method,
+      credentials: "include",
       headers:
         jsonBody === undefined
           ? { Accept: "application/json" }
@@ -119,6 +154,17 @@ async function parseJson(response: Response): Promise<unknown> {
   }
 }
 
+function requirePublicUser(value: unknown, message: string): PublicUserDto {
+  if (!isPublicUser(value)) {
+    throw new ApiError(500, "INTERNAL_ERROR", message);
+  }
+  return {
+    id: value.id,
+    email: value.email,
+    displayName: value.displayName,
+  };
+}
+
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
   if (typeof value !== "object" || value === null || !("error" in value)) {
     return false;
@@ -129,6 +175,16 @@ function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
     error !== null &&
     typeof (error as { code?: unknown }).code === "string" &&
     typeof (error as { message?: unknown }).message === "string"
+  );
+}
+
+function isPublicUser(value: unknown): value is PublicUserDto {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { id?: unknown }).id === "string" &&
+    typeof (value as { email?: unknown }).email === "string" &&
+    typeof (value as { displayName?: unknown }).displayName === "string"
   );
 }
 

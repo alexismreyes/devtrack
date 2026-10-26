@@ -1,5 +1,9 @@
 export const ERROR_CODES = {
   VALIDATION_ERROR: "VALIDATION_ERROR",
+  CONFLICT: "CONFLICT",
+  INVALID_CREDENTIALS: "INVALID_CREDENTIALS",
+  UNAUTHENTICATED: "UNAUTHENTICATED",
+  FORBIDDEN: "FORBIDDEN",
   SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
   INTERNAL_ERROR: "INTERNAL_ERROR",
 } as const;
@@ -20,6 +24,26 @@ export class AppError extends Error {
 
 export function validationError(message: string): AppError {
   return new AppError(ERROR_CODES.VALIDATION_ERROR, message, 400);
+}
+
+export function conflict(message: string): AppError {
+  return new AppError(ERROR_CODES.CONFLICT, message, 409);
+}
+
+export function invalidCredentials(
+  message = "Invalid email or password",
+): AppError {
+  return new AppError(ERROR_CODES.INVALID_CREDENTIALS, message, 401);
+}
+
+export function unauthenticated(
+  message = "Authentication is required",
+): AppError {
+  return new AppError(ERROR_CODES.UNAUTHENTICATED, message, 401);
+}
+
+export function forbidden(message: string): AppError {
+  return new AppError(ERROR_CODES.FORBIDDEN, message, 403);
 }
 
 export function serviceUnavailable(message: string): AppError {

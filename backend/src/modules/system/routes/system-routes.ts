@@ -1,9 +1,12 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { asyncHandler } from "../../../infrastructure/http/async-handler";
 import type { SystemController } from "../controller/system-controller";
 import { validateCreateProbeBody } from "../validators/create-probe";
 
-export function createSystemRouter(controller: SystemController): Router {
+export function createSystemRouter(
+  controller: SystemController,
+  requireAuth: RequestHandler,
+): Router {
   const router = Router();
 
   router.get("/health", (req, res) => {
@@ -19,6 +22,7 @@ export function createSystemRouter(controller: SystemController): Router {
 
   router.post(
     "/api/system/probes",
+    requireAuth,
     validateCreateProbeBody,
     asyncHandler(async (req, res) => {
       await controller.createProbe(req, res);
@@ -27,6 +31,7 @@ export function createSystemRouter(controller: SystemController): Router {
 
   router.get(
     "/api/system/probes",
+    requireAuth,
     asyncHandler(async (req, res) => {
       await controller.listProbes(req, res);
     }),

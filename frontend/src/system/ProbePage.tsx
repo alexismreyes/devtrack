@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { createProbe, listProbes, toUserMessage } from "../api/client";
+import { createProbe, isUnauthenticated, listProbes, toUserMessage } from "../api/client";
 import type { ProbeResponseDto } from "../api/types";
 
 type PageState =
   | { kind: "loading" }
   | { kind: "empty" }
   | { kind: "success"; probes: ProbeResponseDto[] }
+  | { kind: "unauthenticated"; message: string }
   | { kind: "error"; message: string };
 
 export function ProbePage() {
@@ -22,6 +23,10 @@ export function ProbePage() {
       }
       setState({ kind: "success", probes: result.probes });
     } catch (err) {
+      if (isUnauthenticated(err)) {
+        setState({ kind: "unauthenticated", message: toUserMessage(err) });
+        return;
+      }
       setState({ kind: "error", message: toUserMessage(err) });
     }
   }, []);
@@ -36,6 +41,10 @@ export function ProbePage() {
       await createProbe();
       await loadProbes();
     } catch (err) {
+      if (isUnauthenticated(err)) {
+        setState({ kind: "unauthenticated", message: toUserMessage(err) });
+        return;
+      }
       setState({ kind: "error", message: toUserMessage(err) });
     } finally {
       setRecording(false);
@@ -63,6 +72,9 @@ export function ProbePage() {
             </li>
           ))}
         </ul>
+      ) : null}
+      {state.kind === "unauthenticated" ? (
+        <p role="status">{state.message}</p>
       ) : null}
       {state.kind === "error" ? <p role="alert">{state.message}</p> : null}
     </section>

@@ -3,7 +3,11 @@ import { ZodError } from "zod";
 import {
   AppError,
   ERROR_CODES,
+  conflict,
   errorEnvelope,
+  forbidden,
+  invalidCredentials,
+  unauthenticated,
 } from "./app-error";
 
 function sendError(
@@ -40,14 +44,46 @@ export function errorHandler(
     return;
   }
 
-  if (err instanceof Error && err.name === "DatabaseUnavailableError") {
-    sendError(
-      res,
-      503,
-      ERROR_CODES.SERVICE_UNAVAILABLE,
-      "Database is unavailable",
-    );
-    return;
+  if (err instanceof Error) {
+    switch (err.name) {
+      case "DuplicateEmailError": {
+        const mapped = conflict(err.message);
+        sendError(res, mapped.status, mapped.code, mapped.message);
+        return;
+      }
+      case "InvalidCredentialsError": {
+        const mapped = invalidCredentials();
+        sendError(res, mapped.status, mapped.code, mapped.message);
+        return;
+      }
+      case "UnauthenticatedError":
+      case "SessionNotFoundError":
+      case "UserNotFoundError": {
+        const mapped = unauthenticated();
+        sendError(res, mapped.status, mapped.code, mapped.message);
+        return;
+      }
+      case "ProfileForbiddenError": {
+        const mapped = forbidden(err.message);
+        sendError(res, mapped.status, mapped.code, mapped.message);
+        return;
+      }
+      case "InvalidUserEmailError":
+      case "InvalidDisplayNameError":
+      case "InvalidPasswordError":
+        sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
+        return;
+      case "DatabaseUnavailableError":
+        sendError(
+          res,
+          503,
+          ERROR_CODES.SERVICE_UNAVAILABLE,
+          "Database is unavailable",
+        );
+        return;
+      default:
+        break;
+    }
   }
 
   if (err instanceof ZodError || isExpressBodySyntaxError(err)) {

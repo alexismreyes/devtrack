@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "../App";
+import { ProbePage } from "./ProbePage";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -39,7 +39,7 @@ describe("foundation probe UI", () => {
     });
     mockFetch(() => listPromise);
 
-    render(<App />);
+    render(<ProbePage />);
 
     expect(screen.getByRole("status")).toHaveTextContent(/loading probes/i);
     resolveList?.(jsonResponse(200, { probes: [] }));
@@ -59,7 +59,7 @@ describe("foundation probe UI", () => {
       }),
     );
 
-    render(<App />);
+    render(<ProbePage />);
 
     const list = await screen.findByRole("list", { name: /system probes/i });
     expect(list).toHaveTextContent("probe-1");
@@ -77,7 +77,7 @@ describe("foundation probe UI", () => {
       }),
     );
 
-    render(<App />);
+    render(<ProbePage />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /database is unavailable/i,
@@ -87,7 +87,7 @@ describe("foundation probe UI", () => {
   it("shows an error state when the backend cannot be reached", async () => {
     mockFetch(() => Promise.reject(new TypeError("Failed to fetch")));
 
-    render(<App />);
+    render(<ProbePage />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /could not reach the api/i,
@@ -99,6 +99,7 @@ describe("foundation probe UI", () => {
     mockFetch((url, init) => {
       expect(url.startsWith("http://localhost:3000/")).toBe(true);
       expect(url).not.toContain("db");
+      expect(init?.credentials).toBe("include");
       if (url.endsWith("/api/system/probes") && init?.method === "POST") {
         const created = {
           id: "probe-created",
@@ -111,7 +112,7 @@ describe("foundation probe UI", () => {
     });
     const user = userEvent.setup();
 
-    render(<App />);
+    render(<ProbePage />);
 
     expect(
       await screen.findByText(/no probes recorded yet/i),
@@ -135,7 +136,7 @@ describe("foundation probe UI", () => {
     });
     const user = userEvent.setup();
 
-    render(<App />);
+    render(<ProbePage />);
 
     expect(
       await screen.findByText(/no probes recorded yet/i),
@@ -144,5 +145,52 @@ describe("foundation probe UI", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /database is unavailable/i,
     );
+  });
+
+  it("shows an unauthenticated state when listing probes returns 401", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/system/probes");
+      expect(init?.credentials).toBe("include");
+      return jsonResponse(401, {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Authentication is required",
+        },
+      });
+    });
+
+    render(<ProbePage />);
+
+    expect(
+      await screen.findByText(/authentication is required/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /record probe/i })).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows an unauthenticated state when recording a probe returns 401", async () => {
+    mockFetch((_url, init) => {
+      if (init?.method === "POST") {
+        return jsonResponse(401, {
+          error: {
+            code: "UNAUTHENTICATED",
+            message: "Authentication is required",
+          },
+        });
+      }
+      return jsonResponse(200, { probes: [] });
+    });
+    const user = userEvent.setup();
+
+    render(<ProbePage />);
+
+    expect(
+      await screen.findByText(/no probes recorded yet/i),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /record probe/i }));
+    expect(
+      await screen.findByText(/authentication is required/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
