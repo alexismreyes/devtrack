@@ -32,6 +32,29 @@ export type UpdateProfileRequestDto = {
   displayName: string;
 };
 
+export type PublicProjectDto = {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  archivedAt: string | null;
+};
+
+export type ProjectListResponseDto = {
+  projects: PublicProjectDto[];
+};
+
+export type CreateProjectRequestDto = {
+  name: string;
+  description?: string | null;
+};
+
+export type UpdateProjectRequestDto = {
+  name?: string;
+  description?: string | null;
+};
+
 export type ErrorEnvelope = {
   error: {
     code: string;

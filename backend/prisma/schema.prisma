@@ -28,6 +28,7 @@ model User {
 
   passwordCredential AuthPasswordCredential?
   sessions           AuthSession[]
+  ownedProjects      Project[]
 
   @@map("users")
 }
@@ -50,4 +51,17 @@ model AuthSession {
 
   @@index([userId])
   @@map("auth_sessions")
+}
+
+model Project {
+  id          String    @id @db.Uuid
+  ownerUserId String    @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime
+  archivedAt  DateTime?
+  owner       User      @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  @@index([ownerUserId])
+  @@map("projects")
 }

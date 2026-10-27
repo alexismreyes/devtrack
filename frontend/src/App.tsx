@@ -4,6 +4,8 @@ import type { PublicUserDto } from "./api/types";
 import { LoginForm } from "./auth/LoginForm";
 import { LogoutButton } from "./auth/LogoutButton";
 import { RegisterForm } from "./auth/RegisterForm";
+import { ProjectDetail } from "./projects/ProjectDetail";
+import { ProjectsPage } from "./projects/ProjectsPage";
 import { ProbePage } from "./system/ProbePage";
 import { ProfilePage } from "./users/ProfilePage";
 
@@ -18,6 +20,7 @@ type SessionState =
 export function App() {
   const [session, setSession] = useState<SessionState>({ kind: "loading" });
   const [guestView, setGuestView] = useState<GuestView>("register");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   const loadSession = useCallback(async () => {
     setSession({ kind: "loading" });
@@ -37,14 +40,15 @@ export function App() {
     void loadSession();
   }, [loadSession]);
 
-  function onAuthenticated(user: PublicUserDto): void {
+  const onAuthenticated = useCallback((user: PublicUserDto): void => {
     setSession({ kind: "authenticated", user });
-  }
+  }, []);
 
-  function onLoggedOut(): void {
+  const onLoggedOut = useCallback((): void => {
+    setSelectedProjectId(null);
     setGuestView("login");
     setSession({ kind: "guest" });
-  }
+  }, []);
 
   const probeKey =
     session.kind === "authenticated" ? session.user.id : session.kind;
@@ -85,6 +89,18 @@ export function App() {
             onUpdated={(user) => setSession({ kind: "authenticated", user })}
             onUnauthenticated={onLoggedOut}
           />
+          {selectedProjectId === null ? (
+            <ProjectsPage
+              onSelectProject={setSelectedProjectId}
+              onUnauthenticated={onLoggedOut}
+            />
+          ) : (
+            <ProjectDetail
+              projectId={selectedProjectId}
+              onBack={() => setSelectedProjectId(null)}
+              onUnauthenticated={onLoggedOut}
+            />
+          )}
         </>
       ) : null}
       <ProbePage key={probeKey} />

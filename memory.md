@@ -5,7 +5,7 @@
 - Name: DevTrack
 - Purpose: Project and task management for individuals and small teams
 - Architecture: Modular monolith
-- Stage: Foundation and authentication Verified
+- Stage: Foundation, authentication, and projects Verified
 
 ## Stack decisions
 
@@ -41,37 +41,38 @@ Verified for `001-foundation` and `002-authentication`.
 
 ## Domains
 
-Implemented: `system`, `auth`, `users`.
+Implemented: `system`, `auth`, `users`, `projects`.
 
-Proposed, not specified: `projects`, `tasks`, `project-members`
+Proposed, not specified: `tasks`, `project-members`
 
 ## Proposed backlog
 
-Foundation (Verified) → authentication (Verified) → projects → tasks → Kanban → dashboard → collaboration.
+Foundation (Verified) → authentication (Verified) → projects (Verified) → tasks → Kanban → dashboard → collaboration.
 
 Later items are proposed, not specified.
 
 ## Verified status
 
-`001-foundation` Verified. `002-authentication` Verified. T001–T018 complete for both. Reviewer for 002: PASS WITH NON-BLOCKING FINDINGS after coordinator re-ran AC-015.
+`001-foundation` Verified. `002-authentication` Verified. `003-projects` Verified. T001–T017 complete for 003. Reviewer for 003: PASS WITH NON-BLOCKING FINDINGS after coordinator re-ran AC-015.
 
 Present in the repo:
 
 - `frontend/`, `backend/`, `docker-compose.yml`
-- `system` probe slice; `auth` sessions; `users` identity/profile
-- Register/login/logout and own-profile UI
+- `system` probe slice; `auth` sessions; `users` identity/profile; owner-only `projects` with archive/unarchive
+- Register/login/logout, own-profile, and project list/create/detail UI
 
-Coordinator re-ran on Node.js 22.22.3 for `002-authentication`:
+Coordinator re-ran on Node.js 22.22.3 for `003-projects`:
 
 - `backend` `npm run typecheck` exit 0
-- `backend` `npm test` 12 files / 75 tests passed
+- `backend` `npm test` 16 files / 113 tests passed
 - `frontend` `npm run typecheck` exit 0
-- `frontend` `npm test` 7 files / 35 tests passed
+- `frontend` `npm test` 9 files / 60 tests passed
 
 ## Migrations
 
 - `backend/prisma/migrations/20261026120000_init_system_probe/`
 - `backend/prisma/migrations/20261026133000_authentication/` (`User`, `AuthPasswordCredential`, `AuthSession`)
+- `backend/prisma/migrations/20261027120000_projects/` (`Project`: name, optional description, `ownerUserId`, `archivedAt`)
 - Applied with `prisma migrate deploy`. No database reset or volume delete.
 
 ## Known issues
@@ -83,6 +84,8 @@ Coordinator re-ran on Node.js 22.22.3 for `002-authentication`:
 - Q-016 frontend routing/styling deferred (view/state switching only)
 - Q-017 rate limiting / lockout deferred
 - Authenticated users share a global probe list (no ownership, per Q-014)
+- Projects are owner-only; membership is later collaboration work
+- Default project list excludes archived; recover archived only via detail GET (Q-021)
 - HTTP 403 is not reachable on `/api/users/me` (no `/api/users/:id`); own-profile authz is in `users` service
 - `CORS_ORIGIN=*` is not rejected at config load; current env uses the frontend origin
 - Email uniqueness is a unique index plus canonical lowercase in write paths
@@ -93,7 +96,7 @@ Coordinator re-ran on Node.js 22.22.3 for `002-authentication`:
 
 ## Next approved work
 
-None. Specify the next feature (proposed: projects) before implementation.
+None. Specify the next feature (proposed: tasks) before implementation.
 
 ## Open decisions
 

@@ -121,6 +121,11 @@ describe("App auth view switching", () => {
           ? jsonResponse(200, { probes: [] })
           : unauthenticated();
       }
+      if (url.endsWith("/api/projects")) {
+        return authenticated
+          ? jsonResponse(200, { projects: [] })
+          : unauthenticated();
+      }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
       });
@@ -165,6 +170,11 @@ describe("App auth view switching", () => {
             })
           : unauthenticated();
       }
+      if (url.endsWith("/api/projects")) {
+        return authenticated
+          ? jsonResponse(200, { projects: [] })
+          : unauthenticated();
+      }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
       });
@@ -189,6 +199,9 @@ describe("App auth view switching", () => {
       }
       if (url.endsWith("/api/system/probes")) {
         return jsonResponse(200, { probes: [] });
+      }
+      if (url.endsWith("/api/projects")) {
+        return jsonResponse(200, { projects: [] });
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -220,5 +233,69 @@ describe("App auth view switching", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /database is unavailable/i,
     );
+  });
+
+  it("switches list and detail without a router and keeps profile, probe, and archived detail", async () => {
+    const project = {
+      id: "proj-1",
+      ownerUserId: "user-1",
+      name: "Alpha",
+      description: "First project",
+      createdAt: "2026-10-27T18:00:00.000Z",
+      archivedAt: null as string | null,
+    };
+    const fetchMock = mockFetch((url, init) => {
+      if (url.endsWith("/api/users/me")) {
+        return jsonResponse(200, publicUser);
+      }
+      if (url.endsWith("/api/system/probes")) {
+        return jsonResponse(200, { probes: [] });
+      }
+      if (url.endsWith("/api/projects/proj-1/archive") && init?.method === "POST") {
+        project.archivedAt = "2026-10-27T19:00:00.000Z";
+        return jsonResponse(200, { ...project });
+      }
+      if (url.endsWith("/api/projects/proj-1")) {
+        return jsonResponse(200, { ...project });
+      }
+      if (url.endsWith("/api/projects")) {
+        return jsonResponse(200, {
+          projects: project.archivedAt === null ? [{ ...project }] : [],
+        });
+      }
+      return jsonResponse(500, {
+        error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
+      });
+    });
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: /your profile/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^projects$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /recorded probes/i })).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: /^alpha$/i }));
+    expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /your profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /recorded probes/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^projects$/i })).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/");
+
+    await user.click(screen.getByRole("button", { name: /archive project/i }));
+    expect(await screen.findByText(/project archived/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /unarchive project/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /back to projects/i }));
+    expect(await screen.findByRole("heading", { name: /^projects$/i })).toBeInTheDocument();
+    expect(await screen.findByText(/no projects yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^alpha$/i })).not.toBeInTheDocument();
+    expectAllCredentialsIncluded(fetchMock);
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(
+      false,
+    );
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
   });
 });

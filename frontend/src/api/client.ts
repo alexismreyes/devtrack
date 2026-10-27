@@ -1,12 +1,16 @@
 import type {
+  CreateProjectRequestDto,
   ErrorEnvelope,
   HealthResponseDto,
   LoginRequestDto,
   ProbeListResponseDto,
   ProbeResponseDto,
+  ProjectListResponseDto,
+  PublicProjectDto,
   PublicUserDto,
   RegisterRequestDto,
   UpdateProfileRequestDto,
+  UpdateProjectRequestDto,
 } from "./types";
 
 export class ApiError extends Error {
@@ -48,6 +52,10 @@ export function toUserMessage(err: unknown): string {
 
 export function isUnauthenticated(err: unknown): boolean {
   return err instanceof ApiError && err.code === "UNAUTHENTICATED";
+}
+
+export function isForbidden(err: unknown): boolean {
+  return err instanceof ApiError && err.code === "FORBIDDEN";
 }
 
 export async function getHealth(): Promise<HealthResponseDto> {
@@ -98,6 +106,46 @@ export async function updateProfile(
 ): Promise<PublicUserDto> {
   const body = await request("PATCH", "/api/users/me", input);
   return requirePublicUser(body, "Unexpected profile response");
+}
+
+export async function listProjects(): Promise<ProjectListResponseDto> {
+  const body = await request("GET", "/api/projects");
+  if (!isProjectListResponse(body)) {
+    throw new ApiError(500, "INTERNAL_ERROR", "Unexpected project list response");
+  }
+  return {
+    projects: body.projects.map(toPublicProject),
+  };
+}
+
+export async function getProject(id: string): Promise<PublicProjectDto> {
+  const body = await request("GET", `/api/projects/${id}`);
+  return requirePublicProject(body, "Unexpected project response");
+}
+
+export async function createProject(
+  input: CreateProjectRequestDto,
+): Promise<PublicProjectDto> {
+  const body = await request("POST", "/api/projects", input);
+  return requirePublicProject(body, "Unexpected project response");
+}
+
+export async function updateProject(
+  id: string,
+  input: UpdateProjectRequestDto,
+): Promise<PublicProjectDto> {
+  const body = await request("PATCH", `/api/projects/${id}`, input);
+  return requirePublicProject(body, "Unexpected project response");
+}
+
+export async function archiveProject(id: string): Promise<PublicProjectDto> {
+  const body = await request("POST", `/api/projects/${id}/archive`, {});
+  return requirePublicProject(body, "Unexpected project response");
+}
+
+export async function unarchiveProject(id: string): Promise<PublicProjectDto> {
+  const body = await request("POST", `/api/projects/${id}/unarchive`, {});
+  return requirePublicProject(body, "Unexpected project response");
 }
 
 async function request(
@@ -211,4 +259,52 @@ function isHealthResponse(value: unknown): value is HealthResponseDto {
     value !== null &&
     (value as { status?: unknown }).status === "ok"
   );
+}
+
+function requirePublicProject(value: unknown, message: string): PublicProjectDto {
+  if (!isPublicProject(value)) {
+    throw new ApiError(500, "INTERNAL_ERROR", message);
+  }
+  return toPublicProject(value);
+}
+
+function toPublicProject(value: PublicProjectDto): PublicProjectDto {
+  return {
+    id: value.id,
+    ownerUserId: value.ownerUserId,
+    name: value.name,
+    description: value.description,
+    createdAt: value.createdAt,
+    archivedAt: value.archivedAt,
+  };
+}
+
+function isPublicProject(value: unknown): value is PublicProjectDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const project = value as {
+    id?: unknown;
+    ownerUserId?: unknown;
+    name?: unknown;
+    description?: unknown;
+    createdAt?: unknown;
+    archivedAt?: unknown;
+  };
+  return (
+    typeof project.id === "string" &&
+    typeof project.ownerUserId === "string" &&
+    typeof project.name === "string" &&
+    (typeof project.description === "string" || project.description === null) &&
+    typeof project.createdAt === "string" &&
+    (typeof project.archivedAt === "string" || project.archivedAt === null)
+  );
+}
+
+function isProjectListResponse(value: unknown): value is ProjectListResponseDto {
+  if (typeof value !== "object" || value === null || !("projects" in value)) {
+    return false;
+  }
+  const projects = (value as { projects: unknown }).projects;
+  return Array.isArray(projects) && projects.every(isPublicProject);
 }

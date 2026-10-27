@@ -4,6 +4,7 @@ export const ERROR_CODES = {
   INVALID_CREDENTIALS: "INVALID_CREDENTIALS",
   UNAUTHENTICATED: "UNAUTHENTICATED",
   FORBIDDEN: "FORBIDDEN",
+  NOT_FOUND: "NOT_FOUND",
   SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
   INTERNAL_ERROR: "INTERNAL_ERROR",
 } as const;
@@ -44,6 +45,10 @@ export function unauthenticated(
 
 export function forbidden(message: string): AppError {
   return new AppError(ERROR_CODES.FORBIDDEN, message, 403);
+}
+
+export function notFound(message: string): AppError {
+  return new AppError(ERROR_CODES.NOT_FOUND, message, 404);
 }
 
 export function serviceUnavailable(message: string): AppError {

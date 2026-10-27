@@ -7,6 +7,7 @@ import {
   errorEnvelope,
   forbidden,
   invalidCredentials,
+  notFound,
   unauthenticated,
 } from "./app-error";
 
@@ -63,14 +64,26 @@ export function errorHandler(
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
       }
-      case "ProfileForbiddenError": {
+      case "ProfileForbiddenError":
+      case "ProjectForbiddenError": {
         const mapped = forbidden(err.message);
+        sendError(res, mapped.status, mapped.code, mapped.message);
+        return;
+      }
+      case "ProjectNotFoundError": {
+        const mapped = notFound(err.message);
+        sendError(res, mapped.status, mapped.code, mapped.message);
+        return;
+      }
+      case "ProjectArchivedError": {
+        const mapped = conflict(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
       }
       case "InvalidUserEmailError":
       case "InvalidDisplayNameError":
       case "InvalidPasswordError":
+      case "InvalidProjectNameError":
         sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
         return;
       case "DatabaseUnavailableError":

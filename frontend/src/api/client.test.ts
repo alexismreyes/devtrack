@@ -1,14 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  archiveProject,
   createProbe,
+  createProject,
   getHealth,
   getProfile,
+  getProject,
   listProbes,
+  listProjects,
   login,
   logout,
   register,
+  unarchiveProject,
   updateProfile,
+  updateProject,
 } from "./client";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -255,6 +261,162 @@ describe("auth and profile API client", () => {
       code: "UNAUTHENTICATED",
       message: "Authentication is required",
     });
+    expectNoTokenStorage();
+  });
+});
+
+describe("projects API client", () => {
+  const project = {
+    id: "proj-1",
+    ownerUserId: "user-1",
+    name: "Alpha",
+    description: "First project",
+    createdAt: "2026-10-27T18:00:00.000Z",
+    archivedAt: null as string | null,
+  };
+
+  it("creates a project at VITE_API_URL with credentials included and no token storage", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects");
+      expect(url).not.toContain("db");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(
+        JSON.stringify({ name: "Alpha", description: "First project" }),
+      );
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(201, {
+        ...project,
+        token: "must-not-be-kept",
+        sessionId: "must-not-be-kept",
+      });
+    });
+
+    await expect(
+      createProject({ name: "Alpha", description: "First project" }),
+    ).resolves.toEqual(project);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("lists projects without includeArchived and keeps only public fields", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects");
+      expect(url).not.toMatch(/includeArchived/i);
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        projects: [{ ...project, token: "must-not-be-kept" }],
+      });
+    });
+
+    await expect(listProjects()).resolves.toEqual({ projects: [project] });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("reads a project by id with credentials included", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, project);
+    });
+
+    await expect(getProject("proj-1")).resolves.toEqual(project);
+    expectNoTokenStorage();
+  });
+
+  it("patches name and description with credentials included", async () => {
+    const updated = { ...project, name: "Beta", description: null };
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1");
+      expect(init?.method).toBe("PATCH");
+      expect(init?.body).toBe(
+        JSON.stringify({ name: "Beta", description: null }),
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(200, updated);
+    });
+
+    await expect(
+      updateProject("proj-1", { name: "Beta", description: null }),
+    ).resolves.toEqual(updated);
+    expectNoTokenStorage();
+  });
+
+  it("archives with POST, empty JSON object, and never DELETE", async () => {
+    const archived = { ...project, archivedAt: "2026-10-27T19:00:00.000Z" };
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/archive");
+      expect(init?.method).toBe("POST");
+      expect(init?.method).not.toBe("DELETE");
+      expect(init?.body).toBe("{}");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, archived);
+    });
+
+    await expect(archiveProject("proj-1")).resolves.toEqual(archived);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("unarchives with POST and credentials included", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/unarchive");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe("{}");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, project);
+    });
+
+    await expect(unarchiveProject("proj-1")).resolves.toEqual(project);
+    expectNoTokenStorage();
+  });
+
+  it("maps unauthenticated project access without storing credentials", async () => {
+    mockFetch(() =>
+      jsonResponse(401, {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Authentication is required",
+        },
+      }),
+    );
+
+    const error = await listProjects().catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "UNAUTHENTICATED",
+      message: "Authentication is required",
+    });
+    expectNoTokenStorage();
+  });
+
+  it("maps forbidden project access without leaking secrets", async () => {
+    mockFetch(() =>
+      jsonResponse(403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "You cannot access this project",
+        },
+      }),
+    );
+
+    const error = await getProject("proj-1").catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 403,
+      code: "FORBIDDEN",
+      message: "You cannot access this project",
+    });
+    expect(JSON.stringify(error)).not.toMatch(/DATABASE_URL/i);
+    expect(JSON.stringify(error)).not.toMatch(/postgresql:\/\//i);
     expectNoTokenStorage();
   });
 });
