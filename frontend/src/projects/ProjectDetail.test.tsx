@@ -49,9 +49,12 @@ describe("ProjectDetail", () => {
       resolveGet = resolve;
     });
     mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
+        return jsonResponse(200, { tasks: [] });
+      }
       expect(url).toBe("http://localhost:3000/api/projects/proj-1");
       expect(init?.method).toBe("GET");
-      expect(init?.credentials).toBe("include");
       return getPromise;
     });
 
@@ -71,6 +74,8 @@ describe("ProjectDetail", () => {
     expect(screen.getByLabelText(/^description$/i)).toHaveValue("First project");
     expect(screen.getByRole("button", { name: /archive project/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /unarchive project/i })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^tasks$/i })).toBeInTheDocument();
+    expect(await screen.findByText(/no tasks yet/i)).toBeInTheDocument();
   });
 
   it("updates name and description with credentials included", async () => {
@@ -81,6 +86,9 @@ describe("ProjectDetail", () => {
     };
     mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
+      if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
+        return jsonResponse(200, { tasks: [] });
+      }
       if (url.endsWith("/api/projects/proj-1") && init?.method === "PATCH") {
         expect(init.body).toBe(
           JSON.stringify({ name: "Beta", description: "Updated" }),
@@ -117,6 +125,10 @@ describe("ProjectDetail", () => {
     let current = { ...activeProject };
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
+      if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
+        expect(init?.method).toBe("GET");
+        return jsonResponse(200, { tasks: [] });
+      }
       expect(init?.method).not.toBe("DELETE");
       if (url.endsWith("/api/projects/proj-1/archive") && init?.method === "POST") {
         expect(init.body).toBe("{}");
@@ -157,6 +169,9 @@ describe("ProjectDetail", () => {
     };
     mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
+      if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
+        return jsonResponse(200, { tasks: [] });
+      }
       if (url.endsWith("/api/projects/proj-1/unarchive") && init?.method === "POST") {
         expect(init.body).toBe("{}");
         current = { ...current, archivedAt: null };
@@ -242,7 +257,10 @@ describe("ProjectDetail", () => {
   });
 
   it("shows an error when update is rejected", async () => {
-    mockFetch((_url, init) => {
+    mockFetch((url, init) => {
+      if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
+        return jsonResponse(200, { tasks: [] });
+      }
       if (init?.method === "PATCH") {
         return jsonResponse(409, {
           error: {
@@ -271,7 +289,12 @@ describe("ProjectDetail", () => {
 
   it("does not store a bearer token or session id", async () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
-    mockFetch(() => jsonResponse(200, activeProject));
+    mockFetch((url) => {
+      if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
+        return jsonResponse(200, { tasks: [] });
+      }
+      return jsonResponse(200, activeProject);
+    });
 
     render(
       <ProjectDetail

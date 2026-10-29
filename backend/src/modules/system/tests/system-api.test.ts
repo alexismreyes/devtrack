@@ -9,6 +9,8 @@ import { PrismaAuthRepository } from "../../auth/repository/prisma-auth-reposito
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { PrismaProjectsRepository } from "../../projects/repository/prisma-projects-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repository";
+import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
 import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
 import { DatabaseUnavailableError } from "../domain/errors";
@@ -55,12 +57,14 @@ function createSystemApp(systemRepository: FakeSystemRepository = new FakeSystem
   const usersRepository = new InMemoryUsersRepository();
   const authRepository = new InMemoryAuthRepository(usersRepository);
   const projectsRepository = new InMemoryProjectsRepository();
+  const tasksRepository = new InMemoryTasksRepository();
   const app = createApp({
     corsOrigin: "http://localhost:5173",
     systemRepository,
     usersRepository,
     authRepository,
     projectsRepository,
+    tasksRepository,
   });
   return { app, systemRepository, usersRepository, authRepository };
 }
@@ -281,6 +285,7 @@ describe("system HTTP API persistence", () => {
       usersRepository: new PrismaUsersRepository(prisma),
       authRepository: new PrismaAuthRepository(prisma),
       projectsRepository: new PrismaProjectsRepository(prisma),
+      tasksRepository: new PrismaTasksRepository(prisma),
     });
   }
 

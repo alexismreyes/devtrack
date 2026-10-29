@@ -4,17 +4,22 @@ import {
   archiveProject,
   createProbe,
   createProject,
+  createTask,
   getHealth,
   getProfile,
   getProject,
+  getTask,
   listProbes,
   listProjects,
+  listTasks,
   login,
   logout,
   register,
+  softDeleteTask,
   unarchiveProject,
   updateProfile,
   updateProject,
+  updateTask,
 } from "./client";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -417,6 +422,214 @@ describe("projects API client", () => {
     });
     expect(JSON.stringify(error)).not.toMatch(/DATABASE_URL/i);
     expect(JSON.stringify(error)).not.toMatch(/postgresql:\/\//i);
+    expectNoTokenStorage();
+  });
+});
+
+describe("tasks API client", () => {
+  const task = {
+    id: "task-1",
+    projectId: "proj-1",
+    title: "Write tests",
+    description: "Cover the API client",
+    status: "TODO" as const,
+    priority: "MEDIUM" as const,
+    dueDate: "2026-11-01" as string | null,
+    createdAt: "2026-10-29T18:00:00.000Z",
+  };
+
+  it("creates a task under the project path with credentials included and no token storage", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/tasks");
+      expect(url).not.toContain("db");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(
+        JSON.stringify({
+          title: "Write tests",
+          description: "Cover the API client",
+          dueDate: "2026-11-01",
+        }),
+      );
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(201, {
+        ...task,
+        deletedAt: "must-not-be-kept",
+        token: "must-not-be-kept",
+        sessionId: "must-not-be-kept",
+      });
+    });
+
+    await expect(
+      createTask("proj-1", {
+        title: "Write tests",
+        description: "Cover the API client",
+        dueDate: "2026-11-01",
+      }),
+    ).resolves.toEqual(task);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("lists tasks without filters and keeps only public fields", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/tasks");
+      expect(url).not.toMatch(/includeDeleted/i);
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        tasks: [{ ...task, deletedAt: "must-not-be-kept", token: "must-not-be-kept" }],
+      });
+    });
+
+    await expect(listTasks("proj-1")).resolves.toEqual({ tasks: [task] });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("lists tasks with optional status and priority query filters", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/tasks?status=TODO&priority=HIGH",
+      );
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { tasks: [] });
+    });
+
+    await expect(
+      listTasks("proj-1", { status: "TODO", priority: "HIGH" }),
+    ).resolves.toEqual({ tasks: [] });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("reads a task by id with credentials included", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, task);
+    });
+
+    await expect(getTask("task-1")).resolves.toEqual(task);
+    expectNoTokenStorage();
+  });
+
+  it("patches allowed task fields with credentials included", async () => {
+    const updated = {
+      ...task,
+      title: "Ship it",
+      description: null,
+      status: "DONE" as const,
+      priority: "HIGH" as const,
+      dueDate: null,
+    };
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1");
+      expect(init?.method).toBe("PATCH");
+      expect(init?.body).toBe(
+        JSON.stringify({
+          title: "Ship it",
+          description: null,
+          status: "DONE",
+          priority: "HIGH",
+          dueDate: null,
+        }),
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(200, updated);
+    });
+
+    await expect(
+      updateTask("task-1", {
+        title: "Ship it",
+        description: null,
+        status: "DONE",
+        priority: "HIGH",
+        dueDate: null,
+      }),
+    ).resolves.toEqual(updated);
+    expectNoTokenStorage();
+  });
+
+  it("soft-deletes with DELETE, empty body, 204, credentials included, and no token storage", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1");
+      expect(init?.method).toBe("DELETE");
+      expect(init?.body).toBeUndefined();
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return emptyResponse(204);
+    });
+
+    await expect(softDeleteTask("task-1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("maps unauthenticated task access without storing credentials", async () => {
+    mockFetch(() =>
+      jsonResponse(401, {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Authentication is required",
+        },
+      }),
+    );
+
+    const error = await listTasks("proj-1").catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "UNAUTHENTICATED",
+      message: "Authentication is required",
+    });
+    expectNoTokenStorage();
+  });
+
+  it("maps forbidden and archived-parent conflict without leaking secrets", async () => {
+    mockFetch((url) => {
+      if (url.endsWith("/api/tasks/task-1")) {
+        return jsonResponse(403, {
+          error: {
+            code: "FORBIDDEN",
+            message: "You cannot access this project",
+          },
+        });
+      }
+      return jsonResponse(409, {
+        error: {
+          code: "CONFLICT",
+          message: "Cannot modify tasks on an archived project",
+        },
+      });
+    });
+
+    const forbidden = await getTask("task-1").catch((err: unknown) => err);
+    expect(forbidden).toBeInstanceOf(ApiError);
+    expect(forbidden).toMatchObject({
+      status: 403,
+      code: "FORBIDDEN",
+    });
+
+    const conflict = await createTask("proj-1", { title: "Blocked" }).catch(
+      (err: unknown) => err,
+    );
+    expect(conflict).toBeInstanceOf(ApiError);
+    expect(conflict).toMatchObject({
+      status: 409,
+      code: "CONFLICT",
+      message: "Cannot modify tasks on an archived project",
+    });
+    expect(JSON.stringify(conflict)).not.toMatch(/DATABASE_URL/i);
+    expect(JSON.stringify(conflict)).not.toMatch(/postgresql:\/\//i);
     expectNoTokenStorage();
   });
 });

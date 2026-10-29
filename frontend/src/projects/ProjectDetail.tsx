@@ -9,6 +9,7 @@ import {
   updateProject,
 } from "../api/client";
 import type { PublicProjectDto } from "../api/types";
+import { TasksPanel } from "../tasks/TasksPanel";
 
 type ProjectDetailProps = {
   projectId: string;
@@ -219,6 +220,11 @@ export function ProjectDetail({
               {actionState.kind === "archiving" ? "Archiving…" : "Archive project"}
             </button>
           )}
+          <TasksPanel
+            projectId={projectId}
+            archived={archived}
+            onUnauthenticated={onUnauthenticated}
+          />
         </>
       ) : null}
       {actionState.kind === "saving" ? <p role="status">Saving project…</p> : null}

@@ -80,10 +80,24 @@ export function errorHandler(
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
       }
+      case "TaskNotFoundError": {
+        const mapped = notFound(err.message);
+        sendError(res, mapped.status, mapped.code, mapped.message);
+        return;
+      }
+      case "TaskParentArchivedError": {
+        const mapped = conflict(err.message);
+        sendError(res, mapped.status, mapped.code, mapped.message);
+        return;
+      }
       case "InvalidUserEmailError":
       case "InvalidDisplayNameError":
       case "InvalidPasswordError":
       case "InvalidProjectNameError":
+      case "InvalidTaskTitleError":
+      case "InvalidTaskStatusError":
+      case "InvalidTaskPriorityError":
+      case "InvalidTaskDueDateError":
         sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
         return;
       case "DatabaseUnavailableError":

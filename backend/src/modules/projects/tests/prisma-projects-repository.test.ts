@@ -67,6 +67,7 @@ describe("PrismaProjectsRepository", () => {
       expect(found?.archivedAt).not.toBeNull();
       expect(listed.map((project) => project.id)).toEqual([duplicate.id]);
       expect(found).not.toHaveProperty("owner");
+      expect(found).not.toHaveProperty("tasks");
     },
   );
 

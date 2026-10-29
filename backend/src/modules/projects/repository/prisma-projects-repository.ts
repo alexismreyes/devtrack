@@ -16,6 +16,7 @@ const PROJECT_SELECT = {
   createdAt: true,
   archivedAt: true,
 } as const;
+// Do not select or mutate Project.tasks; the tasks repository owns that relation.
 
 const CONNECTION_CODES = new Set([
   "P1000",

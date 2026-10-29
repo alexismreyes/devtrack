@@ -255,6 +255,9 @@ describe("App auth view switching", () => {
         project.archivedAt = "2026-10-27T19:00:00.000Z";
         return jsonResponse(200, { ...project });
       }
+      if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
+        return jsonResponse(200, { tasks: [] });
+      }
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...project });
       }
@@ -277,6 +280,7 @@ describe("App auth view switching", () => {
 
     await user.click(await screen.findByRole("button", { name: /^alpha$/i }));
     expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^tasks$/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /your profile/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /recorded probes/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^projects$/i })).not.toBeInTheDocument();

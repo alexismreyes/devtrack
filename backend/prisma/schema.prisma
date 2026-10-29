@@ -53,6 +53,18 @@ model AuthSession {
   @@map("auth_sessions")
 }
 
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 model Project {
   id          String    @id @db.Uuid
   ownerUserId String    @db.Uuid
@@ -61,7 +73,24 @@ model Project {
   createdAt   DateTime
   archivedAt  DateTime?
   owner       User      @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  tasks       Task[]
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+model Task {
+  id          String       @id @db.Uuid
+  projectId   String       @db.Uuid
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?    @db.Date
+  createdAt   DateTime
+  deletedAt   DateTime?
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@map("tasks")
 }

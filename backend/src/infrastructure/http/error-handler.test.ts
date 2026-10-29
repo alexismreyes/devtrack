@@ -7,6 +7,10 @@ import {
   ProjectNotFoundError,
 } from "../../modules/projects/domain/errors";
 import {
+  TaskNotFoundError,
+  TaskParentArchivedError,
+} from "../../modules/tasks/domain/errors";
+import {
   ProfileForbiddenError,
   UserNotFoundError,
 } from "../../modules/users/domain/errors";
@@ -90,5 +94,42 @@ describe("errorHandler domain mapping", () => {
         message: "Archived projects cannot be updated",
       },
     });
+  });
+
+  it("maps TaskNotFoundError to 404 NOT_FOUND", async () => {
+    const response = await request(appThatThrows(new TaskNotFoundError())).get(
+      "/boom",
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({
+      error: {
+        code: "NOT_FOUND",
+        message: "Task was not found",
+      },
+    });
+  });
+
+  it("maps TaskParentArchivedError to 409 CONFLICT", async () => {
+    const response = await request(
+      appThatThrows(new TaskParentArchivedError()),
+    ).get("/boom");
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: {
+        code: "CONFLICT",
+        message: "Cannot modify tasks on an archived project",
+      },
+    });
+  });
+
+  it("does not map UserNotFoundError through the task NOT_FOUND path", async () => {
+    const response = await request(appThatThrows(new UserNotFoundError())).get(
+      "/boom",
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe("UNAUTHENTICATED");
   });
 });

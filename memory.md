@@ -5,7 +5,7 @@
 - Name: DevTrack
 - Purpose: Project and task management for individuals and small teams
 - Architecture: Modular monolith
-- Stage: Foundation, authentication, and projects Verified
+- Stage: Foundation, authentication, projects, and tasks Verified
 
 ## Stack decisions
 
@@ -41,38 +41,39 @@ Verified for `001-foundation` and `002-authentication`.
 
 ## Domains
 
-Implemented: `system`, `auth`, `users`, `projects`.
+Implemented: `system`, `auth`, `users`, `projects`, `tasks`.
 
-Proposed, not specified: `tasks`, `project-members`
+Proposed, not specified: `project-members`, `005-audit`
 
 ## Proposed backlog
 
-Foundation (Verified) → authentication (Verified) → projects (Verified) → tasks → Kanban → dashboard → collaboration.
+Foundation (Verified) → authentication (Verified) → projects (Verified) → tasks (Verified) → Kanban → dashboard → collaboration / `005-audit`.
 
 Later items are proposed, not specified.
 
 ## Verified status
 
-`001-foundation` Verified. `002-authentication` Verified. `003-projects` Verified. T001–T017 complete for 003. Reviewer for 003: PASS WITH NON-BLOCKING FINDINGS after coordinator re-ran AC-015.
+`001-foundation` Verified. `002-authentication` Verified. `003-projects` Verified. `004-tasks` Verified. T001–T017 complete for 004. Reviewer for 004: PASS WITH NON-BLOCKING FINDINGS after coordinator re-ran AC-015.
 
 Present in the repo:
 
 - `frontend/`, `backend/`, `docker-compose.yml`
-- `system` probe slice; `auth` sessions; `users` identity/profile; owner-only `projects` with archive/unarchive
-- Register/login/logout, own-profile, and project list/create/detail UI
+- `system` probe slice; `auth` sessions; `users` identity/profile; owner-only `projects` with archive/unarchive; project-scoped `tasks` with soft-delete
+- Register/login/logout, own-profile, project, and task UI
 
-Coordinator re-ran on Node.js 22.22.3 for `003-projects`:
+Coordinator re-ran on Node.js 22.22.3 for `004-tasks`:
 
 - `backend` `npm run typecheck` exit 0
-- `backend` `npm test` 16 files / 113 tests passed
+- `backend` `npm test` 20 files / 158 tests passed
 - `frontend` `npm run typecheck` exit 0
-- `frontend` `npm test` 9 files / 60 tests passed
+- `frontend` `npm test` 11 files / 87 tests passed
 
 ## Migrations
 
 - `backend/prisma/migrations/20261026120000_init_system_probe/`
 - `backend/prisma/migrations/20261026133000_authentication/` (`User`, `AuthPasswordCredential`, `AuthSession`)
 - `backend/prisma/migrations/20261027120000_projects/` (`Project`: name, optional description, `ownerUserId`, `archivedAt`)
+- `backend/prisma/migrations/20261029150000_tasks/` (`Task`: title, optional description, status, priority, optional dueDate, `deletedAt`; FK to project)
 - Applied with `prisma migrate deploy`. No database reset or volume delete.
 
 ## Known issues
@@ -86,6 +87,8 @@ Coordinator re-ran on Node.js 22.22.3 for `003-projects`:
 - Authenticated users share a global probe list (no ownership, per Q-014)
 - Projects are owner-only; membership is later collaboration work
 - Default project list excludes archived; recover archived only via detail GET (Q-021)
+- Tasks are soft-deleted (`deletedAt`); HTTP DELETE does not remove the row; no restore API
+- Archived projects still list/get tasks; create/update/soft-delete return 409
 - HTTP 403 is not reachable on `/api/users/me` (no `/api/users/:id`); own-profile authz is in `users` service
 - `CORS_ORIGIN=*` is not rejected at config load; current env uses the frontend origin
 - Email uniqueness is a unique index plus canonical lowercase in write paths
@@ -96,7 +99,7 @@ Coordinator re-ran on Node.js 22.22.3 for `003-projects`:
 
 ## Next approved work
 
-None. Specify the next feature (proposed: tasks) before implementation.
+None. Specify the next feature before implementation. Proposed: Kanban, dashboard, collaboration (`project-members`), or `005-audit`.
 
 ## Open decisions
 
