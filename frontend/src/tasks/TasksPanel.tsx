@@ -13,6 +13,12 @@ import type {
   TaskPriority,
   TaskStatus,
 } from "../api/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { cn, nativeSelectClassName } from "@/lib/utils";
 import { TaskDetail } from "./TaskDetail";
 
 type TasksPanelProps = {
@@ -153,20 +159,23 @@ export function TasksPanel({
   const filtered = statusFilter !== "" || priorityFilter !== "";
 
   return (
-    <section aria-labelledby="tasks-heading">
-      <h3 id="tasks-heading">Tasks</h3>
+    <section aria-labelledby="tasks-heading" className="grid gap-4">
+      <h3 id="tasks-heading" className="text-lg font-semibold tracking-tight">
+        Tasks
+      </h3>
       {archived ? (
-        <p>
+        <p className="text-sm text-muted-foreground">
           Task writes are unavailable while the parent project is archived.
         </p>
       ) : null}
       {listBlocked ? null : (
         <>
-          <div>
-            <label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Label className="grid gap-2">
               Filter by status
               <select
                 name="task-status-filter"
+                className={cn(nativeSelectClassName)}
                 value={statusFilter}
                 onChange={(event) =>
                   setStatusFilter(event.target.value as TaskStatus | "")
@@ -179,11 +188,12 @@ export function TasksPanel({
                   </option>
                 ))}
               </select>
-            </label>
-            <label>
+            </Label>
+            <Label className="grid gap-2">
               Filter by priority
               <select
                 name="task-priority-filter"
+                className={cn(nativeSelectClassName)}
                 value={priorityFilter}
                 onChange={(event) =>
                   setPriorityFilter(event.target.value as TaskPriority | "")
@@ -196,121 +206,161 @@ export function TasksPanel({
                   </option>
                 ))}
               </select>
-            </label>
+            </Label>
           </div>
           {selectedTaskId === null ? (
-            <form
-              onSubmit={(event) => void onCreate(event)}
-              aria-labelledby="create-task-heading"
-            >
-              <h4 id="create-task-heading">Create task</h4>
-              <label>
-                New task title
-                <input
-                  type="text"
-                  name="new-task-title"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  disabled={writesDisabled}
-                />
-              </label>
-              <label>
-                New task description
-                <textarea
-                  name="new-task-description"
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  disabled={writesDisabled}
-                />
-              </label>
-              <label>
-                New task due date
-                <input
-                  type="date"
-                  name="new-task-due-date"
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                  disabled={writesDisabled}
-                />
-              </label>
-              <label>
-                New task status
-                <select
-                  name="new-task-status"
-                  value={status}
-                  onChange={(event) =>
-                    setStatus(event.target.value as TaskStatus | "")
-                  }
-                  disabled={writesDisabled}
+            <Card>
+              <CardHeader className="p-4 pb-2">
+                <h4 id="create-task-heading" className="text-sm font-semibold">
+                  Create task
+                </h4>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <form
+                  onSubmit={(event) => void onCreate(event)}
+                  aria-labelledby="create-task-heading"
+                  className="grid gap-3"
                 >
-                  <option value="">Default (TODO)</option>
-                  {STATUSES.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                New task priority
-                <select
-                  name="new-task-priority"
-                  value={priority}
-                  onChange={(event) =>
-                    setPriority(event.target.value as TaskPriority | "")
-                  }
-                  disabled={writesDisabled}
-                >
-                  <option value="">Default (MEDIUM)</option>
-                  {PRIORITIES.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit" disabled={writesDisabled}>
-                {creating ? "Creating…" : "Create task"}
-              </button>
-            </form>
+                  <Label className="grid gap-2">
+                    New task title
+                    <Input
+                      type="text"
+                      name="new-task-title"
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      disabled={writesDisabled}
+                    />
+                  </Label>
+                  <Label className="grid gap-2">
+                    New task description
+                    <Textarea
+                      name="new-task-description"
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      disabled={writesDisabled}
+                    />
+                  </Label>
+                  <Label className="grid gap-2">
+                    New task due date
+                    <Input
+                      type="date"
+                      name="new-task-due-date"
+                      value={dueDate}
+                      onChange={(event) => setDueDate(event.target.value)}
+                      disabled={writesDisabled}
+                    />
+                  </Label>
+                  <Label className="grid gap-2">
+                    New task status
+                    <select
+                      name="new-task-status"
+                      className={cn(nativeSelectClassName)}
+                      value={status}
+                      onChange={(event) =>
+                        setStatus(event.target.value as TaskStatus | "")
+                      }
+                      disabled={writesDisabled}
+                    >
+                      <option value="">Default (TODO)</option>
+                      {STATUSES.map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </Label>
+                  <Label className="grid gap-2">
+                    New task priority
+                    <select
+                      name="new-task-priority"
+                      className={cn(nativeSelectClassName)}
+                      value={priority}
+                      onChange={(event) =>
+                        setPriority(event.target.value as TaskPriority | "")
+                      }
+                      disabled={writesDisabled}
+                    >
+                      <option value="">Default (MEDIUM)</option>
+                      {PRIORITIES.map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </Label>
+                  <Button type="submit" disabled={writesDisabled}>
+                    {creating ? "Creating…" : "Create task"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
           ) : null}
         </>
       )}
-      {creating ? <p role="status">Creating task…</p> : null}
+      {creating ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          Creating task…
+        </p>
+      ) : null}
       {createState.kind === "success" ? (
-        <p role="status">{createState.message}</p>
+        <p className="text-sm text-muted-foreground" role="status">
+          {createState.message}
+        </p>
       ) : null}
       {createState.kind === "conflict" ? (
-        <p role="alert">{createState.message}</p>
+        <p className="text-sm text-destructive" role="alert">
+          {createState.message}
+        </p>
       ) : null}
       {createState.kind === "error" ? (
-        <p role="alert">{createState.message}</p>
+        <p className="text-sm text-destructive" role="alert">
+          {createState.message}
+        </p>
       ) : null}
       {listState.kind === "loading" ? (
-        <p role="status">Loading tasks…</p>
+        <p className="text-sm text-muted-foreground" role="status">
+          Loading tasks…
+        </p>
       ) : null}
       {listState.kind === "empty" ? (
-        <p>{filtered ? "No matching tasks." : "No tasks yet."}</p>
+        <p className="text-sm text-muted-foreground">
+          {filtered ? "No matching tasks." : "No tasks yet."}
+        </p>
       ) : null}
       {listState.kind === "success" ? (
-        <ul aria-label="Tasks">
+        <ul aria-label="Tasks" className="grid gap-2">
           {listState.tasks.map((task) => (
             <li key={task.id}>
-              <button type="button" onClick={() => setSelectedTaskId(task.id)}>
-                {task.title}
-              </button>
+              <Card>
+                <CardContent className="p-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto w-full justify-start px-2 py-1 text-left"
+                    onClick={() => setSelectedTaskId(task.id)}
+                  >
+                    {task.title}
+                  </Button>
+                </CardContent>
+              </Card>
             </li>
           ))}
         </ul>
       ) : null}
       {listState.kind === "unauthenticated" ? (
-        <p role="status">{listState.message}</p>
+        <p className="text-sm text-muted-foreground" role="status">
+          {listState.message}
+        </p>
       ) : null}
       {listState.kind === "forbidden" ? (
-        <p role="alert">{listState.message}</p>
+        <p className="text-sm text-destructive" role="alert">
+          {listState.message}
+        </p>
       ) : null}
       {listState.kind === "error" ? (
-        <p role="alert">{listState.message}</p>
+        <p className="text-sm text-destructive" role="alert">
+          {listState.message}
+        </p>
       ) : null}
       {selectedTaskId !== null && !listBlocked ? (
         <TaskDetail

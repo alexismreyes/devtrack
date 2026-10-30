@@ -107,7 +107,6 @@ describe("TasksPanel", () => {
     expect(screen.getByRole("button", { name: /review pr/i })).toBeInTheDocument();
     expect(screen.queryByText(/kanban/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
-    expect(window.location.pathname).toBe("/");
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(window.localStorage.length).toBe(0);
   });
@@ -198,7 +197,7 @@ describe("TasksPanel", () => {
     ).toBe(true);
   });
 
-  it("opens task detail with view state switching and no router", async () => {
+  it("opens nested task detail inside the panel without a task-detail URL", async () => {
     mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
       if (url.endsWith("/api/tasks/task-1") && init?.method === "GET") {
@@ -224,7 +223,6 @@ describe("TasksPanel", () => {
     await user.click(await screen.findByRole("button", { name: /write tests/i }));
     expect(await screen.findByLabelText(/task title/i)).toHaveValue("Write tests");
     expect(screen.queryByRole("heading", { name: /create task/i })).not.toBeInTheDocument();
-    expect(window.location.pathname).toBe("/");
 
     await user.click(screen.getByRole("button", { name: /close task/i }));
     expect(await screen.findByRole("heading", { name: /create task/i })).toBeInTheDocument();

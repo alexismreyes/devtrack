@@ -9,6 +9,12 @@ import {
   updateTask,
 } from "../api/client";
 import type { PublicTaskDto, TaskPriority, TaskStatus } from "../api/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { cn, nativeSelectClassName } from "@/lib/utils";
 
 type TaskDetailProps = {
   taskId: string;
@@ -152,123 +158,154 @@ export function TaskDetail({
 
   return (
     <section aria-labelledby="task-detail-heading">
-      <h4 id="task-detail-heading">
-        {task === null ? "Task" : task.title}
-      </h4>
-      <button type="button" onClick={onClose}>
-        Close task
-      </button>
-      {loadState.kind === "loading" ? (
-        <p role="status">Loading task…</p>
-      ) : null}
-      {loadState.kind === "unauthenticated" ? (
-        <p role="status">{loadState.message}</p>
-      ) : null}
-      {loadState.kind === "forbidden" ? (
-        <p role="alert">{loadState.message}</p>
-      ) : null}
-      {loadState.kind === "error" ? (
-        <p role="alert">{loadState.message}</p>
-      ) : null}
-      {loadState.kind === "success" && task !== null ? (
-        <>
-          <p>
-            Status {task.status}, priority {task.priority}
-            {task.dueDate === null ? "" : `, due ${task.dueDate}`}
-          </p>
-          {task.description === null ? (
-            <p>No task description.</p>
-          ) : (
-            <p>{task.description}</p>
-          )}
-          <form onSubmit={(event) => void onSave(event)}>
-            <label>
-              Task title
-              <input
-                type="text"
-                name="task-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                disabled={writesDisabled}
-              />
-            </label>
-            <label>
-              Task description
-              <textarea
-                name="task-description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={writesDisabled}
-              />
-            </label>
-            <label>
-              Task due date
-              <input
-                type="date"
-                name="task-due-date"
-                value={dueDate}
-                onChange={(event) => setDueDate(event.target.value)}
-                disabled={writesDisabled}
-              />
-            </label>
-            <label>
-              Task status
-              <select
-                name="task-status"
-                value={status}
-                onChange={(event) => setStatus(event.target.value as TaskStatus)}
-                disabled={writesDisabled}
-              >
-                {STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Task priority
-              <select
-                name="task-priority"
-                value={priority}
-                onChange={(event) =>
-                  setPriority(event.target.value as TaskPriority)
-                }
-                disabled={writesDisabled}
-              >
-                {PRIORITIES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" disabled={writesDisabled}>
-              {actionState.kind === "saving" ? "Saving…" : "Save task"}
-            </button>
-          </form>
-          <button
-            type="button"
-            onClick={() => void onDelete()}
-            disabled={writesDisabled}
-          >
-            {actionState.kind === "deleting" ? "Deleting…" : "Delete task"}
-          </button>
-        </>
-      ) : null}
-      {actionState.kind === "saving" ? <p role="status">Saving task…</p> : null}
-      {actionState.kind === "deleting" ? (
-        <p role="status">Deleting task…</p>
-      ) : null}
-      {actionState.kind === "success" ? (
-        <p role="status">{actionState.message}</p>
-      ) : null}
-      {actionState.kind === "conflict" ? (
-        <p role="alert">{actionState.message}</p>
-      ) : null}
-      {actionState.kind === "error" ? (
-        <p role="alert">{actionState.message}</p>
-      ) : null}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 p-4">
+          <h4 id="task-detail-heading" className="text-base font-semibold tracking-tight">
+            {task === null ? "Task" : task.title}
+          </h4>
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Close task
+          </Button>
+        </CardHeader>
+        <CardContent className="grid gap-4 p-4 pt-0">
+          {loadState.kind === "loading" ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              Loading task…
+            </p>
+          ) : null}
+          {loadState.kind === "unauthenticated" ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              {loadState.message}
+            </p>
+          ) : null}
+          {loadState.kind === "forbidden" ? (
+            <p className="text-sm text-destructive" role="alert">
+              {loadState.message}
+            </p>
+          ) : null}
+          {loadState.kind === "error" ? (
+            <p className="text-sm text-destructive" role="alert">
+              {loadState.message}
+            </p>
+          ) : null}
+          {loadState.kind === "success" && task !== null ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Status {task.status}, priority {task.priority}
+                {task.dueDate === null ? "" : `, due ${task.dueDate}`}
+              </p>
+              {task.description === null ? (
+                <p className="text-sm text-muted-foreground">No task description.</p>
+              ) : (
+                <p className="text-sm">{task.description}</p>
+              )}
+              <form onSubmit={(event) => void onSave(event)} className="grid gap-3">
+                <Label className="grid gap-2">
+                  Task title
+                  <Input
+                    type="text"
+                    name="task-title"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    disabled={writesDisabled}
+                  />
+                </Label>
+                <Label className="grid gap-2">
+                  Task description
+                  <Textarea
+                    name="task-description"
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    disabled={writesDisabled}
+                  />
+                </Label>
+                <Label className="grid gap-2">
+                  Task due date
+                  <Input
+                    type="date"
+                    name="task-due-date"
+                    value={dueDate}
+                    onChange={(event) => setDueDate(event.target.value)}
+                    disabled={writesDisabled}
+                  />
+                </Label>
+                <Label className="grid gap-2">
+                  Task status
+                  <select
+                    name="task-status"
+                    className={cn(nativeSelectClassName)}
+                    value={status}
+                    onChange={(event) => setStatus(event.target.value as TaskStatus)}
+                    disabled={writesDisabled}
+                  >
+                    {STATUSES.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </Label>
+                <Label className="grid gap-2">
+                  Task priority
+                  <select
+                    name="task-priority"
+                    className={cn(nativeSelectClassName)}
+                    value={priority}
+                    onChange={(event) =>
+                      setPriority(event.target.value as TaskPriority)
+                    }
+                    disabled={writesDisabled}
+                  >
+                    {PRIORITIES.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="submit" disabled={writesDisabled}>
+                    {actionState.kind === "saving" ? "Saving…" : "Save task"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => void onDelete()}
+                    disabled={writesDisabled}
+                  >
+                    {actionState.kind === "deleting" ? "Deleting…" : "Delete task"}
+                  </Button>
+                </div>
+              </form>
+            </>
+          ) : null}
+          {actionState.kind === "saving" ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              Saving task…
+            </p>
+          ) : null}
+          {actionState.kind === "deleting" ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              Deleting task…
+            </p>
+          ) : null}
+          {actionState.kind === "success" ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              {actionState.message}
+            </p>
+          ) : null}
+          {actionState.kind === "conflict" ? (
+            <p className="text-sm text-destructive" role="alert">
+              {actionState.message}
+            </p>
+          ) : null}
+          {actionState.kind === "error" ? (
+            <p className="text-sm text-destructive" role="alert">
+              {actionState.message}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
     </section>
   );
 }

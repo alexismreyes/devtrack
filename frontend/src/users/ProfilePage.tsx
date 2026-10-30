@@ -1,6 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { isUnauthenticated, toUserMessage, updateProfile } from "../api/client";
 import type { PublicUserDto } from "../api/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type ProfilePageProps = {
   user: PublicUserDto;
@@ -48,37 +52,67 @@ export function ProfilePage({
   if (state.kind === "unauthenticated") {
     return (
       <section aria-labelledby="profile-heading">
-        <h2 id="profile-heading">Your profile</h2>
-        <p role="status">{state.message}</p>
+        <Card>
+          <CardHeader>
+            <h2 id="profile-heading" className="text-xl font-semibold tracking-tight">
+              Your profile
+            </h2>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground" role="status">
+              {state.message}
+            </p>
+          </CardContent>
+        </Card>
       </section>
     );
   }
 
   return (
     <section aria-labelledby="profile-heading">
-      <h2 id="profile-heading">Your profile</h2>
-      <form onSubmit={(event) => void onSubmit(event)}>
-        <label>
-          Email
-          <input type="email" name="email" value={user.email} readOnly />
-        </label>
-        <label>
-          Display name
-          <input
-            type="text"
-            name="displayName"
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            disabled={state.kind === "saving"}
-          />
-        </label>
-        <button type="submit" disabled={state.kind === "saving"}>
-          {state.kind === "saving" ? "Saving…" : "Save display name"}
-        </button>
-      </form>
-      {state.kind === "saving" ? <p role="status">Saving profile…</p> : null}
-      {state.kind === "success" ? <p role="status">{state.message}</p> : null}
-      {state.kind === "error" ? <p role="alert">{state.message}</p> : null}
+      <Card>
+        <CardHeader>
+          <h2 id="profile-heading" className="text-xl font-semibold tracking-tight">
+            Your profile
+          </h2>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={(event) => void onSubmit(event)} className="grid max-w-md gap-4">
+            <Label className="grid gap-2">
+              Email
+              <Input type="email" name="email" value={user.email} readOnly />
+            </Label>
+            <Label className="grid gap-2">
+              Display name
+              <Input
+                type="text"
+                name="displayName"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                disabled={state.kind === "saving"}
+              />
+            </Label>
+            <Button type="submit" disabled={state.kind === "saving"}>
+              {state.kind === "saving" ? "Saving…" : "Save display name"}
+            </Button>
+          </form>
+          {state.kind === "saving" ? (
+            <p className="mt-3 text-sm text-muted-foreground" role="status">
+              Saving profile…
+            </p>
+          ) : null}
+          {state.kind === "success" ? (
+            <p className="mt-3 text-sm text-muted-foreground" role="status">
+              {state.message}
+            </p>
+          ) : null}
+          {state.kind === "error" ? (
+            <p className="mt-3 text-sm text-destructive" role="alert">
+              {state.message}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
     </section>
   );
 }

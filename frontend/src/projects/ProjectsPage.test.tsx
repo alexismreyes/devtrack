@@ -229,4 +229,21 @@ describe("ProjectsPage", () => {
     await user.click(await screen.findByRole("button", { name: /^alpha$/i }));
     expect(onSelectProject).toHaveBeenCalledWith("proj-1");
   });
+
+  it("marks the listed project that matches the current destination", async () => {
+    mockFetch(() => jsonResponse(200, { projects: [activeProject] }));
+
+    render(
+      <ProjectsPage
+        onSelectProject={vi.fn()}
+        onUnauthenticated={vi.fn()}
+        selectedProjectId="proj-1"
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /^alpha$/i })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
 });

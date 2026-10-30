@@ -9,6 +9,11 @@ import {
   updateProject,
 } from "../api/client";
 import type { PublicProjectDto } from "../api/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { TasksPanel } from "../tasks/TasksPanel";
 
 type ProjectDetailProps = {
@@ -141,85 +146,111 @@ export function ProjectDetail({
     actionState.kind === "unarchiving";
 
   return (
-    <section aria-labelledby="project-detail-heading">
-      <h2 id="project-detail-heading">
-        {project === null ? "Project" : project.name}
-      </h2>
-      <button type="button" onClick={onBack}>
-        Back to projects
-      </button>
+    <section
+      aria-labelledby="project-detail-heading"
+      data-slot="board"
+      className="grid gap-4 rounded-xl bg-board p-4 text-board-foreground"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="project-detail-heading" className="text-xl font-semibold tracking-tight">
+          {project === null ? "Project" : project.name}
+        </h2>
+        <Button type="button" variant="outline" size="sm" onClick={onBack}>
+          Back to projects
+        </Button>
+      </div>
       {loadState.kind === "loading" ? (
-        <p role="status">Loading project…</p>
+        <p className="text-sm text-muted-foreground" role="status">
+          Loading project…
+        </p>
       ) : null}
       {loadState.kind === "unauthenticated" ? (
-        <p role="status">{loadState.message}</p>
+        <p className="text-sm text-muted-foreground" role="status">
+          {loadState.message}
+        </p>
       ) : null}
       {loadState.kind === "forbidden" ? (
-        <p role="alert">{loadState.message}</p>
+        <p className="text-sm text-destructive" role="alert">
+          {loadState.message}
+        </p>
       ) : null}
       {loadState.kind === "error" ? (
-        <p role="alert">{loadState.message}</p>
+        <p className="text-sm text-destructive" role="alert">
+          {loadState.message}
+        </p>
       ) : null}
       {loadState.kind === "success" && project !== null ? (
         <>
-          <p>{archived ? "This project is archived." : "This project is active."}</p>
-          {project.description === null ? (
-            <p>No description.</p>
-          ) : (
-            <p>{project.description}</p>
-          )}
-          <p>
-            Created <time dateTime={project.createdAt}>{project.createdAt}</time>
-          </p>
-          {archived ? (
-            <p>
-              Archived{" "}
-              <time dateTime={project.archivedAt ?? undefined}>
-                {project.archivedAt}
-              </time>
-            </p>
-          ) : null}
-          <form onSubmit={(event) => void onSave(event)}>
-            <label>
-              Name
-              <input
-                type="text"
-                name="name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                disabled={busy || archived}
-              />
-            </label>
-            <label>
-              Description
-              <textarea
-                name="description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={busy || archived}
-              />
-            </label>
-            <button type="submit" disabled={busy || archived}>
-              {actionState.kind === "saving" ? "Saving…" : "Save project"}
-            </button>
-          </form>
-          {archived ? (
-            <button
-              type="button"
-              onClick={() => void onUnarchive()}
-              disabled={busy}
-            >
-              {actionState.kind === "unarchiving" ? "Unarchiving…" : "Unarchive project"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void onArchive()}
-              disabled={busy}
-            >
-              {actionState.kind === "archiving" ? "Archiving…" : "Archive project"}
-            </button>
-          )}
+          <Card>
+            <CardHeader className="space-y-2">
+              <p className="text-sm">
+                {archived ? "This project is archived." : "This project is active."}
+              </p>
+              {project.description === null ? (
+                <p className="text-sm text-muted-foreground">No description.</p>
+              ) : (
+                <p className="text-sm">{project.description}</p>
+              )}
+              <p className="text-sm text-muted-foreground">
+                Created <time dateTime={project.createdAt}>{project.createdAt}</time>
+              </p>
+              {archived ? (
+                <p className="text-sm text-muted-foreground">
+                  Archived{" "}
+                  <time dateTime={project.archivedAt ?? undefined}>
+                    {project.archivedAt}
+                  </time>
+                </p>
+              ) : null}
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <form onSubmit={(event) => void onSave(event)} className="grid max-w-xl gap-4">
+                <Label className="grid gap-2">
+                  Name
+                  <Input
+                    type="text"
+                    name="name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    disabled={busy || archived}
+                  />
+                </Label>
+                <Label className="grid gap-2">
+                  Description
+                  <Textarea
+                    name="description"
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    disabled={busy || archived}
+                  />
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="submit" disabled={busy || archived}>
+                    {actionState.kind === "saving" ? "Saving…" : "Save project"}
+                  </Button>
+                  {archived ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void onUnarchive()}
+                      disabled={busy}
+                    >
+                      {actionState.kind === "unarchiving" ? "Unarchiving…" : "Unarchive project"}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void onArchive()}
+                      disabled={busy}
+                    >
+                      {actionState.kind === "archiving" ? "Archiving…" : "Archive project"}
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </CardContent>
+          </Card>
           <TasksPanel
             projectId={projectId}
             archived={archived}
@@ -227,18 +258,30 @@ export function ProjectDetail({
           />
         </>
       ) : null}
-      {actionState.kind === "saving" ? <p role="status">Saving project…</p> : null}
+      {actionState.kind === "saving" ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          Saving project…
+        </p>
+      ) : null}
       {actionState.kind === "archiving" ? (
-        <p role="status">Archiving project…</p>
+        <p className="text-sm text-muted-foreground" role="status">
+          Archiving project…
+        </p>
       ) : null}
       {actionState.kind === "unarchiving" ? (
-        <p role="status">Unarchiving project…</p>
+        <p className="text-sm text-muted-foreground" role="status">
+          Unarchiving project…
+        </p>
       ) : null}
       {actionState.kind === "success" ? (
-        <p role="status">{actionState.message}</p>
+        <p className="text-sm text-muted-foreground" role="status">
+          {actionState.message}
+        </p>
       ) : null}
       {actionState.kind === "error" ? (
-        <p role="alert">{actionState.message}</p>
+        <p className="text-sm text-destructive" role="alert">
+          {actionState.message}
+        </p>
       ) : null}
     </section>
   );
