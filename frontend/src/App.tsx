@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import { SessionGate } from "./layout/SessionGate";
 import { AuthGuard, GuestGuard } from "./routes/guards";
+import { DashboardPage } from "./routes/DashboardPage";
 import { LoginPage } from "./routes/LoginPage";
 import { NotFoundPage } from "./routes/NotFoundPage";
 import { ProfileDestination } from "./routes/ProfileDestination";
@@ -26,6 +27,7 @@ export function App() {
               <Route path="/projects" element={<ProjectsHome />} />
               <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
               <Route path="/profile" element={<ProfileDestination />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>

@@ -40,7 +40,7 @@ export class ProjectsController {
 
   async list(req: Request, res: Response): Promise<void> {
     const actorId = requireActorId(req);
-    const projects = await this.service.listOwned(actorId);
+    const projects = await this.service.listAuthorized(actorId);
     const body: ProjectListResponseDto = {
       projects: projects.map(toPublicProjectDto),
     };

@@ -5,6 +5,7 @@ import { createApp } from "../../../app";
 import { loadConfig } from "../../../config/config";
 import { loadEnvFiles } from "../../../config/env";
 import { createPrismaClient } from "../../../infrastructure/prisma/client";
+import { PrismaUnitOfWork } from "../../../infrastructure/prisma/prisma-unit-of-work";
 import { PrismaAuthRepository } from "../../auth/repository/prisma-auth-repository";
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { PrismaSystemRepository } from "../../system/repository/prisma-system-repository";
@@ -13,6 +14,8 @@ import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
 import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
+import { PrismaProjectMembersRepository } from "../../project-members/repository/prisma-project-members-repository";
+import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repository";
 import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
 import { PrismaProjectsRepository } from "../repository/prisma-projects-repository";
@@ -49,6 +52,7 @@ function createProjectsApp() {
   const systemRepository = new FakeSystemRepository();
   const projectsRepository = new InMemoryProjectsRepository();
   const tasksRepository = new InMemoryTasksRepository();
+  const projectMembersRepository = new InMemoryProjectMembersRepository();
   const app = createApp({
     corsOrigin: "http://localhost:5173",
     systemRepository,
@@ -56,6 +60,7 @@ function createProjectsApp() {
     authRepository,
     projectsRepository,
     tasksRepository,
+    projectMembersRepository,
   });
   return { app, projectsRepository };
 }
@@ -160,6 +165,14 @@ describe("projects HTTP API", () => {
       description: "Q1 work",
       archived: false,
     });
+    const members = await agent.get(`/api/projects/${response.body.id}/members`);
+    expect(members.status).toBe(200);
+    expect(members.body.members).toEqual([
+      expect.objectContaining({
+        userId: user.id,
+        role: "OWNER",
+      }),
+    ]);
     assertNoSecrets(response.body);
   });
 
@@ -280,7 +293,7 @@ describe("projects HTTP API", () => {
     expect(found.body.archivedAt).toBe(archived.body.archivedAt);
   });
 
-  it("returns 403 for a non-owner and leaves the project unchanged", async () => {
+  it("returns 403 for a non-member and leaves the project unchanged", async () => {
     const { app } = createProjectsApp();
     const { agent: owner } = await registerAgent(app);
     const { agent: other } = await registerAgent(
@@ -314,6 +327,129 @@ describe("projects HTTP API", () => {
     expect(after.body.description).toBe("Mine");
     expect(after.body.archivedAt).toBeNull();
     assertNoSecrets(get.body);
+  });
+
+  it("lets an EDITOR list and PATCH an active shared project but not archive it", async () => {
+    const { app } = createProjectsApp();
+    const { agent: owner } = await registerAgent(app);
+    const { agent: editor, user: editorUser } = await registerAgent(
+      app,
+      `editor-${randomUUID()}@example.com`,
+    );
+    const created = await owner.post("/api/projects").send({
+      name: "Shared",
+      description: "Team",
+    });
+    const added = await owner
+      .post(`/api/projects/${created.body.id}/members`)
+      .send({ email: editorUser.email, role: "EDITOR" });
+
+    const listed = await editor.get("/api/projects");
+    const found = await editor.get(`/api/projects/${created.body.id}`);
+    const patched = await editor.patch(`/api/projects/${created.body.id}`).send({
+      name: "Renamed",
+    });
+    const archive = await editor.post(
+      `/api/projects/${created.body.id}/archive`,
+    );
+    const unarchive = await editor.post(
+      `/api/projects/${created.body.id}/unarchive`,
+    );
+
+    expect(added.status).toBe(201);
+    expect(listed.status).toBe(200);
+    expect(listed.body.projects).toEqual([
+      expect.objectContaining({ id: created.body.id, name: "Shared" }),
+    ]);
+    expect(found.status).toBe(200);
+    expect(patched.status).toBe(200);
+    expect(patched.body.name).toBe("Renamed");
+    expect(archive.status).toBe(403);
+    expect(unarchive.status).toBe(403);
+    expect(archive.body).toMatchObject(envelope("FORBIDDEN"));
+    assertNoSecrets(listed.body);
+  });
+
+  it("lets a VIEWER GET an active project but not PATCH it", async () => {
+    const { app } = createProjectsApp();
+    const { agent: owner } = await registerAgent(app);
+    const { agent: viewer, user: viewerUser } = await registerAgent(
+      app,
+      `viewer-${randomUUID()}@example.com`,
+    );
+    const created = await owner.post("/api/projects").send({ name: "Shared" });
+    await owner.post(`/api/projects/${created.body.id}/members`).send({
+      email: viewerUser.email,
+      role: "VIEWER",
+    });
+
+    const listed = await viewer.get("/api/projects");
+    const found = await viewer.get(`/api/projects/${created.body.id}`);
+    const patched = await viewer.patch(`/api/projects/${created.body.id}`).send({
+      name: "Hacked",
+    });
+
+    expect(listed.body.projects).toEqual([
+      expect.objectContaining({ id: created.body.id }),
+    ]);
+    expect(found.status).toBe(200);
+    expect(patched.status).toBe(403);
+    expect(patched.body).toMatchObject(envelope("FORBIDDEN"));
+    expect(found.body.name).toBe("Shared");
+  });
+
+  it("lets only ownerUserId GET an archived project; members get 403", async () => {
+    const { app } = createProjectsApp();
+    const { agent: owner, user } = await registerAgent(app);
+    const { agent: editor, user: editorUser } = await registerAgent(
+      app,
+      `editor-${randomUUID()}@example.com`,
+    );
+    const { agent: extraOwner, user: extraOwnerUser } = await registerAgent(
+      app,
+      `extra-owner-${randomUUID()}@example.com`,
+    );
+    const created = await owner.post("/api/projects").send({ name: "Shared" });
+    await owner.post(`/api/projects/${created.body.id}/members`).send({
+      email: editorUser.email,
+      role: "EDITOR",
+    });
+    await owner.post(`/api/projects/${created.body.id}/members`).send({
+      email: extraOwnerUser.email,
+      role: "OWNER",
+    });
+    const archived = await owner.post(
+      `/api/projects/${created.body.id}/archive`,
+    );
+    const asEditor = await editor.get(`/api/projects/${created.body.id}`);
+    const asExtraOwner = await extraOwner.get(
+      `/api/projects/${created.body.id}`,
+    );
+    const asOwner = await owner.get(`/api/projects/${created.body.id}`);
+    const listed = await editor.get("/api/projects");
+    const listedWithIgnoredFilter = await editor.get(
+      "/api/projects?includeArchived=true",
+    );
+    const editorMembers = await editor.get(
+      `/api/projects/${created.body.id}/members`,
+    );
+
+    expect(archived.status).toBe(200);
+    expect(asEditor.status).toBe(403);
+    expect(asExtraOwner.status).toBe(403);
+    expect(asEditor.body).toMatchObject(envelope("FORBIDDEN"));
+    expect(asExtraOwner.body).toMatchObject(envelope("FORBIDDEN"));
+    expect(asOwner.status).toBe(200);
+    assertPublicProject(asOwner.body, {
+      ownerUserId: user.id,
+      name: "Shared",
+      description: null,
+      archived: true,
+    });
+    expect(listed.body).toEqual({ projects: [] });
+    expect(listedWithIgnoredFilter.body).toEqual({ projects: [] });
+    expect(editorMembers.status).toBe(403);
+    assertNoSecrets(asEditor.body);
   });
 
   it("returns 404 NOT_FOUND for a missing project id", async () => {
@@ -518,6 +654,8 @@ describe("projects HTTP API persistence", () => {
       authRepository: new PrismaAuthRepository(prisma),
       projectsRepository: new PrismaProjectsRepository(prisma),
       tasksRepository: new PrismaTasksRepository(prisma),
+      projectMembersRepository: new PrismaProjectMembersRepository(prisma),
+      unitOfWork: new PrismaUnitOfWork(prisma),
     });
   }
 

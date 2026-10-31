@@ -1,34 +1,60 @@
 import { describe, expect, it } from "vitest";
 import {
-  ProjectForbiddenError,
-  ProjectNotFoundError,
-} from "../../projects/domain/errors";
+  MembershipForbiddenError,
+  MembershipProjectNotFoundError,
+} from "../../project-members/domain/errors";
 import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
 import { calendarDateFromString, Task } from "../domain/task";
 import { TasksService } from "../service/tasks-service";
 import { FakeProjectAccessPort } from "./fake-project-access-port";
+import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
+const EMPTY_OWNER_ID = "33333333-3333-4333-8333-333333333333";
+const EDITOR_ID = "44444444-4444-4444-8444-444444444444";
+const VIEWER_ID = "55555555-5555-4555-8555-555555555555";
 const PROJECT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER_PROJECT_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const MISSING_ID = "99999999-9999-4999-8999-999999999999";
 
+function seedBoth(
+  projects: FakeProjectAccessPort,
+  authorization: FakeTaskAuthorizationPort,
+  snapshot: {
+    id: string;
+    ownerUserId: string;
+    name: string;
+    archivedAt: Date | null;
+  },
+) {
+  projects.seed(snapshot);
+  authorization.seed(snapshot);
+}
+
 function createService(archivedAt: Date | null = null) {
   const tasks = new InMemoryTasksRepository();
   const projects = new FakeProjectAccessPort();
-  projects.seed({
+  const authorization = new FakeTaskAuthorizationPort();
+  seedBoth(projects, authorization, {
     id: PROJECT_ID,
     ownerUserId: OWNER_ID,
+    name: "Roadmap",
     archivedAt,
   });
-  projects.seed({
+  seedBoth(projects, authorization, {
     id: OTHER_PROJECT_ID,
     ownerUserId: OTHER_ID,
+    name: "Other",
     archivedAt: null,
   });
-  return { service: new TasksService(tasks, projects), tasks, projects };
+  return {
+    service: new TasksService(tasks, projects, authorization),
+    tasks,
+    projects,
+    authorization,
+  };
 }
 
 describe("TasksService", () => {
@@ -87,7 +113,7 @@ describe("TasksService", () => {
     expect(tasks.tasksById.size).toBe(0);
   });
 
-  it("rejects non-owners and missing projects without leaking another user's tasks", async () => {
+  it("rejects non-members and missing projects without leaking another user's tasks", async () => {
     const { service, tasks } = createService();
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Private",
@@ -101,22 +127,22 @@ describe("TasksService", () => {
         description: null,
         dueDate: null,
       }),
-    ).rejects.toBeInstanceOf(ProjectForbiddenError);
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
     await expect(service.getById(OTHER_ID, created.id)).rejects.toBeInstanceOf(
-      ProjectForbiddenError,
+      MembershipForbiddenError,
     );
     await expect(
       service.update(OTHER_ID, created.id, { title: "Hacked" }),
-    ).rejects.toBeInstanceOf(ProjectForbiddenError);
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
     await expect(service.listByProject(OTHER_ID, PROJECT_ID)).rejects.toBeInstanceOf(
-      ProjectForbiddenError,
+      MembershipForbiddenError,
     );
     await expect(service.softDelete(OTHER_ID, created.id)).rejects.toBeInstanceOf(
-      ProjectForbiddenError,
+      MembershipForbiddenError,
     );
     await expect(
       service.listByProject(OWNER_ID, MISSING_ID),
-    ).rejects.toBeInstanceOf(ProjectNotFoundError);
+    ).rejects.toBeInstanceOf(MembershipProjectNotFoundError);
 
     const unchanged = await service.getById(OWNER_ID, created.id);
     expect(unchanged.title).toBe("Private");
@@ -124,15 +150,16 @@ describe("TasksService", () => {
   });
 
   it("returns an owned live task including when the parent is archived", async () => {
-    const { service, projects } = createService();
+    const { service, projects, authorization } = createService();
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Write spec",
       description: null,
       dueDate: null,
     });
-    projects.seed({
+    seedBoth(projects, authorization, {
       id: PROJECT_ID,
       ownerUserId: OWNER_ID,
+      name: "Roadmap",
       archivedAt: new Date("2026-10-29T12:00:00.000Z"),
     });
 
@@ -242,15 +269,16 @@ describe("TasksService", () => {
   });
 
   it("rejects update and soft-delete when the parent is archived", async () => {
-    const { service, projects, tasks } = createService();
+    const { service, projects, authorization, tasks } = createService();
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Write spec",
       description: "First",
       dueDate: null,
     });
-    projects.seed({
+    seedBoth(projects, authorization, {
       id: PROJECT_ID,
       ownerUserId: OWNER_ID,
+      name: "Roadmap",
       archivedAt: new Date("2026-10-29T12:00:00.000Z"),
     });
 
@@ -280,5 +308,279 @@ describe("TasksService", () => {
     expect(deleted.deletedAt).not.toBeNull();
     expect(tasks.tasksById.get(created.id)?.deletedAt).not.toBeNull();
     expect(listed).toEqual([]);
+  });
+
+  it("returns zeros for an owner with no active projects", async () => {
+    const { service } = createService();
+    const now = new Date("2026-10-31T15:00:00.000Z");
+
+    const summary = await service.getDashboard(EMPTY_OWNER_ID, now);
+
+    expect(summary).toEqual({
+      projectCount: 0,
+      taskCount: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      overdueCount: 0,
+      projects: [],
+    });
+  });
+
+  it("lists an active owned project with zero live tasks", async () => {
+    const { service } = createService();
+    const now = new Date("2026-10-31T15:00:00.000Z");
+
+    const summary = await service.getDashboard(OWNER_ID, now);
+
+    expect(summary).toEqual({
+      projectCount: 1,
+      taskCount: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      overdueCount: 0,
+      projects: [
+        {
+          id: PROJECT_ID,
+          name: "Roadmap",
+          taskCount: 0,
+          pendingCount: 0,
+          completedCount: 0,
+          overdueCount: 0,
+        },
+      ],
+    });
+  });
+
+  it("aggregates owner-scoped pending, completed, and overdue counts", async () => {
+    const { service, tasks, projects, authorization } = createService();
+    const now = new Date("2026-10-31T15:00:00.000Z");
+    const emptyProjectId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const archivedProjectId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    seedBoth(projects, authorization, {
+      id: emptyProjectId,
+      ownerUserId: OWNER_ID,
+      name: "Empty",
+      archivedAt: null,
+    });
+    seedBoth(projects, authorization, {
+      id: archivedProjectId,
+      ownerUserId: OWNER_ID,
+      name: "Archived",
+      archivedAt: new Date("2026-10-29T12:00:00.000Z"),
+    });
+
+    await service.create(OWNER_ID, PROJECT_ID, {
+      title: "Past todo",
+      description: null,
+      status: "TODO",
+      dueDate: calendarDateFromString("2026-10-30"),
+    });
+    await service.create(OWNER_ID, PROJECT_ID, {
+      title: "Today progress",
+      description: null,
+      status: "IN_PROGRESS",
+      dueDate: calendarDateFromString("2026-10-31"),
+    });
+    const nullDue = await service.create(OWNER_ID, PROJECT_ID, {
+      title: "No due",
+      description: null,
+      dueDate: null,
+    });
+    await service.create(OWNER_ID, PROJECT_ID, {
+      title: "Done past",
+      description: null,
+      status: "DONE",
+      dueDate: calendarDateFromString("2026-10-01"),
+    });
+    const otherOwned = await service.create(OTHER_ID, OTHER_PROJECT_ID, {
+      title: "Other overdue",
+      description: null,
+      dueDate: calendarDateFromString("2026-10-01"),
+    });
+    const archivedTask = Task.create(
+      archivedProjectId,
+      "Archived overdue",
+      null,
+      "TODO",
+      "MEDIUM",
+      calendarDateFromString("2026-10-01"),
+    );
+    tasks.tasksById.set(archivedTask.id, archivedTask);
+    await service.softDelete(OWNER_ID, nullDue.id);
+
+    const summary = await service.getDashboard(OWNER_ID, now);
+    const otherSummary = await service.getDashboard(OTHER_ID, now);
+
+    expect(summary.projectCount).toBe(2);
+    expect(summary.taskCount).toBe(3);
+    expect(summary.pendingCount).toBe(2);
+    expect(summary.completedCount).toBe(1);
+    expect(summary.overdueCount).toBe(1);
+    expect(summary.pendingCount + summary.completedCount).toBe(summary.taskCount);
+    expect(summary.projects.map((project) => project.id)).toEqual([
+      PROJECT_ID,
+      emptyProjectId,
+    ]);
+    expect(summary.projects[0]).toEqual({
+      id: PROJECT_ID,
+      name: "Roadmap",
+      taskCount: 3,
+      pendingCount: 2,
+      completedCount: 1,
+      overdueCount: 1,
+    });
+    expect(summary.projects[1]).toEqual({
+      id: emptyProjectId,
+      name: "Empty",
+      taskCount: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      overdueCount: 0,
+    });
+    expect(otherSummary.projects.map((project) => project.id)).toEqual([
+      OTHER_PROJECT_ID,
+    ]);
+    expect(otherSummary.taskCount).toBe(1);
+    expect(otherSummary.overdueCount).toBe(1);
+    expect(otherSummary.projects[0]?.id).not.toBe(PROJECT_ID);
+    expect(tasks.tasksById.get(nullDue.id)?.deletedAt).not.toBeNull();
+    expect(tasks.tasksById.has(archivedTask.id)).toBe(true);
+    expect(tasks.tasksById.has(otherOwned.id)).toBe(true);
+    expect(summary.projects.some((project) => project.id === archivedProjectId)).toBe(
+      false,
+    );
+  });
+
+  it("drops an archived project and restores it after unarchive", async () => {
+    const { service, projects } = createService();
+    const now = new Date("2026-10-31T15:00:00.000Z");
+    await service.create(OWNER_ID, PROJECT_ID, {
+      title: "Live",
+      description: null,
+      dueDate: null,
+    });
+
+    const before = await service.getDashboard(OWNER_ID, now);
+    projects.seed({
+      id: PROJECT_ID,
+      ownerUserId: OWNER_ID,
+      name: "Roadmap",
+      archivedAt: new Date("2026-10-31T12:00:00.000Z"),
+    });
+    const archived = await service.getDashboard(OWNER_ID, now);
+    projects.seed({
+      id: PROJECT_ID,
+      ownerUserId: OWNER_ID,
+      name: "Roadmap",
+      archivedAt: null,
+    });
+    const restored = await service.getDashboard(OWNER_ID, now);
+
+    expect(before.projectCount).toBe(1);
+    expect(before.taskCount).toBe(1);
+    expect(archived).toEqual({
+      projectCount: 0,
+      taskCount: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      overdueCount: 0,
+      projects: [],
+    });
+    expect(restored.projectCount).toBe(1);
+    expect(restored.taskCount).toBe(1);
+  });
+
+  it("lets OWNER and EDITOR write tasks and VIEWER only read them", async () => {
+    const { service, authorization, tasks } = createService();
+    authorization.addMember(PROJECT_ID, EDITOR_ID, "EDITOR");
+    authorization.addMember(PROJECT_ID, VIEWER_ID, "VIEWER");
+
+    const asEditor = await service.create(EDITOR_ID, PROJECT_ID, {
+      title: "Editor task",
+      description: null,
+      dueDate: null,
+    });
+    const listed = await service.listByProject(VIEWER_ID, PROJECT_ID);
+    const found = await service.getById(VIEWER_ID, asEditor.id);
+
+    await expect(
+      service.create(VIEWER_ID, PROJECT_ID, {
+        title: "Viewer write",
+        description: null,
+        dueDate: null,
+      }),
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
+    await expect(
+      service.update(VIEWER_ID, asEditor.id, { title: "Nope" }),
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
+    await expect(service.softDelete(VIEWER_ID, asEditor.id)).rejects.toBeInstanceOf(
+      MembershipForbiddenError,
+    );
+
+    expect(asEditor.title).toBe("Editor task");
+    expect(listed.map((task) => task.id)).toEqual([asEditor.id]);
+    expect(found.id).toBe(asEditor.id);
+    expect(tasks.tasksById.size).toBe(1);
+  });
+
+  it("returns 403-equivalent for non-owner members on an archived parent and 409 for ownerUserId writes", async () => {
+    const { service, projects, authorization } = createService();
+    authorization.addMember(PROJECT_ID, EDITOR_ID, "EDITOR");
+    const created = await service.create(EDITOR_ID, PROJECT_ID, {
+      title: "Live",
+      description: null,
+      dueDate: null,
+    });
+    seedBoth(projects, authorization, {
+      id: PROJECT_ID,
+      ownerUserId: OWNER_ID,
+      name: "Roadmap",
+      archivedAt: new Date("2026-10-29T12:00:00.000Z"),
+    });
+    authorization.addMember(PROJECT_ID, EDITOR_ID, "EDITOR");
+
+    await expect(
+      service.listByProject(EDITOR_ID, PROJECT_ID),
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
+    await expect(service.getById(EDITOR_ID, created.id)).rejects.toBeInstanceOf(
+      MembershipForbiddenError,
+    );
+    await expect(
+      service.create(EDITOR_ID, PROJECT_ID, {
+        title: "Blocked",
+        description: null,
+        dueDate: null,
+      }),
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
+    await expect(
+      service.update(OWNER_ID, created.id, { title: "Blocked" }),
+    ).rejects.toBeInstanceOf(TaskParentArchivedError);
+
+    const asOwner = await service.getById(OWNER_ID, created.id);
+    expect(asOwner.title).toBe("Live");
+  });
+
+  it("does not include member-only projects in owner-scoped dashboard counts", async () => {
+    const { service, authorization } = createService();
+    authorization.addMember(PROJECT_ID, EDITOR_ID, "EDITOR");
+    await service.create(EDITOR_ID, PROJECT_ID, {
+      title: "Shared work",
+      description: null,
+      dueDate: null,
+    });
+
+    const editorDashboard = await service.getDashboard(
+      EDITOR_ID,
+      new Date("2026-10-31T15:00:00.000Z"),
+    );
+    const ownerDashboard = await service.getDashboard(
+      OWNER_ID,
+      new Date("2026-10-31T15:00:00.000Z"),
+    );
+
+    expect(editorDashboard.projectCount).toBe(0);
+    expect(editorDashboard.taskCount).toBe(0);
+    expect(ownerDashboard.projectCount).toBe(1);
+    expect(ownerDashboard.taskCount).toBe(1);
   });
 });

@@ -84,6 +84,8 @@ Verified only when acceptance criteria have evidence, blockers are gone, migrati
 
 Update `memory.md` with verified status, decisions, migrations, actual results, known issues, and the next approved task. Correct memory when it disagrees with the repo.
 
+If `implemented-features.md` should gain or change a Verified entry, **ask the user** and wait for explicit confirmation before editing that file. Do not treat memory updates as catalog updates.
+
 States: Draft, In Review, Approved, Implemented, Verified.
 
 ## Final report

@@ -2,17 +2,27 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   archiveProject,
+  getProfile,
   getProject,
   isForbidden,
   isUnauthenticated,
+  listMembers,
   toUserMessage,
   unarchiveProject,
   updateProject,
 } from "../api/client";
-import type { PublicProjectDto } from "../api/types";
+import type { ProjectMemberRole, PublicProjectDto } from "../api/types";
 import { Button } from "@/components/ui/button";
 import { TasksPanel } from "../tasks/TasksPanel";
 import { EditProjectDialog } from "./EditProjectDialog";
+import { MembersDialog } from "./MembersDialog";
+import {
+  canArchiveProject,
+  canEditProject,
+  canManageMembers,
+  canWriteProjectTasks,
+  resolveActorProjectRole,
+} from "./projectRole";
 
 type ProjectDetailProps = {
   projectId: string;
@@ -41,7 +51,9 @@ export function ProjectDetail({
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [actionState, setActionState] = useState<ActionState>({ kind: "idle" });
   const [project, setProject] = useState<PublicProjectDto | null>(null);
+  const [actorRole, setActorRole] = useState<ProjectMemberRole | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
 
   const applyProject = useCallback((next: PublicProjectDto) => {
     setProject(next);
@@ -51,9 +63,32 @@ export function ProjectDetail({
     setLoadState({ kind: "loading" });
     setActionState({ kind: "idle" });
     setEditOpen(false);
+    setMembersOpen(false);
+    setActorRole(null);
     try {
       const result = await getProject(projectId);
+      const actor = await getProfile();
+      let membershipRole: ProjectMemberRole | null = null;
+      try {
+        const roster = await listMembers(projectId);
+        membershipRole =
+          roster.members.find((member) => member.userId === actor.id)?.role ??
+          null;
+      } catch (err) {
+        if (isUnauthenticated(err)) {
+          setLoadState({ kind: "unauthenticated", message: toUserMessage(err) });
+          onUnauthenticated();
+          return;
+        }
+      }
       applyProject(result);
+      setActorRole(
+        resolveActorProjectRole({
+          actorId: actor.id,
+          ownerUserId: result.ownerUserId,
+          membershipRole,
+        }),
+      );
       setLoadState({ kind: "success" });
     } catch (err) {
       if (isUnauthenticated(err)) {
@@ -111,6 +146,7 @@ export function ProjectDetail({
       const archived = await archiveProject(projectId);
       applyProject(archived);
       setEditOpen(false);
+      setMembersOpen(false);
       setActionState({ kind: "success", message: "Project archived." });
     } catch (err) {
       if (handleAuthzError(err)) {
@@ -139,6 +175,10 @@ export function ProjectDetail({
     actionState.kind === "saving" ||
     actionState.kind === "archiving" ||
     actionState.kind === "unarchiving";
+  const showEdit = canEditProject(actorRole);
+  const showArchive = canArchiveProject(actorRole);
+  const showMembers = canManageMembers(actorRole);
+  const writeTasks = canWriteProjectTasks(actorRole);
 
   return (
     <section
@@ -176,41 +216,59 @@ export function ProjectDetail({
             <Button asChild variant="outline" size="sm">
               <Link to="/projects">Back to projects</Link>
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setActionState({ kind: "idle" });
-                setEditOpen(true);
-              }}
-              disabled={busy || archived}
-            >
-              Edit project
-            </Button>
-            {archived ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void onUnarchive()}
-                disabled={busy}
-              >
-                {actionState.kind === "unarchiving"
-                  ? "Unarchiving…"
-                  : "Unarchive project"}
-              </Button>
-            ) : (
+            {showEdit ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => void onArchive()}
+                onClick={() => {
+                  setActionState({ kind: "idle" });
+                  setEditOpen(true);
+                }}
+                disabled={busy || archived}
+              >
+                Edit project
+              </Button>
+            ) : null}
+            {showArchive ? (
+              archived ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void onUnarchive()}
+                  disabled={busy}
+                >
+                  {actionState.kind === "unarchiving"
+                    ? "Unarchiving…"
+                    : "Unarchive project"}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void onArchive()}
+                  disabled={busy}
+                >
+                  {actionState.kind === "archiving" ? "Archiving…" : "Archive project"}
+                </Button>
+              )
+            ) : null}
+            {showMembers ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setActionState({ kind: "idle" });
+                  setMembersOpen(true);
+                }}
                 disabled={busy}
               >
-                {actionState.kind === "archiving" ? "Archiving…" : "Archive project"}
+                Members
               </Button>
-            )}
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -250,9 +308,17 @@ export function ProjectDetail({
               void onSave(input);
             }}
           />
+          <MembersDialog
+            open={membersOpen}
+            onOpenChange={setMembersOpen}
+            projectId={projectId}
+            ownerUserId={project.ownerUserId}
+            onUnauthenticated={onUnauthenticated}
+          />
           <TasksPanel
             projectId={projectId}
             archived={archived}
+            canWriteTasks={writeTasks}
             onUnauthenticated={onUnauthenticated}
           />
         </>

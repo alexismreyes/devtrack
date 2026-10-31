@@ -32,6 +32,7 @@ import { TaskDetail } from "./TaskDetail";
 type TasksPanelProps = {
   projectId: string;
   archived: boolean;
+  canWriteTasks?: boolean;
   onUnauthenticated: () => void;
 };
 
@@ -62,6 +63,7 @@ const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 export function TasksPanel({
   projectId,
   archived,
+  canWriteTasks = true,
   onUnauthenticated,
 }: TasksPanelProps) {
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
@@ -197,7 +199,7 @@ export function TasksPanel({
   const moving = moveState.kind === "saving";
   const listBlocked =
     listState.kind === "unauthenticated" || listState.kind === "forbidden";
-  const writesDisabled = creating || archived || moving;
+  const writesDisabled = creating || archived || moving || !canWriteTasks;
   const filtered = statusFilter !== "" || priorityFilter !== "";
   const listedTasks =
     listState.kind === "success"
@@ -219,7 +221,7 @@ export function TasksPanel({
         <h3 id="tasks-heading" className="text-lg font-semibold tracking-tight">
           Tasks
         </h3>
-        {listBlocked ? null : (
+        {listBlocked || !canWriteTasks ? null : (
           <Button
             type="button"
             size="icon"
@@ -327,7 +329,7 @@ export function TasksPanel({
             setSelectedTaskId(taskId);
           }}
           onMoveTask={onMoveTask}
-          onAddTask={openCreate}
+          onAddTask={canWriteTasks ? openCreate : undefined}
           disabled={writesDisabled}
         />
       ) : null}
@@ -366,6 +368,7 @@ export function TasksPanel({
             <TaskDetail
               taskId={selectedTaskId}
               archived={archived}
+              canWrite={canWriteTasks}
               onClose={() => setSelectedTaskId(null)}
               onUpdated={() => {
                 void loadTasks();

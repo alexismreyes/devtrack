@@ -50,6 +50,18 @@ export class InMemoryTasksRepository implements TasksRepository {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
+  async listNonDeletedByProjectIds(projectIds: string[]): Promise<Task[]> {
+    if (projectIds.length === 0) {
+      return [];
+    }
+    const allowed = new Set(projectIds);
+    return [...this.tasksById.values()]
+      .filter(
+        (task) => allowed.has(task.projectId) && task.deletedAt === null,
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
   async update(id: string, input: UpdateTaskInput): Promise<Task> {
     const existing = await this.findById(id);
     if (existing === null || existing.deletedAt !== null) {

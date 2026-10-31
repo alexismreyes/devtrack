@@ -11,7 +11,21 @@ import { SystemController } from "./modules/system/controller/system-controller"
 import type { SystemRepository } from "./modules/system/repository/system-repository";
 import { createSystemRouter } from "./modules/system/routes/system-routes";
 import { SystemService } from "./modules/system/service/system-service";
+import {
+  OwnerMembershipWriteAdapter,
+  ProjectMembershipAccessAdapter,
+} from "./modules/project-members/access/project-membership-access-adapter";
+import { TaskAuthorizationAdapter } from "./modules/project-members/access/task-authorization-adapter";
+import { ProjectMembersController } from "./modules/project-members/controller/project-members-controller";
+import type { ProjectMembersRepository } from "./modules/project-members/repository/project-members-repository";
+import { createProjectMembersRouter } from "./modules/project-members/routes/project-members-routes";
+import { ProjectMembersService } from "./modules/project-members/service/project-members-service";
 import { ProjectAccessAdapter } from "./modules/projects/access/project-access-adapter";
+import { ProjectSnapshotAdapter } from "./modules/projects/access/project-snapshot-adapter";
+import {
+  ImmediateUnitOfWork,
+  type UnitOfWork,
+} from "./modules/projects/access/unit-of-work";
 import { ProjectsController } from "./modules/projects/controller/projects-controller";
 import type { ProjectsRepository } from "./modules/projects/repository/projects-repository";
 import { createProjectsRouter } from "./modules/projects/routes/projects-routes";
@@ -33,6 +47,8 @@ export type AppDependencies = {
   authRepository: AuthRepository;
   projectsRepository: ProjectsRepository;
   tasksRepository: TasksRepository;
+  projectMembersRepository: ProjectMembersRepository;
+  unitOfWork?: UnitOfWork;
 };
 
 export function createApp(deps: AppDependencies): Express {
@@ -42,14 +58,43 @@ export function createApp(deps: AppDependencies): Express {
   const authService = new AuthService(deps.authRepository, usersIdentity);
   const usersService = new UsersService(deps.usersRepository);
   const systemService = new SystemService(deps.systemRepository);
-  const projectsService = new ProjectsService(deps.projectsRepository);
+  const projectSnapshots = new ProjectSnapshotAdapter(deps.projectsRepository);
+  const projectMembershipAccess = new ProjectMembershipAccessAdapter(
+    deps.projectMembersRepository,
+    projectSnapshots,
+  );
+  const ownerMembershipWrite = new OwnerMembershipWriteAdapter(
+    deps.projectMembersRepository,
+  );
+  const projectsService = new ProjectsService(
+    deps.projectsRepository,
+    projectMembershipAccess,
+    ownerMembershipWrite,
+    deps.unitOfWork ?? new ImmediateUnitOfWork(),
+  );
   const projectAccess = new ProjectAccessAdapter(deps.projectsRepository);
-  const tasksService = new TasksService(deps.tasksRepository, projectAccess);
+  const projectMembersService = new ProjectMembersService(
+    deps.projectMembersRepository,
+    usersIdentity,
+    projectSnapshots,
+  );
+  const taskAuthorization = new TaskAuthorizationAdapter(
+    deps.projectMembersRepository,
+    projectSnapshots,
+  );
+  const tasksService = new TasksService(
+    deps.tasksRepository,
+    projectAccess,
+    taskAuthorization,
+  );
 
   const authController = new AuthController(authService);
   const usersController = new UsersController(usersService);
   const systemController = new SystemController(systemService);
   const projectsController = new ProjectsController(projectsService);
+  const projectMembersController = new ProjectMembersController(
+    projectMembersService,
+  );
   const tasksController = new TasksController(tasksService);
   const requireAuth = createRequireAuth(authService);
 
@@ -65,6 +110,7 @@ export function createApp(deps: AppDependencies): Express {
   app.use(createUsersRouter(usersController, requireAuth));
   app.use(createSystemRouter(systemController, requireAuth));
   app.use(createProjectsRouter(projectsController, requireAuth));
+  app.use(createProjectMembersRouter(projectMembersController, requireAuth));
   app.use(createTasksRouter(tasksController, requireAuth));
   app.use(errorHandler);
 

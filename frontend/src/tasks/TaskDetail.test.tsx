@@ -253,6 +253,28 @@ describe("TaskDetail", () => {
     );
   });
 
+  it("hides write controls when the actor cannot write", async () => {
+    mockFetch(() => jsonResponse(200, task));
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: /write tests/i })).toBeInTheDocument();
+    expect(screen.getByText(/cover the ui/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/task title/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save task/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /delete task/i })).not.toBeInTheDocument();
+  });
+
   it("disables update and delete when the parent project is archived", async () => {
     mockFetch(() => jsonResponse(200, task));
 

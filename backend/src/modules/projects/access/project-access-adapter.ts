@@ -21,7 +21,20 @@ export class ProjectAccessAdapter implements ProjectAccessPort {
     return {
       id: project.id,
       ownerUserId: project.ownerUserId,
+      name: project.name,
       archivedAt: project.archivedAt,
     };
+  }
+
+  async listOwnedActiveProjects(
+    actorId: string,
+  ): Promise<OwnedProjectSnapshot[]> {
+    const projects = await this.projects.listByOwnerId(actorId);
+    return projects.map((project) => ({
+      id: project.id,
+      ownerUserId: project.ownerUserId,
+      name: project.name,
+      archivedAt: project.archivedAt,
+    }));
   }
 }

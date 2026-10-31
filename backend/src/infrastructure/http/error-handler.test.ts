@@ -2,6 +2,14 @@ import express from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import {
+  DuplicateMembershipError,
+  MembershipForbiddenError,
+  MembershipNotFoundError,
+  MembershipProjectNotFoundError,
+  MemberUserNotFoundError,
+  OwnerMembershipConflictError,
+} from "../../modules/project-members/domain/errors";
+import {
   ProjectArchivedError,
   ProjectForbiddenError,
   ProjectNotFoundError,
@@ -108,6 +116,40 @@ describe("errorHandler domain mapping", () => {
         message: "Task was not found",
       },
     });
+  });
+
+  it("maps membership domain errors to the existing envelope", async () => {
+    const forbiddenRes = await request(
+      appThatThrows(new MembershipForbiddenError()),
+    ).get("/boom");
+    const missingProject = await request(
+      appThatThrows(new MembershipProjectNotFoundError()),
+    ).get("/boom");
+    const missingUser = await request(
+      appThatThrows(new MemberUserNotFoundError()),
+    ).get("/boom");
+    const missingMember = await request(
+      appThatThrows(new MembershipNotFoundError()),
+    ).get("/boom");
+    const duplicate = await request(
+      appThatThrows(new DuplicateMembershipError()),
+    ).get("/boom");
+    const ownerConflict = await request(
+      appThatThrows(new OwnerMembershipConflictError()),
+    ).get("/boom");
+
+    expect(forbiddenRes.status).toBe(403);
+    expect(forbiddenRes.body.error.code).toBe("FORBIDDEN");
+    expect(missingProject.status).toBe(404);
+    expect(missingProject.body.error.code).toBe("NOT_FOUND");
+    expect(missingUser.status).toBe(404);
+    expect(missingUser.body.error.code).toBe("NOT_FOUND");
+    expect(missingMember.status).toBe(404);
+    expect(missingMember.body.error.code).toBe("NOT_FOUND");
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body.error.code).toBe("CONFLICT");
+    expect(ownerConflict.status).toBe(409);
+    expect(ownerConflict.body.error.code).toBe("CONFLICT");
   });
 
   it("maps TaskParentArchivedError to 409 CONFLICT", async () => {

@@ -1,13 +1,19 @@
 import type {
+  AddMemberRequestDto,
   CreateProjectRequestDto,
   CreateTaskRequestDto,
+  DashboardProjectSummaryDto,
+  DashboardSummaryResponseDto,
   ErrorEnvelope,
   HealthResponseDto,
   ListTasksQueryDto,
   LoginRequestDto,
+  MemberListResponseDto,
   ProbeListResponseDto,
   ProbeResponseDto,
   ProjectListResponseDto,
+  ProjectMemberRole,
+  PublicMemberDto,
   PublicProjectDto,
   PublicTaskDto,
   PublicUserDto,
@@ -15,6 +21,7 @@ import type {
   TaskListResponseDto,
   TaskPriority,
   TaskStatus,
+  UpdateMemberRequestDto,
   UpdateProfileRequestDto,
   UpdateProjectRequestDto,
   UpdateTaskRequestDto,
@@ -195,6 +202,50 @@ export async function updateTask(
 
 export async function softDeleteTask(id: string): Promise<void> {
   await request("DELETE", `/api/tasks/${id}`);
+}
+
+export async function getDashboard(): Promise<DashboardSummaryResponseDto> {
+  const body = await request("GET", "/api/dashboard");
+  if (!isDashboardSummaryResponse(body)) {
+    throw new ApiError(500, "INTERNAL_ERROR", "Unexpected dashboard response");
+  }
+  return toDashboardSummary(body);
+}
+
+export async function listMembers(
+  projectId: string,
+): Promise<MemberListResponseDto> {
+  const body = await request("GET", membersCollectionPath(projectId));
+  if (!isMemberListResponse(body)) {
+    throw new ApiError(500, "INTERNAL_ERROR", "Unexpected member list response");
+  }
+  return {
+    members: body.members.map(toPublicMember),
+  };
+}
+
+export async function addMember(
+  projectId: string,
+  input: AddMemberRequestDto,
+): Promise<PublicMemberDto> {
+  const body = await request("POST", membersCollectionPath(projectId), input);
+  return requirePublicMember(body, "Unexpected member response");
+}
+
+export async function updateMember(
+  projectId: string,
+  userId: string,
+  input: UpdateMemberRequestDto,
+): Promise<PublicMemberDto> {
+  const body = await request("PATCH", memberItemPath(projectId, userId), input);
+  return requirePublicMember(body, "Unexpected member response");
+}
+
+export async function removeMember(
+  projectId: string,
+  userId: string,
+): Promise<void> {
+  await request("DELETE", memberItemPath(projectId, userId));
 }
 
 async function request(
@@ -431,4 +482,143 @@ function isTaskListResponse(value: unknown): value is TaskListResponseDto {
   }
   const tasks = (value as { tasks: unknown }).tasks;
   return Array.isArray(tasks) && tasks.every(isPublicTask);
+}
+
+function toDashboardSummary(
+  value: DashboardSummaryResponseDto,
+): DashboardSummaryResponseDto {
+  return {
+    projectCount: value.projectCount,
+    taskCount: value.taskCount,
+    pendingCount: value.pendingCount,
+    completedCount: value.completedCount,
+    overdueCount: value.overdueCount,
+    projects: value.projects.map(toDashboardProjectSummary),
+  };
+}
+
+function toDashboardProjectSummary(
+  value: DashboardProjectSummaryDto,
+): DashboardProjectSummaryDto {
+  return {
+    id: value.id,
+    name: value.name,
+    taskCount: value.taskCount,
+    pendingCount: value.pendingCount,
+    completedCount: value.completedCount,
+    overdueCount: value.overdueCount,
+  };
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isDashboardProjectSummary(
+  value: unknown,
+): value is DashboardProjectSummaryDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const project = value as {
+    id?: unknown;
+    name?: unknown;
+    taskCount?: unknown;
+    pendingCount?: unknown;
+    completedCount?: unknown;
+    overdueCount?: unknown;
+  };
+  return (
+    typeof project.id === "string" &&
+    typeof project.name === "string" &&
+    isNonNegativeInteger(project.taskCount) &&
+    isNonNegativeInteger(project.pendingCount) &&
+    isNonNegativeInteger(project.completedCount) &&
+    isNonNegativeInteger(project.overdueCount)
+  );
+}
+
+function isDashboardSummaryResponse(
+  value: unknown,
+): value is DashboardSummaryResponseDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const summary = value as {
+    projectCount?: unknown;
+    taskCount?: unknown;
+    pendingCount?: unknown;
+    completedCount?: unknown;
+    overdueCount?: unknown;
+    projects?: unknown;
+  };
+  return (
+    isNonNegativeInteger(summary.projectCount) &&
+    isNonNegativeInteger(summary.taskCount) &&
+    isNonNegativeInteger(summary.pendingCount) &&
+    isNonNegativeInteger(summary.completedCount) &&
+    isNonNegativeInteger(summary.overdueCount) &&
+    Array.isArray(summary.projects) &&
+    summary.projects.every(isDashboardProjectSummary)
+  );
+}
+
+function membersCollectionPath(projectId: string): string {
+  return `/api/projects/${projectId}/members`;
+}
+
+function memberItemPath(projectId: string, userId: string): string {
+  return `${membersCollectionPath(projectId)}/${userId}`;
+}
+
+function requirePublicMember(value: unknown, message: string): PublicMemberDto {
+  if (!isPublicMember(value)) {
+    throw new ApiError(500, "INTERNAL_ERROR", message);
+  }
+  return toPublicMember(value);
+}
+
+function toPublicMember(value: PublicMemberDto): PublicMemberDto {
+  return {
+    id: value.id,
+    userId: value.userId,
+    email: value.email,
+    displayName: value.displayName,
+    role: value.role,
+    createdAt: value.createdAt,
+  };
+}
+
+function isProjectMemberRole(value: unknown): value is ProjectMemberRole {
+  return value === "OWNER" || value === "EDITOR" || value === "VIEWER";
+}
+
+function isPublicMember(value: unknown): value is PublicMemberDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const member = value as {
+    id?: unknown;
+    userId?: unknown;
+    email?: unknown;
+    displayName?: unknown;
+    role?: unknown;
+    createdAt?: unknown;
+  };
+  return (
+    typeof member.id === "string" &&
+    typeof member.userId === "string" &&
+    typeof member.email === "string" &&
+    typeof member.displayName === "string" &&
+    isProjectMemberRole(member.role) &&
+    typeof member.createdAt === "string"
+  );
+}
+
+function isMemberListResponse(value: unknown): value is MemberListResponseDto {
+  if (typeof value !== "object" || value === null || !("members" in value)) {
+    return false;
+  }
+  const members = (value as { members: unknown }).members;
+  return Array.isArray(members) && members.every(isPublicMember);
 }

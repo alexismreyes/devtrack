@@ -1,4 +1,9 @@
+import type { TaskAuthorizationPort } from "../../project-members/access/task-authorization-port";
 import type { ProjectAccessPort } from "../../projects/access/project-access-port";
+import {
+  summarizeDashboard,
+  type DashboardSummary,
+} from "../domain/dashboard-summary";
 import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
 import type { Task } from "../domain/task";
 import type {
@@ -19,6 +24,7 @@ export class TasksService {
   constructor(
     private readonly tasks: TasksRepository,
     private readonly projects: ProjectAccessPort,
+    private readonly authorization: TaskAuthorizationPort,
   ) {}
 
   async create(
@@ -26,7 +32,10 @@ export class TasksService {
     projectId: string,
     input: CreateTaskCommand,
   ): Promise<Task> {
-    const snapshot = await this.projects.requireOwnedProject(actorId, projectId);
+    const snapshot = await this.authorization.requireTaskWrite(
+      actorId,
+      projectId,
+    );
     this.assertParentWritable(snapshot.archivedAt);
     return this.tasks.create({
       projectId,
@@ -43,13 +52,24 @@ export class TasksService {
     projectId: string,
     filters: ListTasksFilters = {},
   ): Promise<Task[]> {
-    await this.projects.requireOwnedProject(actorId, projectId);
+    await this.authorization.requireTaskRead(actorId, projectId);
     return this.tasks.listByProjectId(projectId, filters);
+  }
+
+  async getDashboard(
+    actorId: string,
+    now: Date = new Date(),
+  ): Promise<DashboardSummary> {
+    const owned = await this.projects.listOwnedActiveProjects(actorId);
+    const tasks = await this.tasks.listNonDeletedByProjectIds(
+      owned.map((project) => project.id),
+    );
+    return summarizeDashboard(owned, tasks, now);
   }
 
   async getById(actorId: string, taskId: string): Promise<Task> {
     const task = await this.requireLiveTask(taskId);
-    await this.projects.requireOwnedProject(actorId, task.projectId);
+    await this.authorization.requireTaskRead(actorId, task.projectId);
     return task;
   }
 
@@ -59,7 +79,7 @@ export class TasksService {
     input: UpdateTaskInput,
   ): Promise<Task> {
     const task = await this.requireLiveTask(taskId);
-    const snapshot = await this.projects.requireOwnedProject(
+    const snapshot = await this.authorization.requireTaskWrite(
       actorId,
       task.projectId,
     );
@@ -70,7 +90,7 @@ export class TasksService {
 
   async softDelete(actorId: string, taskId: string): Promise<Task> {
     const task = await this.requireLiveTask(taskId);
-    const snapshot = await this.projects.requireOwnedProject(
+    const snapshot = await this.authorization.requireTaskWrite(
       actorId,
       task.projectId,
     );

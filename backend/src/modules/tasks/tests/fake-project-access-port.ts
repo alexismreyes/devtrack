@@ -28,8 +28,28 @@ export class FakeProjectAccessPort implements ProjectAccessPort {
     return {
       id: project.id,
       ownerUserId: project.ownerUserId,
+      name: project.name,
       archivedAt:
         project.archivedAt === null ? null : new Date(project.archivedAt.getTime()),
     };
+  }
+
+  async listOwnedActiveProjects(
+    actorId: string,
+  ): Promise<OwnedProjectSnapshot[]> {
+    return [...this.projectsById.values()]
+      .filter(
+        (project) =>
+          project.ownerUserId === actorId && project.archivedAt === null,
+      )
+      .map((project) => ({
+        id: project.id,
+        ownerUserId: project.ownerUserId,
+        name: project.name,
+        archivedAt:
+          project.archivedAt === null
+            ? null
+            : new Date(project.archivedAt.getTime()),
+      }));
   }
 }

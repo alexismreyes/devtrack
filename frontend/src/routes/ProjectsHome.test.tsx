@@ -122,6 +122,27 @@ describe("ProjectsHome", () => {
     expectNoSessionTokenStorage();
   });
 
+  it("shows a shared project in the card grid", async () => {
+    const sharedProject = {
+      ...activeProject,
+      ownerUserId: "other-user",
+      name: "Shared Alpha",
+    };
+    mockFetch((url, init) => {
+      if (url.endsWith("/api/users/me")) {
+        return jsonResponse(200, publicUser);
+      }
+      expect(url).toBe("http://localhost:3000/api/projects");
+      expect(init?.credentials).toBe("include");
+      return jsonResponse(200, { projects: [sharedProject] });
+    });
+
+    renderHome();
+
+    expect(await screen.findByRole("link", { name: /^shared alpha$/i })).toBeInTheDocument();
+    expectNoSessionTokenStorage();
+  });
+
   it("navigates to project detail when a card is activated", async () => {
     mockFetch((url) => {
       if (url.endsWith("/api/users/me")) {

@@ -2,6 +2,8 @@
 
 Local foundation stack: React frontend, Express backend, PostgreSQL. Production image hardening is not in scope.
 
+Verified features and how they were built: [`implemented-features.md`](implemented-features.md).
+
 ## Configuration
 
 Copy `.env.example` to `.env` and replace placeholders. Do not commit `.env`.

@@ -95,6 +95,48 @@ export type ListTasksQueryDto = {
   priority?: TaskPriority;
 };
 
+export type DashboardProjectSummaryDto = {
+  id: string;
+  name: string;
+  taskCount: number;
+  pendingCount: number;
+  completedCount: number;
+  overdueCount: number;
+};
+
+export type DashboardSummaryResponseDto = {
+  projectCount: number;
+  taskCount: number;
+  pendingCount: number;
+  completedCount: number;
+  overdueCount: number;
+  projects: DashboardProjectSummaryDto[];
+};
+
+export type ProjectMemberRole = "OWNER" | "EDITOR" | "VIEWER";
+
+export type PublicMemberDto = {
+  id: string;
+  userId: string;
+  email: string;
+  displayName: string;
+  role: ProjectMemberRole;
+  createdAt: string;
+};
+
+export type MemberListResponseDto = {
+  members: PublicMemberDto[];
+};
+
+export type AddMemberRequestDto = {
+  email: string;
+  role: ProjectMemberRole;
+};
+
+export type UpdateMemberRequestDto = {
+  role: ProjectMemberRole;
+};
+
 export type ErrorEnvelope = {
   error: {
     code: string;

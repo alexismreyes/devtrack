@@ -47,7 +47,9 @@ export function errorHandler(
 
   if (err instanceof Error) {
     switch (err.name) {
-      case "DuplicateEmailError": {
+      case "DuplicateEmailError":
+      case "DuplicateMembershipError":
+      case "OwnerMembershipConflictError": {
         const mapped = conflict(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
@@ -65,12 +67,16 @@ export function errorHandler(
         return;
       }
       case "ProfileForbiddenError":
-      case "ProjectForbiddenError": {
+      case "ProjectForbiddenError":
+      case "MembershipForbiddenError": {
         const mapped = forbidden(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
       }
-      case "ProjectNotFoundError": {
+      case "ProjectNotFoundError":
+      case "MembershipProjectNotFoundError":
+      case "MemberUserNotFoundError":
+      case "MembershipNotFoundError": {
         const mapped = notFound(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
@@ -98,6 +104,7 @@ export function errorHandler(
       case "InvalidTaskStatusError":
       case "InvalidTaskPriorityError":
       case "InvalidTaskDueDateError":
+      case "InvalidProjectMemberRoleError":
         sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
         return;
       case "DatabaseUnavailableError":

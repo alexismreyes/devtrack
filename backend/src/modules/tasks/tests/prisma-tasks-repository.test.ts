@@ -90,6 +90,75 @@ describe("PrismaTasksRepository", () => {
   );
 
   it.skipIf(!hasDatabaseUrl)(
+    "lists non-deleted tasks only for the given project ids",
+    async () => {
+      if (!users || !projects || !tasks) {
+        return;
+      }
+
+      const owner = await users.create({
+        email: `task-dash-${randomUUID()}@example.com`,
+        displayName: "Ada",
+      });
+      const first = await projects.create({
+        ownerUserId: owner.id,
+        name: "First",
+        description: null,
+      });
+      const second = await projects.create({
+        ownerUserId: owner.id,
+        name: "Second",
+        description: null,
+      });
+      const third = await projects.create({
+        ownerUserId: owner.id,
+        name: "Third",
+        description: null,
+      });
+
+      const kept = await tasks.create({
+        projectId: first.id,
+        title: "Keep",
+        description: null,
+        dueDate: null,
+      });
+      const deleted = await tasks.create({
+        projectId: first.id,
+        title: "Gone",
+        description: null,
+        dueDate: null,
+      });
+      const other = await tasks.create({
+        projectId: second.id,
+        title: "Other",
+        description: null,
+        dueDate: null,
+      });
+      await tasks.create({
+        projectId: third.id,
+        title: "Excluded",
+        description: null,
+        dueDate: null,
+      });
+      await tasks.softDelete(deleted.id);
+
+      const listed = await tasks.listNonDeletedByProjectIds([
+        first.id,
+        second.id,
+      ]);
+      const empty = await tasks.listNonDeletedByProjectIds([]);
+
+      expect(listed.map((task) => task.id).sort()).toEqual(
+        [kept.id, other.id].sort(),
+      );
+      expect(listed.every((task) => task.deletedAt === null)).toBe(true);
+      expect(listed.some((task) => task.id === deleted.id)).toBe(false);
+      expect(listed.some((task) => task.projectId === third.id)).toBe(false);
+      expect(empty).toEqual([]);
+    },
+  );
+
+  it.skipIf(!hasDatabaseUrl)(
     "soft-deletes by setting deletedAt and does not remove the row",
     async () => {
       if (!users || !projects || !tasks || !prisma) {

@@ -1,31 +1,57 @@
 import { describe, expect, it } from "vitest";
 import {
+  OwnerMembershipWriteAdapter,
+  ProjectMembershipAccessAdapter,
+} from "../../project-members/access/project-membership-access-adapter";
+import { MembershipForbiddenError } from "../../project-members/domain/errors";
+import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
+import { ProjectSnapshotAdapter } from "../access/project-snapshot-adapter";
+import { ImmediateUnitOfWork } from "../access/unit-of-work";
+import {
   ProjectArchivedError,
-  ProjectForbiddenError,
   ProjectNotFoundError,
 } from "../domain/errors";
 import { ProjectsService } from "../service/projects-service";
 import { InMemoryProjectsRepository } from "./in-memory-projects-repository";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
-const OTHER_ID = "22222222-2222-4222-8222-222222222222";
+const EDITOR_ID = "22222222-2222-4222-8222-222222222222";
+const VIEWER_ID = "33333333-3333-4333-8333-333333333333";
+const OTHER_ID = "44444444-4444-4444-8444-444444444444";
+
+function createService() {
+  const projects = new InMemoryProjectsRepository();
+  const members = new InMemoryProjectMembersRepository();
+  const snapshots = new ProjectSnapshotAdapter(projects);
+  const service = new ProjectsService(
+    projects,
+    new ProjectMembershipAccessAdapter(members, snapshots),
+    new OwnerMembershipWriteAdapter(members),
+    new ImmediateUnitOfWork(),
+  );
+  return { service, projects, members };
+}
 
 describe("ProjectsService", () => {
-  it("creates a project owned by the actor", async () => {
-    const projects = new InMemoryProjectsRepository();
-    const service = new ProjectsService(projects);
+  it("creates a project owned by the actor and inserts an OWNER membership", async () => {
+    const { service, members } = createService();
 
     const created = await service.create(OWNER_ID, "Roadmap", "Q1");
+    const membership = await members.findByProjectAndUser(
+      created.id,
+      OWNER_ID,
+    );
 
     expect(created.ownerUserId).toBe(OWNER_ID);
     expect(created.name).toBe("Roadmap");
     expect(created.description).toBe("Q1");
     expect(created.archivedAt).toBeNull();
+    expect(membership?.role).toBe("OWNER");
+    expect(membership?.userId).toBe(OWNER_ID);
   });
 
   it("returns an owned project including after archive", async () => {
-    const projects = new InMemoryProjectsRepository();
-    const service = new ProjectsService(projects);
+    const { service } = createService();
     const created = await service.create(OWNER_ID, "Roadmap", null);
     const archived = await service.archive(OWNER_ID, created.id);
 
@@ -36,22 +62,21 @@ describe("ProjectsService", () => {
     expect(archived.archivedAt).not.toBeNull();
   });
 
-  it("rejects non-owners and does not change the project", async () => {
-    const projects = new InMemoryProjectsRepository();
-    const service = new ProjectsService(projects);
+  it("rejects non-members and does not change the project", async () => {
+    const { service } = createService();
     const created = await service.create(OWNER_ID, "Roadmap", null);
 
     await expect(service.getById(OTHER_ID, created.id)).rejects.toBeInstanceOf(
-      ProjectForbiddenError,
+      MembershipForbiddenError,
     );
     await expect(
       service.update(OTHER_ID, created.id, { name: "Hacked" }),
-    ).rejects.toBeInstanceOf(ProjectForbiddenError);
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
     await expect(service.archive(OTHER_ID, created.id)).rejects.toBeInstanceOf(
-      ProjectForbiddenError,
+      MembershipForbiddenError,
     );
     await expect(service.unarchive(OTHER_ID, created.id)).rejects.toBeInstanceOf(
-      ProjectForbiddenError,
+      MembershipForbiddenError,
     );
 
     const unchanged = await service.getById(OWNER_ID, created.id);
@@ -59,35 +84,116 @@ describe("ProjectsService", () => {
     expect(unchanged.archivedAt).toBeNull();
   });
 
+  it("lets an EDITOR GET and PATCH but not archive, and a VIEWER GET only", async () => {
+    const { service, members } = createService();
+    const created = await service.create(OWNER_ID, "Roadmap", "Mine");
+    await members.create({
+      projectId: created.id,
+      userId: EDITOR_ID,
+      role: "EDITOR",
+    });
+    await members.create({
+      projectId: created.id,
+      userId: VIEWER_ID,
+      role: "VIEWER",
+    });
+
+    const asEditor = await service.getById(EDITOR_ID, created.id);
+    const patched = await service.update(EDITOR_ID, created.id, {
+      name: "Shared",
+    });
+    await expect(service.archive(EDITOR_ID, created.id)).rejects.toBeInstanceOf(
+      MembershipForbiddenError,
+    );
+
+    const asViewer = await service.getById(VIEWER_ID, created.id);
+    await expect(
+      service.update(VIEWER_ID, created.id, { name: "Nope" }),
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
+    await expect(service.archive(VIEWER_ID, created.id)).rejects.toBeInstanceOf(
+      MembershipForbiddenError,
+    );
+
+    expect(asEditor.id).toBe(created.id);
+    expect(patched.name).toBe("Shared");
+    expect(asViewer.name).toBe("Shared");
+    expect((await service.getById(OWNER_ID, created.id)).archivedAt).toBeNull();
+  });
+
+  it("grants OWNER access from ownerUserId even without a membership row", async () => {
+    const { service, projects } = createService();
+    const created = await projects.create({
+      ownerUserId: OWNER_ID,
+      name: "Legacy",
+      description: null,
+    });
+
+    const found = await service.getById(OWNER_ID, created.id);
+    const listed = await service.listAuthorized(OWNER_ID);
+    const updated = await service.update(OWNER_ID, created.id, {
+      name: "Still owned",
+    });
+
+    expect(found.id).toBe(created.id);
+    expect(listed.map((project) => project.id)).toEqual([created.id]);
+    expect(updated.name).toBe("Still owned");
+  });
+
   it("throws not found for a missing project instead of forbidden", async () => {
-    const projects = new InMemoryProjectsRepository();
-    const service = new ProjectsService(projects);
+    const { service } = createService();
 
     await expect(
       service.getById(OWNER_ID, "99999999-9999-4999-8999-999999999999"),
     ).rejects.toBeInstanceOf(ProjectNotFoundError);
   });
 
-  it("lists only the actor's active projects, newest first", async () => {
-    const projects = new InMemoryProjectsRepository();
-    const service = new ProjectsService(projects);
+  it("lists active projects the actor is authorized to see, newest first", async () => {
+    const { service, members } = createService();
     const older = await service.create(OWNER_ID, "Older", null);
     const newer = await service.create(OWNER_ID, "Newer", null);
-    await service.create(OTHER_ID, "Other", null);
+    const shared = await service.create(OTHER_ID, "Shared", null);
+    await service.create(OTHER_ID, "Secret", null);
     await service.archive(OWNER_ID, older.id);
+    await members.create({
+      projectId: shared.id,
+      userId: OWNER_ID,
+      role: "VIEWER",
+    });
 
-    const listed = await service.listOwned(OWNER_ID);
-    const empty = await service.listOwned(
-      "33333333-3333-4333-8333-333333333333",
+    const listed = await service.listAuthorized(OWNER_ID);
+    const empty = await service.listAuthorized(
+      "55555555-5555-4555-8555-555555555555",
     );
 
-    expect(listed.map((project) => project.id)).toEqual([newer.id]);
+    expect(listed.map((project) => project.id).sort()).toEqual(
+      [shared.id, newer.id].sort(),
+    );
+    expect(listed).toHaveLength(2);
     expect(empty).toEqual([]);
   });
 
+  it("forbids non-owner members from GET of an archived project", async () => {
+    const { service, members } = createService();
+    const created = await service.create(OWNER_ID, "Roadmap", null);
+    await members.create({
+      projectId: created.id,
+      userId: EDITOR_ID,
+      role: "EDITOR",
+    });
+    await service.archive(OWNER_ID, created.id);
+
+    await expect(service.getById(EDITOR_ID, created.id)).rejects.toBeInstanceOf(
+      MembershipForbiddenError,
+    );
+    const asOwner = await service.getById(OWNER_ID, created.id);
+    expect(asOwner.archivedAt).not.toBeNull();
+    expect((await service.listAuthorized(EDITOR_ID)).map((p) => p.id)).toEqual(
+      [],
+    );
+  });
+
   it("updates name and description without changing owner", async () => {
-    const projects = new InMemoryProjectsRepository();
-    const service = new ProjectsService(projects);
+    const { service } = createService();
     const created = await service.create(OWNER_ID, "Roadmap", "First");
 
     const updated = await service.update(OWNER_ID, created.id, {
@@ -103,8 +209,7 @@ describe("ProjectsService", () => {
   });
 
   it("rejects PATCH while archived and allows it after unarchive", async () => {
-    const projects = new InMemoryProjectsRepository();
-    const service = new ProjectsService(projects);
+    const { service } = createService();
     const created = await service.create(OWNER_ID, "Roadmap", "First");
     const archived = await service.archive(OWNER_ID, created.id);
 
@@ -129,8 +234,7 @@ describe("ProjectsService", () => {
   });
 
   it("treats archive and unarchive as idempotent", async () => {
-    const projects = new InMemoryProjectsRepository();
-    const service = new ProjectsService(projects);
+    const { service } = createService();
     const created = await service.create(OWNER_ID, "Roadmap", null);
     const firstArchive = await service.archive(OWNER_ID, created.id);
     const secondArchive = await service.archive(OWNER_ID, created.id);

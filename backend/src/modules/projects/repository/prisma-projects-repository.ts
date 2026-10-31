@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import { currentPrisma } from "../../../infrastructure/prisma/prisma-context";
 import { DatabaseUnavailableError, ProjectNotFoundError } from "../domain/errors";
 import { Project } from "../domain/project";
 import type {
@@ -89,6 +90,10 @@ function toProject(row: {
 export class PrismaProjectsRepository implements ProjectsRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  private client() {
+    return currentPrisma(this.prisma);
+  }
+
   async create(input: CreateProjectInput): Promise<Project> {
     const project = Project.create(
       input.ownerUserId,
@@ -96,7 +101,7 @@ export class PrismaProjectsRepository implements ProjectsRepository {
       input.description,
     );
     try {
-      const row = await this.prisma.project.create({
+      const row = await this.client().project.create({
         data: {
           id: project.id,
           ownerUserId: project.ownerUserId,
@@ -115,7 +120,7 @@ export class PrismaProjectsRepository implements ProjectsRepository {
 
   async findById(id: string): Promise<Project | null> {
     try {
-      const row = await this.prisma.project.findUnique({
+      const row = await this.client().project.findUnique({
         where: { id },
         select: PROJECT_SELECT,
       });
@@ -127,8 +132,24 @@ export class PrismaProjectsRepository implements ProjectsRepository {
 
   async listByOwnerId(ownerUserId: string): Promise<Project[]> {
     try {
-      const rows = await this.prisma.project.findMany({
+      const rows = await this.client().project.findMany({
         where: { ownerUserId, archivedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: PROJECT_SELECT,
+      });
+      return rows.map(toProject);
+    } catch (err) {
+      rethrowMapped(err);
+    }
+  }
+
+  async listActiveByIds(ids: string[]): Promise<Project[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    try {
+      const rows = await this.client().project.findMany({
+        where: { id: { in: ids }, archivedAt: null },
         orderBy: { createdAt: "desc" },
         select: PROJECT_SELECT,
       });
@@ -145,7 +166,7 @@ export class PrismaProjectsRepository implements ProjectsRepository {
     }
     const updated = existing.withDetails(input);
     try {
-      const row = await this.prisma.project.update({
+      const row = await this.client().project.update({
         where: { id },
         data: {
           name: updated.name,
@@ -169,7 +190,7 @@ export class PrismaProjectsRepository implements ProjectsRepository {
       return existing;
     }
     try {
-      const row = await this.prisma.project.update({
+      const row = await this.client().project.update({
         where: { id },
         data: { archivedAt: archived.archivedAt },
         select: PROJECT_SELECT,
@@ -189,7 +210,7 @@ export class PrismaProjectsRepository implements ProjectsRepository {
       return existing;
     }
     try {
-      const row = await this.prisma.project.update({
+      const row = await this.client().project.update({
         where: { id },
         data: { archivedAt: null },
         select: PROJECT_SELECT,

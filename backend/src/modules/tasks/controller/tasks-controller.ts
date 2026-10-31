@@ -3,6 +3,7 @@ import {
   unauthenticated,
   validationError,
 } from "../../../infrastructure/http/app-error";
+import { toDashboardSummaryDto } from "../dto/dashboard-dtos";
 import {
   toPublicTaskDto,
   type CreateTaskRequestDto,
@@ -75,6 +76,12 @@ export class TasksController {
       tasks: tasks.map(toPublicTaskDto),
     };
     res.status(200).json(body);
+  }
+
+  async getDashboard(req: Request, res: Response): Promise<void> {
+    const actorId = requireActorId(req);
+    const summary = await this.service.getDashboard(actorId);
+    res.status(200).json(toDashboardSummaryDto(summary));
   }
 
   async getById(req: Request, res: Response): Promise<void> {

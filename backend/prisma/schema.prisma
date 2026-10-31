@@ -29,6 +29,7 @@ model User {
   passwordCredential AuthPasswordCredential?
   sessions           AuthSession[]
   ownedProjects      Project[]
+  projectMemberships ProjectMember[]
 
   @@map("users")
 }
@@ -65,6 +66,12 @@ enum TaskPriority {
   HIGH
 }
 
+enum ProjectMemberRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
 model Project {
   id          String    @id @db.Uuid
   ownerUserId String    @db.Uuid
@@ -74,9 +81,24 @@ model Project {
   archivedAt  DateTime?
   owner       User      @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
   tasks       Task[]
+  members     ProjectMember[]
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+model ProjectMember {
+  id        String            @id @db.Uuid
+  projectId String            @db.Uuid
+  userId    String            @db.Uuid
+  role      ProjectMemberRole
+  createdAt DateTime
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
 }
 
 model Task {

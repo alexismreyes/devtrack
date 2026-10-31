@@ -19,6 +19,7 @@ import { cn, nativeSelectClassName } from "@/lib/utils";
 type TaskDetailProps = {
   taskId: string;
   archived: boolean;
+  canWrite?: boolean;
   onClose: () => void;
   onUpdated: () => void;
   onDeleted: () => void;
@@ -46,6 +47,7 @@ const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 export function TaskDetail({
   taskId,
   archived,
+  canWrite = true,
   onClose,
   onUpdated,
   onDeleted,
@@ -154,7 +156,7 @@ export function TaskDetail({
 
   const busy =
     actionState.kind === "saving" || actionState.kind === "deleting";
-  const writesDisabled = busy || archived;
+  const writesDisabled = busy || archived || !canWrite;
 
   return (
     <section aria-labelledby="task-detail-heading">
@@ -199,6 +201,7 @@ export function TaskDetail({
               ) : (
                 <p className="text-sm">{task.description}</p>
               )}
+              {canWrite ? (
               <form onSubmit={(event) => void onSave(event)} className="grid gap-3">
                 <Label className="grid gap-2">
                   Task title
@@ -277,6 +280,7 @@ export function TaskDetail({
                   </Button>
                 </div>
               </form>
+              ) : null}
             </>
           ) : null}
           {actionState.kind === "saving" ? (

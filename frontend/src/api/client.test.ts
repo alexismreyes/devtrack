@@ -6,18 +6,23 @@ import {
   createProbe,
   createProject,
   createTask,
+  addMember,
+  getDashboard,
   getHealth,
   getProfile,
   getProject,
   getTask,
+  listMembers,
   listProbes,
   listProjects,
   listTasks,
   login,
   logout,
   register,
+  removeMember,
   softDeleteTask,
   unarchiveProject,
+  updateMember,
   updateProfile,
   updateProject,
   updateTask,
@@ -426,6 +431,168 @@ describe("projects API client", () => {
   });
 });
 
+describe("membership API client", () => {
+  const member = {
+    id: "member-1",
+    userId: "user-2",
+    email: "ed@example.com",
+    displayName: "Ed",
+    role: "EDITOR" as const,
+    createdAt: "2026-10-31T12:00:00.000Z",
+  };
+
+  it("lists members with credentials included and no token storage", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/members");
+      expect(url).not.toContain("db");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        members: [{ ...member, token: "must-not-be-kept", sessionId: "must-not-be-kept" }],
+      });
+    });
+
+    await expect(listMembers("proj-1")).resolves.toEqual({ members: [member] });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("adds a member by email and role without a bearer token", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/members");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(
+        JSON.stringify({ email: "ed@example.com", role: "EDITOR" }),
+      );
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(201, { ...member, token: "must-not-be-kept" });
+    });
+
+    await expect(
+      addMember("proj-1", { email: "ed@example.com", role: "EDITOR" }),
+    ).resolves.toEqual(member);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("patches a member role with credentials included", async () => {
+    const updated = { ...member, role: "VIEWER" as const };
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/members/user-2");
+      expect(init?.method).toBe("PATCH");
+      expect(init?.body).toBe(JSON.stringify({ role: "VIEWER" }));
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, updated);
+    });
+
+    await expect(
+      updateMember("proj-1", "user-2", { role: "VIEWER" }),
+    ).resolves.toEqual(updated);
+    expectNoTokenStorage();
+  });
+
+  it("removes a member with DELETE, empty body, 204, and no token storage", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/members/user-2");
+      expect(init?.method).toBe("DELETE");
+      expect(init?.body).toBeUndefined();
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return emptyResponse(204);
+    });
+
+    await expect(removeMember("proj-1", "user-2")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("maps unauthenticated, forbidden, not-found, conflict, and validation errors", async () => {
+    mockFetch((_url, init) => {
+      if (init?.method === "GET") {
+        return jsonResponse(401, {
+          error: {
+            code: "UNAUTHENTICATED",
+            message: "Authentication is required",
+          },
+        });
+      }
+      if (init?.method === "POST") {
+        return jsonResponse(403, {
+          error: { code: "FORBIDDEN", message: "Only owners can manage members" },
+        });
+      }
+      return jsonResponse(409, {
+        error: { code: "CONFLICT", message: "User is already a member" },
+      });
+    });
+
+    const unauthenticated = await listMembers("proj-1").catch((err: unknown) => err);
+    expect(unauthenticated).toMatchObject({
+      status: 401,
+      code: "UNAUTHENTICATED",
+    });
+
+    const forbidden = await addMember("proj-1", {
+      email: "ed@example.com",
+      role: "EDITOR",
+    }).catch((err: unknown) => err);
+    expect(forbidden).toMatchObject({
+      status: 403,
+      code: "FORBIDDEN",
+    });
+
+    const conflict = await updateMember("proj-1", "user-2", {
+      role: "VIEWER",
+    }).catch((err: unknown) => err);
+    expect(conflict).toMatchObject({
+      status: 409,
+      code: "CONFLICT",
+    });
+    expect(JSON.stringify(conflict)).not.toMatch(/DATABASE_URL/i);
+    expectNoTokenStorage();
+  });
+
+  it("maps unknown email and invalid body without leaking secrets", async () => {
+    mockFetch((_url, init) => {
+      if (init?.method === "POST") {
+        return jsonResponse(404, {
+          error: { code: "NOT_FOUND", message: "User was not found" },
+        });
+      }
+      return jsonResponse(400, {
+        error: { code: "VALIDATION_ERROR", message: "Invalid request body" },
+      });
+    });
+
+    const missing = await addMember("proj-1", {
+      email: "missing@example.com",
+      role: "EDITOR",
+    }).catch((err: unknown) => err);
+    expect(missing).toMatchObject({
+      status: 404,
+      code: "NOT_FOUND",
+      message: "User was not found",
+    });
+
+    const invalid = await updateMember("proj-1", "user-2", {
+      role: "VIEWER",
+    }).catch((err: unknown) => err);
+    expect(invalid).toMatchObject({
+      status: 400,
+      code: "VALIDATION_ERROR",
+    });
+    expect(JSON.stringify(missing)).not.toMatch(/postgresql:\/\//i);
+    expectNoTokenStorage();
+  });
+});
+
 describe("tasks API client", () => {
   const task = {
     id: "task-1",
@@ -630,6 +797,107 @@ describe("tasks API client", () => {
     });
     expect(JSON.stringify(conflict)).not.toMatch(/DATABASE_URL/i);
     expect(JSON.stringify(conflict)).not.toMatch(/postgresql:\/\//i);
+    expectNoTokenStorage();
+  });
+});
+
+describe("dashboard API client", () => {
+  const dashboard = {
+    projectCount: 2,
+    taskCount: 5,
+    pendingCount: 3,
+    completedCount: 2,
+    overdueCount: 1,
+    projects: [
+      {
+        id: "proj-1",
+        name: "Alpha",
+        taskCount: 3,
+        pendingCount: 2,
+        completedCount: 1,
+        overdueCount: 1,
+      },
+      {
+        id: "proj-2",
+        name: "Beta",
+        taskCount: 2,
+        pendingCount: 1,
+        completedCount: 1,
+        overdueCount: 0,
+      },
+    ],
+  };
+
+  const emptyDashboard = {
+    projectCount: 0,
+    taskCount: 0,
+    pendingCount: 0,
+    completedCount: 0,
+    overdueCount: 0,
+    projects: [] as typeof dashboard.projects,
+  };
+
+  it("reads GET /api/dashboard from VITE_API_URL with credentials included and no token storage", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/dashboard");
+      expect(url).not.toContain("db");
+      expect(url).not.toMatch(/\/api\/projects\/[^/]+\/tasks/);
+      expect(init?.method).toBe("GET");
+      expect(init?.body).toBeUndefined();
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        ...dashboard,
+        deletedAt: "must-not-be-kept",
+        token: "must-not-be-kept",
+        sessionId: "must-not-be-kept",
+        projects: dashboard.projects.map((project) => ({
+          ...project,
+          deletedAt: "must-not-be-kept",
+          ownerUserId: "must-not-be-kept",
+          archivedAt: "must-not-be-kept",
+        })),
+      });
+    });
+
+    await expect(getDashboard()).resolves.toEqual(dashboard);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("returns zeros and an empty project list as success", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/dashboard");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, emptyDashboard);
+    });
+
+    await expect(getDashboard()).resolves.toEqual(emptyDashboard);
+    expectNoTokenStorage();
+  });
+
+  it("maps unauthenticated dashboard access without storing credentials", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/dashboard");
+      expectCredentialsInclude(init);
+      return jsonResponse(401, {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Authentication is required",
+        },
+      });
+    });
+
+    const error = await getDashboard().catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "UNAUTHENTICATED",
+      message: "Authentication is required",
+    });
     expectNoTokenStorage();
   });
 });

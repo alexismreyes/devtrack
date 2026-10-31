@@ -163,6 +163,25 @@ export class PrismaTasksRepository implements TasksRepository {
     }
   }
 
+  async listNonDeletedByProjectIds(projectIds: string[]): Promise<Task[]> {
+    if (projectIds.length === 0) {
+      return [];
+    }
+    try {
+      const rows = await this.prisma.task.findMany({
+        where: {
+          projectId: { in: projectIds },
+          deletedAt: null,
+        },
+        orderBy: { createdAt: "desc" },
+        select: TASK_SELECT,
+      });
+      return rows.map(toTask);
+    } catch (err) {
+      rethrowMapped(err);
+    }
+  }
+
   async update(id: string, input: UpdateTaskInput): Promise<Task> {
     const existing = await this.findById(id);
     if (existing === null || existing.deletedAt !== null) {

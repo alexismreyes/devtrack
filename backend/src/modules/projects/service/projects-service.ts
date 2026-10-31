@@ -1,4 +1,9 @@
-import { assertProjectOwner } from "../domain/authorization";
+import type {
+  OwnerMembershipWritePort,
+  ProjectAccessOperation,
+  ProjectMembershipQueryPort,
+} from "../access/project-membership-port";
+import type { UnitOfWork } from "../access/unit-of-work";
 import { ProjectNotFoundError } from "../domain/errors";
 import type { Project } from "../domain/project";
 import type {
@@ -7,27 +12,40 @@ import type {
 } from "../repository/projects-repository";
 
 export class ProjectsService {
-  constructor(private readonly projects: ProjectsRepository) {}
+  constructor(
+    private readonly projects: ProjectsRepository,
+    private readonly membership: ProjectMembershipQueryPort,
+    private readonly ownerMembership: OwnerMembershipWritePort,
+    private readonly unitOfWork: UnitOfWork,
+  ) {}
 
   create(
     actorId: string,
     name: string,
     description: string | null,
   ): Promise<Project> {
-    return this.projects.create({
-      ownerUserId: actorId,
-      name,
-      description,
+    return this.unitOfWork.run(async () => {
+      const project = await this.projects.create({
+        ownerUserId: actorId,
+        name,
+        description,
+      });
+      await this.ownerMembership.insertCreatingOwner(project.id, actorId);
+      return project;
     });
   }
 
-  listOwned(actorId: string): Promise<Project[]> {
-    return this.projects.listByOwnerId(actorId);
+  async listAuthorized(actorId: string): Promise<Project[]> {
+    const ids = await this.membership.listAuthorizedActiveProjectIds(actorId);
+    return this.projects.listActiveByIds(ids);
   }
 
   async getById(actorId: string, projectId: string): Promise<Project> {
-    const project = await this.requireProject(projectId);
-    assertProjectOwner(actorId, project.ownerUserId);
+    const project = await this.requireAuthorized(
+      actorId,
+      projectId,
+      "read_project",
+    );
     return project;
   }
 
@@ -36,19 +54,41 @@ export class ProjectsService {
     projectId: string,
     input: UpdateProjectInput,
   ): Promise<Project> {
-    const project = await this.getById(actorId, projectId);
+    const project = await this.requireAuthorized(
+      actorId,
+      projectId,
+      "patch_project",
+    );
     project.withDetails(input);
     return this.projects.update(projectId, input);
   }
 
   async archive(actorId: string, projectId: string): Promise<Project> {
-    await this.getById(actorId, projectId);
+    await this.requireAuthorized(actorId, projectId, "archive_project");
     return this.projects.archive(projectId);
   }
 
   async unarchive(actorId: string, projectId: string): Promise<Project> {
-    await this.getById(actorId, projectId);
+    await this.requireAuthorized(actorId, projectId, "unarchive_project");
     return this.projects.unarchive(projectId);
+  }
+
+  private async requireAuthorized(
+    actorId: string,
+    projectId: string,
+    operation: ProjectAccessOperation,
+  ): Promise<Project> {
+    const project = await this.requireProject(projectId);
+    await this.membership.assertAuthorized(
+      actorId,
+      {
+        id: project.id,
+        ownerUserId: project.ownerUserId,
+        archivedAt: project.archivedAt,
+      },
+      operation,
+    );
+    return project;
   }
 
   private async requireProject(projectId: string): Promise<Project> {

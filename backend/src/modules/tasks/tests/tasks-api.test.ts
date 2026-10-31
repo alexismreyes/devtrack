@@ -5,6 +5,7 @@ import { createApp } from "../../../app";
 import { loadConfig } from "../../../config/config";
 import { loadEnvFiles } from "../../../config/env";
 import { createPrismaClient } from "../../../infrastructure/prisma/client";
+import { PrismaUnitOfWork } from "../../../infrastructure/prisma/prisma-unit-of-work";
 import { PrismaAuthRepository } from "../../auth/repository/prisma-auth-repository";
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { PrismaProjectsRepository } from "../../projects/repository/prisma-projects-repository";
@@ -13,6 +14,8 @@ import { PrismaSystemRepository } from "../../system/repository/prisma-system-re
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
+import { PrismaProjectMembersRepository } from "../../project-members/repository/prisma-project-members-repository";
+import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
 import { PrismaTasksRepository } from "../repository/prisma-tasks-repository";
@@ -49,6 +52,7 @@ function createTasksApp() {
   const systemRepository = new FakeSystemRepository();
   const projectsRepository = new InMemoryProjectsRepository();
   const tasksRepository = new InMemoryTasksRepository();
+  const projectMembersRepository = new InMemoryProjectMembersRepository();
   const app = createApp({
     corsOrigin: "http://localhost:5173",
     systemRepository,
@@ -56,6 +60,7 @@ function createTasksApp() {
     authRepository,
     projectsRepository,
     tasksRepository,
+    projectMembersRepository,
   });
   return { app, tasksRepository };
 }
@@ -305,12 +310,17 @@ describe("tasks HTTP API", () => {
       .patch(`/api/tasks/${missingId}`)
       .send({ title: "X" });
     const remove = await request(app).delete(`/api/tasks/${missingId}`);
+    const dashboard = await request(app).get("/api/dashboard");
 
     expect(create.status).toBe(401);
     expect(list.status).toBe(401);
     expect(get.status).toBe(401);
     expect(patch.status).toBe(401);
     expect(remove.status).toBe(401);
+    expect(dashboard.status).toBe(401);
+    expect(dashboard.body).toMatchObject(envelope("UNAUTHENTICATED"));
+    expect(dashboard.body).not.toHaveProperty("projectCount");
+    expect(dashboard.body).not.toHaveProperty("projects");
     expect(create.body).toMatchObject(envelope("UNAUTHENTICATED"));
     expect(list.body).toMatchObject(envelope("UNAUTHENTICATED"));
     expect(get.body).not.toHaveProperty("id");
@@ -346,7 +356,7 @@ describe("tasks HTTP API", () => {
     ]);
   });
 
-  it("returns 403 for a non-owner of a live task and leaves it unchanged", async () => {
+  it("returns 403 for a non-member of a live task and leaves it unchanged", async () => {
     const { app } = createTasksApp();
     const { agent: owner } = await registerAgent(app);
     const { agent: other } = await registerAgent(
@@ -379,6 +389,95 @@ describe("tasks HTTP API", () => {
     expect(after.body.title).toBe("Private");
     expect(after.body.description).toBe("Mine");
     assertNoSecrets(get.body);
+  });
+
+  it("lets OWNER and EDITOR write tasks and VIEWER only GET/list", async () => {
+    const { app } = createTasksApp();
+    const { agent: owner } = await registerAgent(app);
+    const { agent: editor, user: editorUser } = await registerAgent(
+      app,
+      `editor-${randomUUID()}@example.com`,
+    );
+    const { agent: viewer, user: viewerUser } = await registerAgent(
+      app,
+      `viewer-${randomUUID()}@example.com`,
+    );
+    const project = await createOwnedProject(owner);
+    await owner.post(`/api/projects/${project.id}/members`).send({
+      email: editorUser.email,
+      role: "EDITOR",
+    });
+    await owner.post(`/api/projects/${project.id}/members`).send({
+      email: viewerUser.email,
+      role: "VIEWER",
+    });
+
+    const created = await editor.post(`/api/projects/${project.id}/tasks`).send({
+      title: "Editor task",
+    });
+    const statusOnly = await editor.patch(`/api/tasks/${created.body.id}`).send({
+      status: "IN_PROGRESS",
+    });
+    const listed = await viewer.get(`/api/projects/${project.id}/tasks`);
+    const found = await viewer.get(`/api/tasks/${created.body.id}`);
+    const viewerCreate = await viewer
+      .post(`/api/projects/${project.id}/tasks`)
+      .send({ title: "Viewer write" });
+    const viewerPatch = await viewer
+      .patch(`/api/tasks/${created.body.id}`)
+      .send({ title: "Nope" });
+    const viewerDelete = await viewer.delete(`/api/tasks/${created.body.id}`);
+
+    expect(created.status).toBe(201);
+    expect(statusOnly.status).toBe(200);
+    expect(statusOnly.body.status).toBe("IN_PROGRESS");
+    expect(listed.status).toBe(200);
+    expect(listed.body.tasks).toEqual([
+      expect.objectContaining({ id: created.body.id }),
+    ]);
+    expect(found.status).toBe(200);
+    expect(viewerCreate.status).toBe(403);
+    expect(viewerPatch.status).toBe(403);
+    expect(viewerDelete.status).toBe(403);
+    assertNoSecrets(created.body);
+  });
+
+  it("returns 403 for a non-owner member on an archived parent and 409 for ownerUserId writes", async () => {
+    const { app } = createTasksApp();
+    const { agent: owner } = await registerAgent(app);
+    const { agent: editor, user: editorUser } = await registerAgent(
+      app,
+      `editor-${randomUUID()}@example.com`,
+    );
+    const project = await createOwnedProject(owner);
+    await owner.post(`/api/projects/${project.id}/members`).send({
+      email: editorUser.email,
+      role: "EDITOR",
+    });
+    const created = await editor.post(`/api/projects/${project.id}/tasks`).send({
+      title: "Live",
+    });
+    const archived = await owner.post(`/api/projects/${project.id}/archive`);
+    const editorList = await editor.get(`/api/projects/${project.id}/tasks`);
+    const editorGet = await editor.get(`/api/tasks/${created.body.id}`);
+    const editorCreate = await editor
+      .post(`/api/projects/${project.id}/tasks`)
+      .send({ title: "Blocked" });
+    const ownerWrite = await owner.patch(`/api/tasks/${created.body.id}`).send({
+      title: "Blocked",
+    });
+    const ownerGet = await owner.get(`/api/tasks/${created.body.id}`);
+
+    expect(created.status).toBe(201);
+    expect(archived.status).toBe(200);
+    expect(editorList.status).toBe(403);
+    expect(editorGet.status).toBe(403);
+    expect(editorCreate.status).toBe(403);
+    expect(ownerWrite.status).toBe(409);
+    expect(ownerWrite.body).toMatchObject(envelope("CONFLICT"));
+    expect(ownerGet.status).toBe(200);
+    expect(ownerGet.body.title).toBe("Live");
+    assertNoSecrets(editorGet.body);
   });
 
   it("returns 404 NOT_FOUND for a missing project or task id", async () => {
@@ -652,6 +751,378 @@ describe("tasks HTTP API", () => {
   });
 });
 
+function utcCalendarOffset(days: number): string {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + days),
+  )
+    .toISOString()
+    .slice(0, 10);
+}
+
+function assertDashboardBody(
+  body: unknown,
+  expected: {
+    projectCount: number;
+    taskCount: number;
+    pendingCount: number;
+    completedCount: number;
+    overdueCount: number;
+    projects: Array<{
+      id: string;
+      name: string;
+      taskCount: number;
+      pendingCount: number;
+      completedCount: number;
+      overdueCount: number;
+    }>;
+  },
+): void {
+  expect(body).toEqual(expected);
+  expect(body).not.toHaveProperty("deletedAt");
+  expect(body).not.toHaveProperty("archivedAt");
+  expect(body).not.toHaveProperty("tasks");
+  const projects = (body as { projects: unknown[] }).projects;
+  for (const row of projects) {
+    expect(row).not.toHaveProperty("deletedAt");
+    expect(row).not.toHaveProperty("archivedAt");
+    expect(row).not.toHaveProperty("description");
+    expect(row).not.toHaveProperty("ownerUserId");
+    expect(row).not.toHaveProperty("createdAt");
+    expect(row).not.toHaveProperty("tasks");
+  }
+}
+
+describe("GET /api/dashboard", () => {
+  it("returns zeros for an authenticated owner with no active projects", async () => {
+    const { app } = createTasksApp();
+    const { agent } = await registerAgent(app);
+
+    const response = await agent.get("/api/dashboard");
+
+    expect(response.status).toBe(200);
+    assertDashboardBody(response.body, {
+      projectCount: 0,
+      taskCount: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      overdueCount: 0,
+      projects: [],
+    });
+    expect(response.body.pendingCount + response.body.completedCount).toBe(
+      response.body.taskCount,
+    );
+    assertNoSecrets(response.body);
+  });
+
+  it("lists an active owned project that has zero live tasks", async () => {
+    const { app } = createTasksApp();
+    const { agent } = await registerAgent(app);
+    const project = await createOwnedProject(agent, "Empty board");
+
+    const response = await agent.get("/api/dashboard");
+
+    expect(response.status).toBe(200);
+    assertDashboardBody(response.body, {
+      projectCount: 1,
+      taskCount: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      overdueCount: 0,
+      projects: [
+        {
+          id: project.id,
+          name: "Empty board",
+          taskCount: 0,
+          pendingCount: 0,
+          completedCount: 0,
+          overdueCount: 0,
+        },
+      ],
+    });
+  });
+
+  it("aggregates owner-wide and per-project counts and isolates other users", async () => {
+    const { app } = createTasksApp();
+    const { agent: owner } = await registerAgent(app);
+    const { agent: other } = await registerAgent(
+      app,
+      `other-${randomUUID()}@example.com`,
+    );
+    const newer = await createOwnedProject(owner, "Newer");
+    const older = await createOwnedProject(owner, "Older");
+    const otherProject = await createOwnedProject(other, "Secret");
+    const yesterday = utcCalendarOffset(-1);
+    const today = utcCalendarOffset(0);
+
+    const pastTodo = await owner.post(`/api/projects/${older.id}/tasks`).send({
+      title: "Past todo",
+      status: "TODO",
+      dueDate: yesterday,
+    });
+    const todayProgress = await owner
+      .post(`/api/projects/${older.id}/tasks`)
+      .send({
+        title: "Today",
+        status: "IN_PROGRESS",
+        dueDate: today,
+      });
+    const donePast = await owner.post(`/api/projects/${older.id}/tasks`).send({
+      title: "Done past",
+      status: "DONE",
+      dueDate: yesterday,
+    });
+    const nullDue = await owner.post(`/api/projects/${older.id}/tasks`).send({
+      title: "No due",
+    });
+    await other.post(`/api/projects/${otherProject.id}/tasks`).send({
+      title: "Other overdue",
+      dueDate: yesterday,
+    });
+
+    expect(pastTodo.status).toBe(201);
+    expect(todayProgress.status).toBe(201);
+    expect(donePast.status).toBe(201);
+    expect(nullDue.status).toBe(201);
+
+    const ownerDashboard = await owner.get("/api/dashboard");
+    const otherDashboard = await other.get("/api/dashboard");
+
+    expect(ownerDashboard.status).toBe(200);
+    assertDashboardBody(ownerDashboard.body, {
+      projectCount: 2,
+      taskCount: 4,
+      pendingCount: 3,
+      completedCount: 1,
+      overdueCount: 1,
+      projects: [
+        {
+          id: older.id,
+          name: "Older",
+          taskCount: 4,
+          pendingCount: 3,
+          completedCount: 1,
+          overdueCount: 1,
+        },
+        {
+          id: newer.id,
+          name: "Newer",
+          taskCount: 0,
+          pendingCount: 0,
+          completedCount: 0,
+          overdueCount: 0,
+        },
+      ],
+    });
+    expect(
+      ownerDashboard.body.pendingCount + ownerDashboard.body.completedCount,
+    ).toBe(ownerDashboard.body.taskCount);
+    expect(otherDashboard.status).toBe(200);
+    assertDashboardBody(otherDashboard.body, {
+      projectCount: 1,
+      taskCount: 1,
+      pendingCount: 1,
+      completedCount: 0,
+      overdueCount: 1,
+      projects: [
+        {
+          id: otherProject.id,
+          name: "Secret",
+          taskCount: 1,
+          pendingCount: 1,
+          completedCount: 0,
+          overdueCount: 1,
+        },
+      ],
+    });
+    expect(otherDashboard.body.projects[0].id).not.toBe(older.id);
+    expect(otherDashboard.body.projects[0].id).not.toBe(newer.id);
+    assertNoSecrets(ownerDashboard.body);
+  });
+
+  it("keeps dashboard owner-scoped when the actor is only a member", async () => {
+    const { app } = createTasksApp();
+    const { agent: owner } = await registerAgent(app);
+    const { agent: editor, user: editorUser } = await registerAgent(
+      app,
+      `editor-${randomUUID()}@example.com`,
+    );
+    const shared = await createOwnedProject(owner, "Shared");
+    await owner.post(`/api/projects/${shared.id}/members`).send({
+      email: editorUser.email,
+      role: "EDITOR",
+    });
+    await editor.post(`/api/projects/${shared.id}/tasks`).send({
+      title: "Shared work",
+    });
+    const editorProjects = await editor.get("/api/projects");
+    const editorDashboard = await editor.get("/api/dashboard");
+    const ownerDashboard = await owner.get("/api/dashboard");
+
+    expect(editorProjects.body.projects).toEqual([
+      expect.objectContaining({ id: shared.id }),
+    ]);
+    expect(editorDashboard.status).toBe(200);
+    assertDashboardBody(editorDashboard.body, {
+      projectCount: 0,
+      taskCount: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      overdueCount: 0,
+      projects: [],
+    });
+    expect(ownerDashboard.body.projectCount).toBe(1);
+    expect(ownerDashboard.body.taskCount).toBe(1);
+  });
+
+  it("omits a soft-deleted task from later dashboard counts", async () => {
+    const { app } = createTasksApp();
+    const { agent } = await registerAgent(app);
+    const project = await createOwnedProject(agent);
+    const created = await agent.post(`/api/projects/${project.id}/tasks`).send({
+      title: "Soon gone",
+      dueDate: utcCalendarOffset(-1),
+    });
+    const before = await agent.get("/api/dashboard");
+    const removed = await agent.delete(`/api/tasks/${created.body.id}`);
+    const after = await agent.get("/api/dashboard");
+
+    expect(created.status).toBe(201);
+    expect(before.status).toBe(200);
+    expect(before.body.taskCount).toBe(1);
+    expect(before.body.pendingCount).toBe(1);
+    expect(before.body.overdueCount).toBe(1);
+    expect(removed.status).toBe(204);
+    expect(after.status).toBe(200);
+    assertDashboardBody(after.body, {
+      projectCount: 1,
+      taskCount: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      overdueCount: 0,
+      projects: [
+        {
+          id: project.id,
+          name: project.name,
+          taskCount: 0,
+          pendingCount: 0,
+          completedCount: 0,
+          overdueCount: 0,
+        },
+      ],
+    });
+    expect(after.body).not.toHaveProperty("deletedAt");
+  });
+
+  it("excludes archived projects and their tasks, then restores them after unarchive", async () => {
+    const { app } = createTasksApp();
+    const { agent } = await registerAgent(app);
+    const keep = await createOwnedProject(agent, "Keep");
+    const hide = await createOwnedProject(agent, "Hide");
+    await agent.post(`/api/projects/${hide.id}/tasks`).send({
+      title: "Hidden overdue",
+      dueDate: utcCalendarOffset(-1),
+    });
+    await agent.post(`/api/projects/${keep.id}/tasks`).send({
+      title: "Visible",
+    });
+
+    const archived = await agent.post(`/api/projects/${hide.id}/archive`);
+    const listed = await agent.get("/api/projects");
+    const listedWithIgnoredFilter = await agent.get(
+      "/api/projects?includeArchived=true",
+    );
+    const afterArchive = await agent.get("/api/dashboard");
+    const unarchived = await agent.post(`/api/projects/${hide.id}/unarchive`);
+    const afterUnarchive = await agent.get("/api/dashboard");
+
+    expect(archived.status).toBe(200);
+    expect(listed.status).toBe(200);
+    expect(
+      listed.body.projects.some((project: { id: string }) => project.id === hide.id),
+    ).toBe(false);
+    expect(listedWithIgnoredFilter.body.projects).toHaveLength(1);
+    expect(afterArchive.status).toBe(200);
+    assertDashboardBody(afterArchive.body, {
+      projectCount: 1,
+      taskCount: 1,
+      pendingCount: 1,
+      completedCount: 0,
+      overdueCount: 0,
+      projects: [
+        {
+          id: keep.id,
+          name: "Keep",
+          taskCount: 1,
+          pendingCount: 1,
+          completedCount: 0,
+          overdueCount: 0,
+        },
+      ],
+    });
+    expect(unarchived.status).toBe(200);
+    expect(afterUnarchive.status).toBe(200);
+    expect(afterUnarchive.body.projectCount).toBe(2);
+    expect(afterUnarchive.body.taskCount).toBe(2);
+    expect(
+      afterUnarchive.body.projects.some(
+        (project: { id: string }) => project.id === hide.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("reflects status and due date updates on a later read", async () => {
+    const { app } = createTasksApp();
+    const { agent } = await registerAgent(app);
+    const project = await createOwnedProject(agent);
+    const created = await agent.post(`/api/projects/${project.id}/tasks`).send({
+      title: "Move me",
+      dueDate: utcCalendarOffset(-1),
+    });
+    const before = await agent.get("/api/dashboard");
+    const patched = await agent.patch(`/api/tasks/${created.body.id}`).send({
+      status: "DONE",
+    });
+    const after = await agent.get("/api/dashboard");
+
+    expect(created.status).toBe(201);
+    expect(before.body.pendingCount).toBe(1);
+    expect(before.body.overdueCount).toBe(1);
+    expect(patched.status).toBe(200);
+    expect(after.status).toBe(200);
+    assertDashboardBody(after.body, {
+      projectCount: 1,
+      taskCount: 1,
+      pendingCount: 0,
+      completedCount: 1,
+      overdueCount: 0,
+      projects: [
+        {
+          id: project.id,
+          name: project.name,
+          taskCount: 1,
+          pendingCount: 0,
+          completedCount: 1,
+          overdueCount: 0,
+        },
+      ],
+    });
+  });
+
+  it("rejects unknown query fields with 400 VALIDATION_ERROR", async () => {
+    const { app } = createTasksApp();
+    const { agent } = await registerAgent(app);
+
+    const response = await agent.get("/api/dashboard?includeArchived=true");
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject(envelope("VALIDATION_ERROR"));
+    expect(response.body).not.toHaveProperty("projectCount");
+    expect(response.body).not.toHaveProperty("projects");
+    assertNoSecrets(response.body);
+  });
+});
+
 describe("tasks HTTP API persistence", () => {
   loadEnvFiles();
   process.env.CORS_ORIGIN ??= "http://localhost:5173";
@@ -669,6 +1140,8 @@ describe("tasks HTTP API persistence", () => {
       authRepository: new PrismaAuthRepository(prisma),
       projectsRepository: new PrismaProjectsRepository(prisma),
       tasksRepository: new PrismaTasksRepository(prisma),
+      projectMembersRepository: new PrismaProjectMembersRepository(prisma),
+      unitOfWork: new PrismaUnitOfWork(prisma),
     });
   }
 

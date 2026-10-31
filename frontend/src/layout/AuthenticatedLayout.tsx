@@ -41,6 +41,12 @@ export function AuthenticatedLayout() {
         <div className="ml-auto flex items-center gap-3">
           <UiPaletteSelector />
           <Link
+            to="/dashboard"
+            className="text-sm font-medium underline-offset-4 hover:underline"
+          >
+            Dashboard
+          </Link>
+          <Link
             to="/profile"
             className="text-sm font-medium underline-offset-4 hover:underline"
           >

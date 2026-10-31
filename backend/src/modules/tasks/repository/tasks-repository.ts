@@ -29,6 +29,7 @@ export interface TasksRepository {
     projectId: string,
     filters?: ListTasksFilters,
   ): Promise<Task[]>;
+  listNonDeletedByProjectIds(projectIds: string[]): Promise<Task[]>;
   update(id: string, input: UpdateTaskInput): Promise<Task>;
   softDelete(id: string): Promise<Task>;
 }

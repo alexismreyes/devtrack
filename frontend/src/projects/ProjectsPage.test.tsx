@@ -95,6 +95,26 @@ describe("ProjectsPage", () => {
     expectNoSessionTokenStorage();
   });
 
+  it("lists a shared project the caller did not create", async () => {
+    const sharedProject = {
+      ...activeProject,
+      ownerUserId: "other-user",
+      name: "Shared Alpha",
+    };
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects");
+      expect(init?.credentials).toBe("include");
+      return jsonResponse(200, { projects: [sharedProject] });
+    });
+
+    render(
+      <ProjectsPage onSelectProject={vi.fn()} onUnauthenticated={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole("button", { name: /^shared alpha$/i })).toBeInTheDocument();
+    expectNoSessionTokenStorage();
+  });
+
   it("creates a project from a dialog and then shows it in the list", async () => {
     const projects: Array<typeof activeProject> = [];
     const fetchMock = mockFetch((url, init) => {

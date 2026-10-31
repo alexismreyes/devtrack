@@ -2,6 +2,7 @@ import { Router, type RequestHandler } from "express";
 import { asyncHandler } from "../../../infrastructure/http/async-handler";
 import type { TasksController } from "../controller/tasks-controller";
 import { validateCreateTaskBody } from "../validators/create-task";
+import { validateDashboardQuery } from "../validators/dashboard-query";
 import { validateEmptyTaskActionBody } from "../validators/empty-body";
 import { validateListTasksQuery } from "../validators/list-tasks-query";
 import { validateTaskProjectIdParam } from "../validators/project-id";
@@ -13,6 +14,15 @@ export function createTasksRouter(
   requireAuth: RequestHandler,
 ): Router {
   const router = Router();
+
+  router.get(
+    "/api/dashboard",
+    requireAuth,
+    validateDashboardQuery,
+    asyncHandler(async (req, res) => {
+      await controller.getDashboard(req, res);
+    }),
+  );
 
   router.post(
     "/api/projects/:projectId/tasks",

@@ -5,7 +5,7 @@
 - Name: DevTrack
 - Purpose: Project and task management for individuals and small teams
 - Architecture: Modular monolith
-- Stage: Foundation, authentication, projects, tasks, frontend shell, Kanban, and workspace UI (original pass plus polish) Verified
+- Stage: Foundation, authentication, projects, tasks, frontend shell, Kanban, workspace UI, dashboard, and collaboration Verified
 
 ## Stack decisions
 
@@ -38,6 +38,7 @@ Verified for `001-foundation`, `002-authentication`, `005-frontend-shell`, `006-
 - `prompt.md` — product direction
 - `constitution.md` — binding rules
 - `AGENTS.md` — agent instructions
+- `implemented-features.md` — human catalog of Verified features and approach; update only after the user confirms a proposed patch
 - `memory.md` — this file
 - `.cursor/agents/` — isolated planner, implementer, reviewer (fresh subagent per stage; paths not file dumps)
 - `.cursor/skills/sdd-workflow/SKILL.md` — SDD workflow
@@ -46,32 +47,52 @@ Verified for `001-foundation`, `002-authentication`, `005-frontend-shell`, `006-
 
 ## Domains
 
-Implemented: `system`, `auth`, `users`, `projects`, `tasks`. No new domain in `005-frontend-shell`, `006-kanban`, or `007-workspace-ui`.
+Implemented: `system`, `auth`, `users`, `projects`, `tasks`, `project-members`. No new domain in `005-frontend-shell`, `006-kanban`, `007-workspace-ui`, or `008-dashboard` (dashboard aggregations live in a `tasks` use-case). `009-collaboration` added `project-members`.
 
-Proposed, not specified: `project-members`; app-wide CRUD audit (later feature ID, **not** `005`, **not** `006`, and **not** `007`; do not write `specs/005-audit/`)
+Later candidates in `proposed-features.md`. App-wide CRUD audit (later feature ID, **not** `005`, **not** `006`, and **not** `007`; do not write `specs/005-audit/`).
 
 ## Proposed backlog
 
 Foundation (Verified) → authentication (Verified) → projects (Verified) → tasks (Verified) → frontend-shell (Verified) → Kanban (Verified) → workspace-ui (Verified, including polish) → dashboard → collaboration → audit (later ID, not `005`).
 
-Later items are proposed, not specified. Dashboard, collaboration, and audit remain unimplemented. Do not write `specs/005-audit/`. This polish stayed in `007-workspace-ui`; `specs/008-*` was not created for it.
+Dashboard (`008-dashboard`) and collaboration (`009-collaboration`) are Verified. Extra Trello/Jira/email/AI ideas live in `proposed-features.md` for later choice; do not implement from that file. Do not write `specs/005-audit/`.
 
 ## Verified status
 
-`001-foundation` Verified. `002-authentication` Verified. `003-projects` Verified. `004-tasks` Verified. `005-frontend-shell` Verified. `006-kanban` Verified. `007-workspace-ui` Verified (original T001–T013 and polish T014–T026). T001–T013 complete for 005. T001–T011 complete for 006. T001–T013 complete for original 007. T014–T026 complete for 007 polish. Reviewer for 005: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 006: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for original 007: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 007 polish (T025): PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Informational: live contrast not audited in review; AC-018 not re-executed by reviewer. Low: some project-cover slots retint with the theme tokens (still name-derived, no stored coverColor).
+`001-foundation` Verified. `002-authentication` Verified. `003-projects` Verified. `004-tasks` Verified. `005-frontend-shell` Verified. `006-kanban` Verified. `007-workspace-ui` Verified (original T001–T013 and polish T014–T026). `008-dashboard` Verified (T001–T014). `009-collaboration` Verified (T001–T017). Reviewer for 008: PASS. Blocking: no. Failed ACs: none. Reviewer for 009: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. T001–T013 complete for 005. T001–T011 complete for 006. T001–T013 complete for original 007. T014–T026 complete for 007 polish. Reviewer for 005: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 006: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for original 007: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 007 polish (T025): PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Informational: live contrast not audited in review; AC-018 not re-executed by reviewer. Low: some project-cover slots retint with the theme tokens (still name-derived, no stored coverColor).
 
 Present in the repo:
 
 - `frontend/`, `backend/`, `docker-compose.yml`
 - `system` probe slice; `auth` sessions; `users` identity/profile; owner-only `projects` with archive/unarchive; project-scoped `tasks` with soft-delete
-- React Router destinations: `/register`, `/login`, `/projects`, `/projects/:projectId`, `/profile`; guest root → register; authenticated root → projects; unknown paths (including `/system/probes`) → not-found
-- Authenticated chrome: top app bar (DevTrack → `/projects`, Color palette selector, profile, logout) and compact left sidebar of listed project names plus a create `+` Dialog; `/projects` main is a constrained card grid of listed (non-archived) projects with name-derived color-initials covers (empty/select-or-create main superseded); project detail has compact header (name, short description, Back to projects next to Edit/Archive) and remaining-height compact `TODO` / `IN_PROGRESS` / `DONE` columns; create-task and task-detail are Dialogs (board stays mounted); compact filters sit above the board; profile keeps the compact sidebar; guest login/register have no product sidebar and inherit stored-or-Forest palette
+- React Router destinations: `/register`, `/login`, `/projects`, `/projects/:projectId`, `/profile`, `/dashboard`; guest root → register; authenticated root → projects (not dashboard); unknown paths (including `/system/probes`) → not-found
+- Additive `GET /api/dashboard` (session, **owner-scoped**, not membership) returns owner-wide `projectCount`, `taskCount`, `pendingCount`, `completedCount`, `overdueCount` plus per-project `id`/`name` and the same task counts. Pending = `TODO`+`IN_PROGRESS`; completed = `DONE`; overdue = non-`DONE` with `dueDate` strictly before UTC today; null/`DONE`/due-today never overdue; overlap pending∩overdue allowed. Active owned projects only; exclude archived and `deletedAt`. Aggregations in `tasks` use-case over `ProjectAccessPort`; no `dashboard` domain or Prisma dashboard model.
+- Collaboration: domain `project-members`; roles `OWNER`/`EDITOR`/`VIEWER`; Prisma `ProjectMember`; `GET`/`POST /api/projects/:projectId/members`; `PATCH`/`DELETE .../members/:userId`; add by existing email `{ email, role }` with no mail. `GET /api/projects` lists active projects the actor is authorized to see. `ownerUserId` still grants OWNER. Create-project inserts OWNER membership atomically. Members Dialog on the board header. EDITOR: edit project + task writes, no archive/members admin. VIEWER: read/list only. Archived GET remains `ownerUserId` only.
+- Authenticated chrome: top app bar (DevTrack → `/projects`, Color palette selector, Dashboard → `/dashboard`, profile, logout) and compact left sidebar of listed project names plus a create `+` Dialog; `/projects` main is a constrained card grid of listed (non-archived) projects with name-derived color-initials covers (empty/select-or-create main superseded); project detail has compact header (name, short description, Back to projects next to Edit/Archive) and remaining-height compact `TODO` / `IN_PROGRESS` / `DONE` columns; create-task and task-detail are Dialogs (board stays mounted); compact filters sit above the board; profile keeps the compact sidebar; guest login/register have no product sidebar and inherit stored-or-Forest palette
 - Original FR-006 / Q-037 “remove Back to projects” is **superseded**: Back to projects is restored on the board header action row; DevTrack still links to `/projects`
 - Whole-UI palettes from the Q-041 catalog (solids Forest default, Ocean, Sunset, Violet, Midnight; gradients Aurora, Ember, Lagoon, Twilight, Citrus, Magma, Glacier) applied on the document root; persisted only as catalog id in localStorage `devtrack.uiPalette`; guests use stored-or-Forest; logout does not clear the key
 - `@dnd-kit/core` is present with `DragOverlay`; task cards use a pointer cursor; `@dnd-kit/sortable` is absent; no second DnD library; no task `position`/`rank`; no move endpoint; status moves reuse `PATCH /api/tasks/:id` `{ status }` with `credentials: 'include'`
 - `ProbePage` and probe chrome removed from the React app; backend `system` probe HTTP, Prisma `SystemProbe`, `GET /health`, `GET /ready`, and backend probe tests unchanged
 - Copied shadcn primitives only: `button`, `input`, `label`, `card`, `textarea`, `dialog`; peers `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `@radix-ui/react-slot`, `@radix-ui/react-label`, `@radix-ui/react-dialog`
-- No `coverColor`, image storage, rank, dashboard aggregates, members, audit, or User palette field. `specs/005-audit/` is absent. `specs/008-*` was not created. Authenticated shell uses `h-svh overflow-hidden` so Kanban columns scroll inside remaining height.
+- No `coverColor`, image storage, rank, audit, or User palette field. Dashboard counts are derived, not stored. Membership is persisted. `specs/005-audit/` is absent. Authenticated shell uses `h-svh overflow-hidden` so Kanban columns scroll inside remaining height.
+
+Coordinator independently re-ran in Compose for `009-collaboration` after T013 (Node v22.23.4 in containers):
+
+- `backend` `npm run typecheck` exit 0
+- `backend` `npm test` 26 files / 228 tests passed
+- `frontend` `npm run typecheck` exit 0
+- `frontend` `npm test` 19 files / 169 tests passed
+
+Coordinator live browser pass on Compose (frontend rebuilt, backend restarted; no DB reset): owner board header **Members** Dialog; add existing `editor.009@example.com` as EDITOR; editor `/projects` shows the shared board; EDITOR chrome has Edit and Add task, not Archive or Members; editor `/dashboard` stays zeros (owner-only).
+
+Coordinator independently re-ran in Compose for `008-dashboard` after T010 (Node v22.23.4 in containers):
+
+- `backend` `npm run typecheck` exit 0
+- `backend` `npm test` 21 files / 177 tests passed
+- `frontend` `npm run typecheck` exit 0
+- `frontend` `npm test` 17 files / 141 tests passed
+
+Coordinator live browser pass on Compose (frontend rebuilt, backend restarted so `GET /api/dashboard` loaded; no DB reset): register → `/projects`; Dashboard nav → `/dashboard` empty zeros; create project → totals Projects 1; create TODO task; PATCH `dueDate` `2020-01-01` → pending 1 and overdue 1; DevTrack brand still `/projects` card grid; guest `/dashboard` → `/login`. Chrome MCP create-task date fill did not persist (dueDate stayed null until PATCH).
 
 Coordinator independently re-ran on Node.js 22.13.0 for `007-workspace-ui` polish after T025:
 
@@ -118,6 +139,8 @@ Prior coordinator re-run on Node.js 22.22.3 for `004-tasks`:
 - `005-frontend-shell` added no migrations and did not change Prisma schema.
 - `006-kanban` added no migrations and did not change Prisma schema. No `position`/`rank` field.
 - `007-workspace-ui` added no migrations and did not change Prisma schema. No `coverColor` field. No `position`/`rank` field. No User palette/theme field. Polish used localStorage `devtrack.uiPalette` only.
+- `008-dashboard` added no migrations and did not change Prisma schema. No dashboard table or field.
+- `009-collaboration`: `backend/prisma/migrations/20261031120000_project_members/` (`ProjectMember`, unique `(projectId, userId)`, FKs Restrict). Applied with `prisma migrate deploy`. No reset or volume delete. `Project.ownerUserId` kept.
 
 ## Known issues
 
@@ -133,7 +156,8 @@ Prior coordinator re-run on Node.js 22.22.3 for `004-tasks`:
 - Some project-cover slots retint with whole-UI theme tokens (007 polish T025, low/non-blocking). Covers remain name-derived; no stored `coverColor`.
 - Dedicated Kanban drop tests cover 403 and archived 409 only; 400/401/404/network share the same revert path (006 independent review, non-blocking; not a failed AC)
 - Authenticated users share a global probe list (no ownership, per Q-014); probe HTTP remains, product UI does not
-- Projects are owner-only; membership is later collaboration work
+- Projects are membership-authorized (`OWNER`/`EDITOR`/`VIEWER`); dashboard counts still use ownership, not membership
+- Projects created before `009-collaboration` may have no OWNER membership row; `ownerUserId` still grants OWNER. New creates insert an OWNER row.
 - Default project list excludes archived; recover archived only via detail GET (Q-021); no `includeArchived` sidebar filter
 - Tasks are soft-deleted (`deletedAt`); HTTP DELETE does not remove the row; no restore API
 - Archived projects still list/get tasks; create/update/soft-delete return 409
@@ -147,7 +171,7 @@ Prior coordinator re-run on Node.js 22.22.3 for `004-tasks`:
 
 ## Next approved work
 
-No approved implementation task. `007-workspace-ui` (original T001–T013 and polish T014–T026) is Verified. Next proposed product work is dashboard (not specified). Do not start dashboard, collaboration, or audit without approved artifacts. Later audit MUST NOT use ID `005` and MUST NOT be written as `specs/005-audit/`. This polish stayed in `007-workspace-ui`; `specs/008-*` was not created for it.
+No approved implementation task. `008-dashboard` and `009-collaboration` are Verified. Later ideas are only in `proposed-features.md`; do not implement from that file. Later audit MUST NOT use ID `005` and MUST NOT be written as `specs/005-audit/`.
 
 ## Open decisions
 
@@ -186,9 +210,24 @@ Deferred, not blocking:
 - Password complexity beyond non-empty (Q-015)
 - Rate limiting / lockout (Q-017)
 
-Still unresolved for later product work:
+Recorded as Decided and implemented in Verified `008-dashboard`:
 
-- Project membership roles and permissions
+- Q-045: Authenticated destination `/dashboard` in existing `AuthenticatedLayout` with a top-app-bar nav link. Keep authenticated `/` → `/projects`. Do not replace the `/projects` card grid. Do not change guest root → register.
+- Q-046: Overdue iff `dueDate` is a calendar date strictly before UTC today. Due today is on time. `DONE` is never overdue. Null `dueDate` is never overdue.
+- Q-047: Exclude archived owned projects and their tasks from all dashboard summaries and counts. Active owned projects only. Do not add `includeArchived` on `GET /api/projects`.
+- Q-048: Additive backend derived-read `GET /api/dashboard`. Session cookie, owner-scoped. Owner-wide project count, task count, pending, completed, overdue, plus per-project breakdown of the same. No extra lists/charts. Aggregations in a `tasks` use-case over the projects port; no `dashboard` domain or Prisma dashboard model.
+- Q-049: Pending = `TODO` + `IN_PROGRESS`. Completed = `DONE`. A pending task may also count as overdue. `DONE` never overdue.
+- Q-050: Owner-wide totals plus per-project breakdown. No extra lists, due-soon, charts, or activity.
+
+Recorded as Decided and implemented in Verified `009-collaboration`:
+
+- Q-051: Roles `OWNER`, `EDITOR`, `VIEWER`.
+- Q-052: OWNER: all project/task/membership ops. EDITOR: view + PATCH name/description + full task CRUD; no archive/unarchive; no membership admin. VIEWER: project/task read/list only. `ownerUserId` grants OWNER powers even without a membership row.
+- Q-053: Add member by existing user email. POST `{ email, role }`. No mail. Unknown email → 404.
+- Q-054: Insert creator as OWNER membership row. Only OWNER may manage members. Cannot remove `ownerUserId`. Cannot leave the project with no OWNER. No owner transfer.
+- Q-055: `GET`/`POST /api/projects/:projectId/members`; `PATCH`/`DELETE .../members/:userId`. Prisma `ProjectMember` (`id`, `projectId`, `userId`, role enum, `createdAt`, unique `(projectId, userId)`, FKs Restrict). Duplicate → 409.
+- Q-056: Members Dialog on the project board header. No members page. No workspace-ui redesign.
+- Q-057: Non-owner members MUST NOT GET an archived project by id. Only `ownerUserId` may GET archived. Default list still excludes archived.
 
 Do not silently turn an open question into an architectural decision.
 

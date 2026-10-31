@@ -30,6 +30,7 @@ For significant features:
 6. Run relevant checks
 7. Independent review
 8. Update memory
+9. If `implemented-features.md` should change, **ask first** and wait for explicit confirmation before editing it
 
 Use `.cursor/skills/sdd-workflow/SKILL.md`. Never mark planned work as implemented without evidence.
 
@@ -70,4 +71,4 @@ Keep only the compact return in this conversation.
 4. Commands run and actual results
 5. Migrations or configuration
 6. Known issues and unverified behavior
-7. Memory and docs updates
+7. Memory and docs updates (propose `implemented-features.md` changes; do not write them until the user confirms)

@@ -167,6 +167,25 @@ describe("TasksPanel", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("hides add-task and column add controls when the actor cannot write tasks", async () => {
+    mockFetch(() => jsonResponse(200, { tasks: [task] }));
+
+    render(
+      <TasksPanel
+        projectId="proj-1"
+        archived={false}
+        canWriteTasks={false}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /write tests/i })).toBeInTheDocument();
+    expectStatusColumns();
+    expect(screen.queryByRole("button", { name: /^add task$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add task to todo/i })).not.toBeInTheDocument();
+    expect(document.querySelector('[aria-roledescription="draggable"]')).not.toBeNull();
+  });
+
   it("lists tasks for the selected project with credentials included", async () => {
     const fetchMock = mockFetch((url, init) => {
       expect(url).toBe("http://localhost:3000/api/projects/proj-1/tasks");
