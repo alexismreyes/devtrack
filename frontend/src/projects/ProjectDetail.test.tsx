@@ -1,6 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectNoSessionTokenStorage } from "../test/storage";
 import { ProjectDetail } from "./ProjectDetail";
 
 const activeProject = {
@@ -35,6 +38,23 @@ function mockFetch(
   return fetchMock;
 }
 
+function renderDetail(
+  ui: ReactElement = (
+    <ProjectDetail projectId="proj-1" onUnauthenticated={vi.fn()} />
+  ),
+): ReturnType<typeof render> {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
+function expectBackNextToEditAndArchive(archiveName: RegExp = /archive project/i): void {
+  const back = screen.getByRole("link", { name: /back to projects/i });
+  const edit = screen.getByRole("button", { name: /edit project/i });
+  const archive = screen.getByRole("button", { name: archiveName });
+  expect(back).toHaveAttribute("href", "/projects");
+  expect(back.parentElement).toContainElement(edit);
+  expect(back.parentElement).toContainElement(archive);
+}
+
 afterEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
@@ -43,7 +63,7 @@ afterEach(() => {
 });
 
 describe("ProjectDetail", () => {
-  it("shows loading then the owned project", async () => {
+  it("shows a compact header with Back to projects next to Edit/Archive, without an always-visible update form", async () => {
     let resolveGet: ((value: Response) => void) | undefined;
     const getPromise = new Promise<Response>((resolve) => {
       resolveGet = resolve;
@@ -58,27 +78,30 @@ describe("ProjectDetail", () => {
       return getPromise;
     });
 
-    render(
-      <ProjectDetail
-        projectId="proj-1"
-        onBack={vi.fn()}
-        onUnauthenticated={vi.fn()}
-      />,
-    );
+    renderDetail();
 
     expect(screen.getByRole("status")).toHaveTextContent(/loading project/i);
     resolveGet?.(jsonResponse(200, activeProject));
 
     expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
+    expect(screen.getByText(/first project/i)).toBeInTheDocument();
     expect(screen.getByText(/this project is active/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^description$/i)).toHaveValue("First project");
-    expect(screen.getByRole("button", { name: /archive project/i })).toBeInTheDocument();
+    expectBackNextToEditAndArchive();
     expect(screen.queryByRole("button", { name: /unarchive project/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^description$/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save project/i })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /^tasks$/i })).toBeInTheDocument();
     expect(await screen.findByText(/no tasks yet/i)).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "TODO" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "IN_PROGRESS" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "DONE" })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /^tasks$/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/pending/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/overdue/i)).not.toBeInTheDocument();
   });
 
-  it("updates name and description with credentials included", async () => {
+  it("updates name and description from the edit dialog with credentials included", async () => {
     const updated = {
       ...activeProject,
       name: "Beta",
@@ -99,26 +122,23 @@ describe("ProjectDetail", () => {
     });
     const user = userEvent.setup();
 
-    render(
-      <ProjectDetail
-        projectId="proj-1"
-        onBack={vi.fn()}
-        onUnauthenticated={vi.fn()}
-      />,
-    );
+    renderDetail();
 
-    const name = await screen.findByLabelText(/^name$/i);
+    await user.click(await screen.findByRole("button", { name: /edit project/i }));
+    const dialog = await screen.findByRole("dialog");
+    const name = within(dialog).getByLabelText(/^name$/i);
     await user.clear(name);
     await user.type(name, "Beta");
-    const description = screen.getByLabelText(/^description$/i);
+    const description = within(dialog).getByLabelText(/^description$/i);
     await user.clear(description);
     await user.type(description, "Updated");
-    await user.click(screen.getByRole("button", { name: /save project/i }));
+    await user.click(within(dialog).getByRole("button", { name: /save project/i }));
 
     expect(await screen.findByText(/project updated/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^beta$/i })).toBeInTheDocument();
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expect(screen.getByText("Updated")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expectNoSessionTokenStorage();
   });
 
   it("stays on the detail view after archive so the owner can unarchive", async () => {
@@ -140,29 +160,23 @@ describe("ProjectDetail", () => {
       }
       return jsonResponse(200, current);
     });
-    const onBack = vi.fn();
     const user = userEvent.setup();
 
-    render(
-      <ProjectDetail
-        projectId="proj-1"
-        onBack={onBack}
-        onUnauthenticated={vi.fn()}
-      />,
-    );
+    renderDetail();
 
     await user.click(await screen.findByRole("button", { name: /archive project/i }));
     expect(await screen.findByText(/project archived/i)).toBeInTheDocument();
     expect(screen.getByText(/this project is archived/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /unarchive project/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /save project/i })).toBeDisabled();
-    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
+    expectBackNextToEditAndArchive(/unarchive project/i);
+    expect(screen.getByRole("button", { name: /edit project/i })).toBeDisabled();
+    expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(
       false,
     );
   });
 
-  it("unarchives and allows update again", async () => {
+  it("unarchives and allows update again from the edit dialog", async () => {
     let current: typeof activeProject = {
       ...activeProject,
       archivedAt: "2026-10-27T19:00:00.000Z",
@@ -185,25 +199,23 @@ describe("ProjectDetail", () => {
     });
     const user = userEvent.setup();
 
-    render(
-      <ProjectDetail
-        projectId="proj-1"
-        onBack={vi.fn()}
-        onUnauthenticated={vi.fn()}
-      />,
-    );
+    renderDetail();
 
     expect(await screen.findByText(/this project is archived/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /edit project/i })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: /unarchive project/i }));
     expect(await screen.findByText(/project unarchived/i)).toBeInTheDocument();
     expect(screen.getByText(/this project is active/i)).toBeInTheDocument();
 
-    const name = screen.getByLabelText(/^name$/i);
+    await user.click(screen.getByRole("button", { name: /edit project/i }));
+    const dialog = await screen.findByRole("dialog");
+    const name = within(dialog).getByLabelText(/^name$/i);
     expect(name).toBeEnabled();
     await user.clear(name);
     await user.type(name, "Beta");
-    await user.click(screen.getByRole("button", { name: /save project/i }));
+    await user.click(within(dialog).getByRole("button", { name: /save project/i }));
     expect(await screen.findByText(/project updated/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^beta$/i })).toBeInTheDocument();
   });
 
   it("shows a forbidden state when GET returns 403", async () => {
@@ -216,18 +228,13 @@ describe("ProjectDetail", () => {
       }),
     );
 
-    render(
-      <ProjectDetail
-        projectId="proj-1"
-        onBack={vi.fn()}
-        onUnauthenticated={vi.fn()}
-      />,
-    );
+    renderDetail();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /you cannot access this project/i,
     );
-    expect(screen.getByRole("button", { name: /back to projects/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /back to projects/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /edit project/i })).not.toBeInTheDocument();
   });
 
   it("shows an unauthenticated state when GET returns 401", async () => {
@@ -241,12 +248,8 @@ describe("ProjectDetail", () => {
       }),
     );
 
-    render(
-      <ProjectDetail
-        projectId="proj-1"
-        onBack={vi.fn()}
-        onUnauthenticated={onUnauthenticated}
-      />,
+    renderDetail(
+      <ProjectDetail projectId="proj-1" onUnauthenticated={onUnauthenticated} />,
     );
 
     expect(
@@ -273,18 +276,18 @@ describe("ProjectDetail", () => {
     });
     const user = userEvent.setup();
 
-    render(
-      <ProjectDetail
-        projectId="proj-1"
-        onBack={vi.fn()}
-        onUnauthenticated={vi.fn()}
-      />,
-    );
+    renderDetail();
 
-    await user.click(await screen.findByRole("button", { name: /save project/i }));
+    await user.click(await screen.findByRole("button", { name: /edit project/i }));
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: /save project/i,
+      }),
+    );
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /archived projects cannot be updated/i,
     );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("does not store a bearer token or session id", async () => {
@@ -296,17 +299,36 @@ describe("ProjectDetail", () => {
       return jsonResponse(200, activeProject);
     });
 
-    render(
-      <ProjectDetail
-        projectId="proj-1"
-        onBack={vi.fn()}
-        onUnauthenticated={vi.fn()}
-      />,
-    );
+    renderDetail();
 
     expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
     expect(setItem).not.toHaveBeenCalled();
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
+  });
+
+  it("navigates to /projects from Back to projects", async () => {
+    mockFetch((url) => {
+      if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
+        return jsonResponse(200, { tasks: [] });
+      }
+      return jsonResponse(200, activeProject);
+    });
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={["/projects/proj-1"]}>
+        <Routes>
+          <Route path="/projects" element={<p>Projects home destination</p>} />
+          <Route
+            path="/projects/:projectId"
+            element={<ProjectDetail projectId="proj-1" onUnauthenticated={vi.fn()} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole("link", { name: /back to projects/i }));
+    expect(await screen.findByText(/projects home destination/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
   });
 });

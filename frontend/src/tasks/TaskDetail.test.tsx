@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectNoSessionTokenStorage } from "../test/storage";
 import { TaskDetail } from "./TaskDetail";
 
 const task = {
@@ -132,8 +133,7 @@ describe("TaskDetail", () => {
 
     expect(await screen.findByText(/task updated/i)).toBeInTheDocument();
     expect(onUpdated).toHaveBeenCalledOnce();
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
   it("soft-deletes with DELETE and an empty 204 body", async () => {
@@ -289,7 +289,6 @@ describe("TaskDetail", () => {
 
     expect(await screen.findByRole("heading", { name: /write tests/i })).toBeInTheDocument();
     expect(setItem).not.toHaveBeenCalled();
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 });

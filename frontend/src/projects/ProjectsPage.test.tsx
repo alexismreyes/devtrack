@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectNoSessionTokenStorage } from "../test/storage";
 import { ProjectsPage } from "./ProjectsPage";
 
 const activeProject = {
@@ -68,6 +69,9 @@ describe("ProjectsPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/loading projects/i);
     resolveList?.(jsonResponse(200, { projects: [] }));
     expect(await screen.findByText(/no projects yet/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /create project/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^description$/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -88,11 +92,10 @@ describe("ProjectsPage", () => {
     const list = await screen.findByRole("list", { name: /projects/i });
     expect(list).toHaveTextContent("Alpha");
     expect(list).not.toHaveTextContent("Archived Alpha");
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
-  it("creates a project and then shows it in the list", async () => {
+  it("creates a project from a dialog and then shows it in the list", async () => {
     const projects: Array<typeof activeProject> = [];
     const fetchMock = mockFetch((url, init) => {
       expect(url.startsWith("http://localhost:3000/api/projects")).toBe(true);
@@ -106,23 +109,32 @@ describe("ProjectsPage", () => {
       }
       return jsonResponse(200, { projects: [...projects] });
     });
+    const onSelectProject = vi.fn();
     const user = userEvent.setup();
 
     render(
-      <ProjectsPage onSelectProject={vi.fn()} onUnauthenticated={vi.fn()} />,
+      <ProjectsPage
+        onSelectProject={onSelectProject}
+        onUnauthenticated={vi.fn()}
+      />,
     );
 
     expect(await screen.findByText(/no projects yet/i)).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/^name$/i), "Alpha");
-    await user.type(screen.getByLabelText(/^description$/i), "First project");
+    expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /create project/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "Alpha");
+    await user.type(within(dialog).getByLabelText(/^description$/i), "First project");
+    await user.click(within(dialog).getByRole("button", { name: /create project/i }));
 
     expect(await screen.findByText(/project created/i)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^alpha$/i })).toBeInTheDocument();
+    expect(onSelectProject).not.toHaveBeenCalled();
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(
       false,
     );
-    expect(window.localStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
   it("shows an error when create is rejected", async () => {
@@ -145,9 +157,12 @@ describe("ProjectsPage", () => {
 
     expect(await screen.findByText(/no projects yet/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /create project/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /create project/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /invalid request body/i,
     );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("shows an unauthenticated state when listing returns 401", async () => {
@@ -173,7 +188,7 @@ describe("ProjectsPage", () => {
     ).toBeInTheDocument();
     expect(onUnauthenticated).toHaveBeenCalledOnce();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(window.localStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
   it("shows a forbidden state when listing returns 403", async () => {

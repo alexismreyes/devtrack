@@ -51,7 +51,7 @@ export function ProfilePage({
 
   if (state.kind === "unauthenticated") {
     return (
-      <section aria-labelledby="profile-heading">
+      <section aria-labelledby="profile-heading" className="min-h-0 flex-1 overflow-y-auto">
         <Card>
           <CardHeader>
             <h2 id="profile-heading" className="text-xl font-semibold tracking-tight">
@@ -69,7 +69,7 @@ export function ProfilePage({
   }
 
   return (
-    <section aria-labelledby="profile-heading">
+    <section aria-labelledby="profile-heading" className="min-h-0 flex-1 overflow-y-auto">
       <Card>
         <CardHeader>
           <h2 id="profile-heading" className="text-xl font-semibold tracking-tight">

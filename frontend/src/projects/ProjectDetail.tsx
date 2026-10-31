@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   archiveProject,
   getProject,
@@ -10,15 +11,11 @@ import {
 } from "../api/client";
 import type { PublicProjectDto } from "../api/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { TasksPanel } from "../tasks/TasksPanel";
+import { EditProjectDialog } from "./EditProjectDialog";
 
 type ProjectDetailProps = {
   projectId: string;
-  onBack: () => void;
   onUnauthenticated: () => void;
 };
 
@@ -39,24 +36,21 @@ type ActionState =
 
 export function ProjectDetail({
   projectId,
-  onBack,
   onUnauthenticated,
 }: ProjectDetailProps) {
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [actionState, setActionState] = useState<ActionState>({ kind: "idle" });
   const [project, setProject] = useState<PublicProjectDto | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
 
   const applyProject = useCallback((next: PublicProjectDto) => {
     setProject(next);
-    setName(next.name);
-    setDescription(next.description ?? "");
   }, []);
 
   const loadProject = useCallback(async () => {
     setLoadState({ kind: "loading" });
     setActionState({ kind: "idle" });
+    setEditOpen(false);
     try {
       const result = await getProject(projectId);
       applyProject(result);
@@ -93,15 +87,15 @@ export function ProjectDetail({
     return false;
   }
 
-  async function onSave(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  async function onSave(input: {
+    name: string;
+    description: string | null;
+  }): Promise<void> {
     setActionState({ kind: "saving" });
     try {
-      const updated = await updateProject(projectId, {
-        name,
-        description: description.trim() === "" ? null : description,
-      });
+      const updated = await updateProject(projectId, input);
       applyProject(updated);
+      setEditOpen(false);
       setActionState({ kind: "success", message: "Project updated." });
     } catch (err) {
       if (handleAuthzError(err)) {
@@ -116,6 +110,7 @@ export function ProjectDetail({
     try {
       const archived = await archiveProject(projectId);
       applyProject(archived);
+      setEditOpen(false);
       setActionState({ kind: "success", message: "Project archived." });
     } catch (err) {
       if (handleAuthzError(err)) {
@@ -149,15 +144,75 @@ export function ProjectDetail({
     <section
       aria-labelledby="project-detail-heading"
       data-slot="board"
-      className="grid gap-4 rounded-xl bg-board p-4 text-board-foreground"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden rounded-xl bg-board p-4 text-board-foreground"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="project-detail-heading" className="text-xl font-semibold tracking-tight">
-          {project === null ? "Project" : project.name}
-        </h2>
-        <Button type="button" variant="outline" size="sm" onClick={onBack}>
-          Back to projects
-        </Button>
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2
+            id="project-detail-heading"
+            className="text-xl font-semibold tracking-tight"
+          >
+            {project === null ? "Project" : project.name}
+          </h2>
+          {loadState.kind === "success" && project !== null ? (
+            <>
+              {project.description === null ? (
+                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                  No description.
+                </p>
+              ) : (
+                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                  {project.description}
+                </p>
+              )}
+              <p className="mt-1 text-sm text-muted-foreground">
+                {archived ? "This project is archived." : "This project is active."}
+              </p>
+            </>
+          ) : null}
+        </div>
+        {loadState.kind === "success" && project !== null ? (
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/projects">Back to projects</Link>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setActionState({ kind: "idle" });
+                setEditOpen(true);
+              }}
+              disabled={busy || archived}
+            >
+              Edit project
+            </Button>
+            {archived ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void onUnarchive()}
+                disabled={busy}
+              >
+                {actionState.kind === "unarchiving"
+                  ? "Unarchiving…"
+                  : "Unarchive project"}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void onArchive()}
+                disabled={busy}
+              >
+                {actionState.kind === "archiving" ? "Archiving…" : "Archive project"}
+              </Button>
+            )}
+          </div>
+        ) : null}
       </div>
       {loadState.kind === "loading" ? (
         <p className="text-sm text-muted-foreground" role="status">
@@ -181,87 +236,26 @@ export function ProjectDetail({
       ) : null}
       {loadState.kind === "success" && project !== null ? (
         <>
-          <Card>
-            <CardHeader className="space-y-2">
-              <p className="text-sm">
-                {archived ? "This project is archived." : "This project is active."}
-              </p>
-              {project.description === null ? (
-                <p className="text-sm text-muted-foreground">No description.</p>
-              ) : (
-                <p className="text-sm">{project.description}</p>
-              )}
-              <p className="text-sm text-muted-foreground">
-                Created <time dateTime={project.createdAt}>{project.createdAt}</time>
-              </p>
-              {archived ? (
-                <p className="text-sm text-muted-foreground">
-                  Archived{" "}
-                  <time dateTime={project.archivedAt ?? undefined}>
-                    {project.archivedAt}
-                  </time>
-                </p>
-              ) : null}
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              <form onSubmit={(event) => void onSave(event)} className="grid max-w-xl gap-4">
-                <Label className="grid gap-2">
-                  Name
-                  <Input
-                    type="text"
-                    name="name"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    disabled={busy || archived}
-                  />
-                </Label>
-                <Label className="grid gap-2">
-                  Description
-                  <Textarea
-                    name="description"
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    disabled={busy || archived}
-                  />
-                </Label>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="submit" disabled={busy || archived}>
-                    {actionState.kind === "saving" ? "Saving…" : "Save project"}
-                  </Button>
-                  {archived ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void onUnarchive()}
-                      disabled={busy}
-                    >
-                      {actionState.kind === "unarchiving" ? "Unarchiving…" : "Unarchive project"}
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void onArchive()}
-                      disabled={busy}
-                    >
-                      {actionState.kind === "archiving" ? "Archiving…" : "Archive project"}
-                    </Button>
-                  )}
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+          <EditProjectDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            project={project}
+            saving={actionState.kind === "saving"}
+            errorMessage={
+              editOpen && actionState.kind === "error"
+                ? actionState.message
+                : undefined
+            }
+            onSubmit={(input) => {
+              void onSave(input);
+            }}
+          />
           <TasksPanel
             projectId={projectId}
             archived={archived}
             onUnauthenticated={onUnauthenticated}
           />
         </>
-      ) : null}
-      {actionState.kind === "saving" ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          Saving project…
-        </p>
       ) : null}
       {actionState.kind === "archiving" ? (
         <p className="text-sm text-muted-foreground" role="status">
@@ -278,7 +272,7 @@ export function ProjectDetail({
           {actionState.message}
         </p>
       ) : null}
-      {actionState.kind === "error" ? (
+      {actionState.kind === "error" && !editOpen ? (
         <p className="text-sm text-destructive" role="alert">
           {actionState.message}
         </p>

@@ -1,10 +1,9 @@
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import { ProjectDetail } from "../projects/ProjectDetail";
 import { useSession } from "../session/SessionContext";
 
 export function ProjectDetailPage() {
   const { projectId } = useParams();
-  const navigate = useNavigate();
   const { onLoggedOut } = useSession();
 
   if (projectId === undefined || projectId.trim() === "") {
@@ -12,12 +11,6 @@ export function ProjectDetailPage() {
   }
 
   return (
-    <ProjectDetail
-      projectId={projectId}
-      onBack={() => {
-        void navigate("/projects");
-      }}
-      onUnauthenticated={onLoggedOut}
-    />
+    <ProjectDetail projectId={projectId} onUnauthenticated={onLoggedOut} />
   );
 }

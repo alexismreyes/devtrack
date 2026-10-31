@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 import {
   createTask,
   isConflict,
@@ -6,6 +7,7 @@ import {
   isUnauthenticated,
   listTasks,
   toUserMessage,
+  updateTask,
 } from "../api/client";
 import type {
   ListTasksQueryDto,
@@ -14,11 +16,17 @@ import type {
   TaskStatus,
 } from "../api/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { cn, nativeSelectClassName } from "@/lib/utils";
+import { CreateTaskDialog, type CreateTaskPayload } from "./CreateTaskDialog";
+import { KanbanBoard } from "./KanbanBoard";
 import { TaskDetail } from "./TaskDetail";
 
 type TasksPanelProps = {
@@ -42,6 +50,12 @@ type CreateState =
   | { kind: "error"; message: string }
   | { kind: "conflict"; message: string };
 
+type MoveState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "error"; message: string }
+  | { kind: "conflict"; message: string };
+
 const STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 
@@ -52,14 +66,14 @@ export function TasksPanel({
 }: TasksPanelProps) {
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
   const [createState, setCreateState] = useState<CreateState>({ kind: "ready" });
+  const [moveState, setMoveState] = useState<MoveState>({ kind: "idle" });
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "">("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [status, setStatus] = useState<TaskStatus | "">("");
-  const [priority, setPriority] = useState<TaskPriority | "">("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createPresetStatus, setCreatePresetStatus] = useState<TaskStatus | null>(
+    null,
+  );
 
   const loadTasks = useCallback(async (): Promise<boolean> => {
     setListState({ kind: "loading" });
@@ -99,44 +113,37 @@ export function TasksPanel({
 
   useEffect(() => {
     setSelectedTaskId(null);
+    setCreateOpen(false);
+    setCreatePresetStatus(null);
     setCreateState({ kind: "ready" });
   }, [projectId]);
 
-  async function onCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  function openCreate(presetStatus: TaskStatus | null): void {
+    setSelectedTaskId(null);
+    setCreatePresetStatus(presetStatus);
+    setCreateState({ kind: "ready" });
+    setCreateOpen(true);
+  }
+
+  function closeCreate(): void {
+    setCreateOpen(false);
+    setCreatePresetStatus(null);
+  }
+
+  async function onCreate(payload: CreateTaskPayload): Promise<void> {
     setCreateState({ kind: "saving" });
-    const payload: {
-      title: string;
-      description: string | null;
-      dueDate: string | null;
-      status?: TaskStatus;
-      priority?: TaskPriority;
-    } = {
-      title,
-      description: description.trim() === "" ? null : description,
-      dueDate: dueDate.trim() === "" ? null : dueDate,
-    };
-    if (status !== "") {
-      payload.status = status;
-    }
-    if (priority !== "") {
-      payload.priority = priority;
-    }
     try {
       await createTask(projectId, payload);
-      setTitle("");
-      setDescription("");
-      setDueDate("");
-      setStatus("");
-      setPriority("");
       const loaded = await loadTasks();
       if (loaded) {
+        closeCreate();
         setCreateState({ kind: "success", message: "Task created." });
       }
     } catch (err) {
       if (isUnauthenticated(err)) {
         setListState({ kind: "unauthenticated", message: toUserMessage(err) });
         setCreateState({ kind: "ready" });
+        closeCreate();
         onUnauthenticated();
         return;
       }
@@ -152,231 +159,226 @@ export function TasksPanel({
     }
   }
 
+  async function onMoveTask(taskId: string, status: TaskStatus): Promise<void> {
+    if (archived) {
+      setMoveState({
+        kind: "conflict",
+        message: "Cannot modify tasks on an archived project",
+      });
+      return;
+    }
+    setMoveState({ kind: "saving" });
+    try {
+      await updateTask(taskId, { status });
+      const loaded = await loadTasks();
+      if (loaded) {
+        setMoveState({ kind: "idle" });
+      }
+    } catch (err) {
+      if (isUnauthenticated(err)) {
+        setListState({ kind: "unauthenticated", message: toUserMessage(err) });
+        setMoveState({ kind: "idle" });
+        onUnauthenticated();
+        return;
+      }
+      if (isForbidden(err)) {
+        setMoveState({ kind: "error", message: toUserMessage(err) });
+        return;
+      }
+      if (isConflict(err)) {
+        setMoveState({ kind: "conflict", message: toUserMessage(err) });
+        return;
+      }
+      setMoveState({ kind: "error", message: toUserMessage(err) });
+    }
+  }
+
   const creating = createState.kind === "saving";
+  const moving = moveState.kind === "saving";
   const listBlocked =
     listState.kind === "unauthenticated" || listState.kind === "forbidden";
-  const writesDisabled = creating || archived;
+  const writesDisabled = creating || archived || moving;
   const filtered = statusFilter !== "" || priorityFilter !== "";
+  const listedTasks =
+    listState.kind === "success"
+      ? listState.tasks
+      : listState.kind === "empty"
+        ? []
+        : null;
+  const createErrorMessage =
+    createState.kind === "error" || createState.kind === "conflict"
+      ? createState.message
+      : undefined;
 
   return (
-    <section aria-labelledby="tasks-heading" className="grid gap-4">
-      <h3 id="tasks-heading" className="text-lg font-semibold tracking-tight">
-        Tasks
-      </h3>
+    <section
+      aria-labelledby="tasks-heading"
+      className="flex min-h-0 flex-1 flex-col gap-3"
+    >
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <h3 id="tasks-heading" className="text-lg font-semibold tracking-tight">
+          Tasks
+        </h3>
+        {listBlocked ? null : (
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            aria-label="Add task"
+            onClick={() => openCreate(null)}
+            disabled={writesDisabled}
+          >
+            <Plus aria-hidden="true" />
+          </Button>
+        )}
+      </div>
       {archived ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="shrink-0 text-sm text-muted-foreground">
           Task writes are unavailable while the parent project is archived.
         </p>
       ) : null}
       {listBlocked ? null : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Label className="grid gap-2">
-              Filter by status
-              <select
-                name="task-status-filter"
-                className={cn(nativeSelectClassName)}
-                value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as TaskStatus | "")
-                }
-              >
-                <option value="">All</option>
-                {STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </Label>
-            <Label className="grid gap-2">
-              Filter by priority
-              <select
-                name="task-priority-filter"
-                className={cn(nativeSelectClassName)}
-                value={priorityFilter}
-                onChange={(event) =>
-                  setPriorityFilter(event.target.value as TaskPriority | "")
-                }
-              >
-                <option value="">All</option>
-                {PRIORITIES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </Label>
-          </div>
-          {selectedTaskId === null ? (
-            <Card>
-              <CardHeader className="p-4 pb-2">
-                <h4 id="create-task-heading" className="text-sm font-semibold">
-                  Create task
-                </h4>
-              </CardHeader>
-              <CardContent className="p-4 pt-0">
-                <form
-                  onSubmit={(event) => void onCreate(event)}
-                  aria-labelledby="create-task-heading"
-                  className="grid gap-3"
-                >
-                  <Label className="grid gap-2">
-                    New task title
-                    <Input
-                      type="text"
-                      name="new-task-title"
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      disabled={writesDisabled}
-                    />
-                  </Label>
-                  <Label className="grid gap-2">
-                    New task description
-                    <Textarea
-                      name="new-task-description"
-                      value={description}
-                      onChange={(event) => setDescription(event.target.value)}
-                      disabled={writesDisabled}
-                    />
-                  </Label>
-                  <Label className="grid gap-2">
-                    New task due date
-                    <Input
-                      type="date"
-                      name="new-task-due-date"
-                      value={dueDate}
-                      onChange={(event) => setDueDate(event.target.value)}
-                      disabled={writesDisabled}
-                    />
-                  </Label>
-                  <Label className="grid gap-2">
-                    New task status
-                    <select
-                      name="new-task-status"
-                      className={cn(nativeSelectClassName)}
-                      value={status}
-                      onChange={(event) =>
-                        setStatus(event.target.value as TaskStatus | "")
-                      }
-                      disabled={writesDisabled}
-                    >
-                      <option value="">Default (TODO)</option>
-                      {STATUSES.map((value) => (
-                        <option key={value} value={value}>
-                          {value}
-                        </option>
-                      ))}
-                    </select>
-                  </Label>
-                  <Label className="grid gap-2">
-                    New task priority
-                    <select
-                      name="new-task-priority"
-                      className={cn(nativeSelectClassName)}
-                      value={priority}
-                      onChange={(event) =>
-                        setPriority(event.target.value as TaskPriority | "")
-                      }
-                      disabled={writesDisabled}
-                    >
-                      <option value="">Default (MEDIUM)</option>
-                      {PRIORITIES.map((value) => (
-                        <option key={value} value={value}>
-                          {value}
-                        </option>
-                      ))}
-                    </select>
-                  </Label>
-                  <Button type="submit" disabled={writesDisabled}>
-                    {creating ? "Creating…" : "Create task"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          ) : null}
-        </>
+        <div className="flex shrink-0 flex-wrap items-end gap-3">
+          <Label className="grid gap-1">
+            Filter by status
+            <select
+              name="task-status-filter"
+              className={cn(nativeSelectClassName, "h-8 w-40")}
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as TaskStatus | "")
+              }
+            >
+              <option value="">All</option>
+              {STATUSES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </Label>
+          <Label className="grid gap-1">
+            Filter by priority
+            <select
+              name="task-priority-filter"
+              className={cn(nativeSelectClassName, "h-8 w-40")}
+              value={priorityFilter}
+              onChange={(event) =>
+                setPriorityFilter(event.target.value as TaskPriority | "")
+              }
+            >
+              <option value="">All</option>
+              {PRIORITIES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </Label>
+        </div>
       )}
-      {creating ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          Creating task…
-        </p>
-      ) : null}
+      <CreateTaskDialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setCreateOpen(true);
+            return;
+          }
+          closeCreate();
+        }}
+        omitStatus={createPresetStatus === null}
+        initialStatus={createPresetStatus ?? undefined}
+        creating={creating}
+        errorMessage={createErrorMessage}
+        onSubmit={(payload) => {
+          void onCreate(payload);
+        }}
+      />
       {createState.kind === "success" ? (
-        <p className="text-sm text-muted-foreground" role="status">
+        <p className="shrink-0 text-sm text-muted-foreground" role="status">
           {createState.message}
         </p>
       ) : null}
-      {createState.kind === "conflict" ? (
-        <p className="text-sm text-destructive" role="alert">
-          {createState.message}
+      {moveState.kind === "conflict" ? (
+        <p className="shrink-0 text-sm text-destructive" role="alert">
+          {moveState.message}
         </p>
       ) : null}
-      {createState.kind === "error" ? (
-        <p className="text-sm text-destructive" role="alert">
-          {createState.message}
+      {moveState.kind === "error" ? (
+        <p className="shrink-0 text-sm text-destructive" role="alert">
+          {moveState.message}
         </p>
       ) : null}
       {listState.kind === "loading" ? (
-        <p className="text-sm text-muted-foreground" role="status">
+        <p className="shrink-0 text-sm text-muted-foreground" role="status">
           Loading tasks…
         </p>
       ) : null}
       {listState.kind === "empty" ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="shrink-0 text-sm text-muted-foreground">
           {filtered ? "No matching tasks." : "No tasks yet."}
         </p>
       ) : null}
-      {listState.kind === "success" ? (
-        <ul aria-label="Tasks" className="grid gap-2">
-          {listState.tasks.map((task) => (
-            <li key={task.id}>
-              <Card>
-                <CardContent className="p-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-auto w-full justify-start px-2 py-1 text-left"
-                    onClick={() => setSelectedTaskId(task.id)}
-                  >
-                    {task.title}
-                  </Button>
-                </CardContent>
-              </Card>
-            </li>
-          ))}
-        </ul>
+      {listedTasks !== null ? (
+        <KanbanBoard
+          tasks={listedTasks}
+          onSelectTask={(taskId) => {
+            closeCreate();
+            setSelectedTaskId(taskId);
+          }}
+          onMoveTask={onMoveTask}
+          onAddTask={openCreate}
+          disabled={writesDisabled}
+        />
       ) : null}
       {listState.kind === "unauthenticated" ? (
-        <p className="text-sm text-muted-foreground" role="status">
+        <p className="shrink-0 text-sm text-muted-foreground" role="status">
           {listState.message}
         </p>
       ) : null}
       {listState.kind === "forbidden" ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="shrink-0 text-sm text-destructive" role="alert">
           {listState.message}
         </p>
       ) : null}
       {listState.kind === "error" ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="shrink-0 text-sm text-destructive" role="alert">
           {listState.message}
         </p>
       ) : null}
-      {selectedTaskId !== null && !listBlocked ? (
-        <TaskDetail
-          taskId={selectedTaskId}
-          archived={archived}
-          onClose={() => setSelectedTaskId(null)}
-          onUpdated={() => {
-            void loadTasks();
-          }}
-          onDeleted={() => {
+      <Dialog
+        open={selectedTaskId !== null && !listBlocked}
+        onOpenChange={(open) => {
+          if (!open) {
             setSelectedTaskId(null);
-            void loadTasks();
-          }}
-          onUnauthenticated={onUnauthenticated}
-        />
-      ) : null}
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="sr-only">Task detail</DialogTitle>
+            <DialogDescription className="sr-only">
+              View or update the selected task. The board stays behind this
+              dialog.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTaskId !== null && !listBlocked ? (
+            <TaskDetail
+              taskId={selectedTaskId}
+              archived={archived}
+              onClose={() => setSelectedTaskId(null)}
+              onUpdated={() => {
+                void loadTasks();
+              }}
+              onDeleted={() => {
+                setSelectedTaskId(null);
+                void loadTasks();
+              }}
+              onUnauthenticated={onUnauthenticated}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, RouterProvider, createMemoryRouter } from "react-router-dom";
 import { App } from "./App";
+import { expectNoSessionTokenStorage } from "./test/storage";
+import { UI_PALETTE_IDS, UI_PALETTE_STORAGE_KEY } from "./theme/uiPalettes";
 
 const publicUser = {
   id: "user-1",
@@ -72,6 +74,39 @@ function expectProductSidebar(): HTMLElement {
   return screen.getByRole("complementary", { name: /projects/i });
 }
 
+function expectProjectsHomeMain(): void {
+  expect(screen.getByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: /select a project/i })).not.toBeInTheDocument();
+  expect(screen.queryByText(/choose a project from the sidebar/i)).not.toBeInTheDocument();
+}
+
+function expectCappedAuthenticatedShell(): void {
+  const banner = screen.getByRole("banner");
+  const shell = banner.parentElement;
+  expect(shell).toHaveClass("h-svh", "overflow-hidden");
+  expect(shell).not.toHaveClass("min-h-screen");
+  expect(screen.getByRole("main")).toHaveClass("min-h-0", "flex-1", "overflow-hidden");
+  expect(expectProductSidebar()).toHaveClass("overflow-y-auto");
+}
+
+function expectNoProjectsHomeMain(): void {
+  expect(screen.queryByRole("heading", { name: /your projects/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: /select a project/i })).not.toBeInTheDocument();
+}
+
+function expectBackNextToEditAndArchive(archiveName: RegExp = /archive project/i): void {
+  const back = screen.getByRole("link", { name: /back to projects/i });
+  const edit = screen.getByRole("button", { name: /edit project/i });
+  const archive = screen.getByRole("button", { name: archiveName });
+  expect(back).toHaveAttribute("href", "/projects");
+  expect(back.parentElement).toContainElement(edit);
+  expect(back.parentElement).toContainElement(archive);
+  expect(screen.getByRole("link", { name: /^devtrack$/i })).toHaveAttribute(
+    "href",
+    "/projects",
+  );
+}
+
 function renderApp(path = "/"): ReturnType<typeof render> {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -125,10 +160,13 @@ describe("App frontend shell", () => {
     expect(await screen.findByRole("heading", { name: /^register$/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^log in$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /log out/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /color palette/i })).not.toBeInTheDocument();
+    expect(document.documentElement.dataset.palette).toBe("Forest");
     expectNoProductSidebar();
     expectNoProbeUi();
     expectAllCredentialsIncluded(fetchMock);
-    expect(window.localStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
   it("uses login and register as distinct destinations", async () => {
@@ -146,6 +184,7 @@ describe("App frontend shell", () => {
     await user.click(screen.getByRole("link", { name: /^log in$/i }));
     expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^register$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
     expectNoProductSidebar();
     expectNoProbeUi();
     await user.click(screen.getByRole("link", { name: /^register$/i }));
@@ -163,8 +202,9 @@ describe("App frontend shell", () => {
     const projects = renderApp("/projects");
 
     expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /select a project/i })).not.toBeInTheDocument();
+    expectNoProjectsHomeMain();
     expect(screen.queryByRole("heading", { name: /your profile/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
     expectNoProductSidebar();
     expectNoProbeUi();
     projects.unmount();
@@ -214,8 +254,9 @@ describe("App frontend shell", () => {
 
     expect(await screen.findByText(/signed in as ada@example.com/i)).toBeInTheDocument();
     expect(expectProductSidebar()).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /select a project/i })).toBeInTheDocument();
-    expect(screen.getByText(/choose a project from the sidebar/i)).toBeInTheDocument();
+    expectProjectsHomeMain();
+    expect(screen.getByRole("button", { name: /create project/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /your profile/i })).not.toBeInTheDocument();
     expectNoProbeUi();
 
@@ -225,8 +266,7 @@ describe("App frontend shell", () => {
     expectNoProductSidebar();
     expectNoProbeUi();
     expectAllCredentialsIncluded(fetchMock);
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
   it("logs in and lands on projects without storing a bearer token", async () => {
@@ -256,11 +296,10 @@ describe("App frontend shell", () => {
 
     expect(await screen.findByText(/signed in as ada@example.com/i)).toBeInTheDocument();
     expect(expectProductSidebar()).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /select a project/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
     expectNoProbeUi();
     expectAllCredentialsIncluded(fetchMock);
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
   it("restores an existing session onto the requested destination", async () => {
@@ -279,7 +318,7 @@ describe("App frontend shell", () => {
     expect(await screen.findByRole("heading", { name: /your profile/i })).toBeInTheDocument();
     expect(expectProductSidebar()).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^register$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /select a project/i })).not.toBeInTheDocument();
+    expectNoProjectsHomeMain();
     expectNoProbeUi();
   });
 
@@ -318,7 +357,8 @@ describe("App frontend shell", () => {
 
     renderApp("/login");
 
-    expect(await screen.findByRole("heading", { name: /select a project/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
     expect(expectProductSidebar()).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^log in$/i })).not.toBeInTheDocument();
   });
@@ -344,27 +384,35 @@ describe("App frontend shell", () => {
 
     renderApp("/projects");
 
-    expect(await screen.findByRole("heading", { name: /select a project/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
     expect(expectProductSidebar()).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^alpha$/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /your profile/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
 
     await user.click(await screen.findByRole("button", { name: /^alpha$/i }));
     expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /^tasks$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "TODO" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "IN_PROGRESS" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "DONE" })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /^tasks$/i })).not.toBeInTheDocument();
     expect(expectProductSidebar()).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^alpha$/i })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    expect(screen.queryByRole("heading", { name: /select a project/i })).not.toBeInTheDocument();
+    expectNoProjectsHomeMain();
     expect(screen.queryByRole("heading", { name: /your profile/i })).not.toBeInTheDocument();
     expectNoProbeUi();
 
     await user.click(screen.getByRole("link", { name: /^profile$/i }));
     expect(await screen.findByRole("heading", { name: /your profile/i })).toBeInTheDocument();
     expect(expectProductSidebar()).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /select a project/i })).not.toBeInTheDocument();
+    expectNoProjectsHomeMain();
   });
 
   it("opens a project detail URL directly and restores it from history", async () => {
@@ -390,13 +438,20 @@ describe("App frontend shell", () => {
     expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /^tasks$/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /back to projects/i }));
-    expect(await screen.findByRole("heading", { name: /select a project/i })).toBeInTheDocument();
+    expectBackNextToEditAndArchive();
+    await user.click(screen.getByRole("link", { name: /^devtrack$/i }));
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
 
     await router.navigate(-1);
     expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /select a project/i })).not.toBeInTheDocument();
+    expectNoProjectsHomeMain();
+
+    await user.click(screen.getByRole("link", { name: /back to projects/i }));
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
+    expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
   });
 
   it("keeps archive and unarchive on an archived detail URL even when the sidebar omits it", async () => {
@@ -435,17 +490,18 @@ describe("App frontend shell", () => {
     expect(screen.getByRole("button", { name: /unarchive project/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /back to projects/i }));
-    expect(await screen.findByRole("heading", { name: /select a project/i })).toBeInTheDocument();
-    expect(await screen.findByText(/no projects yet/i)).toBeInTheDocument();
+    expectBackNextToEditAndArchive(/unarchive project/i);
+    await user.click(screen.getByRole("link", { name: /^devtrack$/i }));
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
+    expect(await screen.findAllByText(/no projects yet/i)).not.toHaveLength(0);
     expect(screen.queryByRole("button", { name: /^alpha$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
     expectAllCredentialsIncluded(fetchMock);
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(
       false,
     );
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
   it("creates a project from the sidebar using existing fields", async () => {
@@ -470,15 +526,21 @@ describe("App frontend shell", () => {
 
     renderApp("/projects");
 
-    expect(await screen.findByRole("heading", { name: /select a project/i })).toBeInTheDocument();
-    expect(await screen.findByText(/no projects yet/i)).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/^name$/i), "Alpha");
-    await user.type(screen.getByLabelText(/^description$/i), "First project");
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    expect(await screen.findAllByText(/no projects yet/i)).not.toHaveLength(0);
+    expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /create project/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/^name$/i), "Alpha");
+    await user.type(within(dialog).getByLabelText(/^description$/i), "First project");
+    await user.click(within(dialog).getByRole("button", { name: /create project/i }));
 
     expect(await screen.findByText(/project created/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^alpha$/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /select a project/i })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^alpha$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^alpha$/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
+    expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
   });
 
   it("redirects the app root from guest register and authenticated projects", async () => {
@@ -504,7 +566,8 @@ describe("App frontend shell", () => {
     });
 
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: /select a project/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
     expect(expectProductSidebar()).toBeInTheDocument();
   });
 
@@ -541,13 +604,26 @@ describe("App frontend shell", () => {
     expectNoProbeUi();
   });
 
-  it("uses DevTrack chrome and layout metaphors without Kanban, drag-and-drop, or Trello branding", async () => {
+  it("uses DevTrack chrome with status columns on project detail and without Trello branding", async () => {
     mockFetch((url) => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
       if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
-        return jsonResponse(200, { tasks: [] });
+        return jsonResponse(200, {
+          tasks: [
+            {
+              id: "task-1",
+              projectId: "proj-1",
+              title: "Write tests",
+              description: null,
+              status: "TODO",
+              priority: "MEDIUM",
+              dueDate: null,
+              createdAt: "2026-10-29T18:00:00.000Z",
+            },
+          ],
+        });
       }
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...activeProject });
@@ -562,18 +638,138 @@ describe("App frontend shell", () => {
 
     expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
     expect(screen.getByRole("banner")).toBeInTheDocument();
+    expectCappedAuthenticatedShell();
     expect(screen.getByRole("heading", { name: /^devtrack$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^devtrack$/i })).toBeInTheDocument();
+    expectBackNextToEditAndArchive();
+    expect(screen.getByText(/first project/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^add task$/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/new task title/i)).not.toBeInTheDocument();
     expect(expectProductSidebar()).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "TODO" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "IN_PROGRESS" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "DONE" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /write tests/i })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /^tasks$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^list$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^board$/i })).not.toBeInTheDocument();
     expect(document.querySelector('[data-slot="card"]')).not.toBeNull();
     expect(document.querySelector('[data-slot="board"]')).not.toBeNull();
+    expect(document.querySelector('[aria-roledescription="draggable"]')).not.toBeNull();
     expect(document.querySelector("[draggable='true']")).toBeNull();
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
     expect(screen.queryByAltText(/trello/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
-    expect(screen.queryByText(/kanban/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/include archived/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /probe/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /probe/i })).not.toBeInTheDocument();
     expectNoProbeUi();
+    const paletteSelector = screen.getByRole("combobox", { name: /color palette/i });
+    expect(paletteSelector).toBeInTheDocument();
+    for (const id of UI_PALETTE_IDS) {
+      expect(screen.getByRole("option", { name: id })).toBeInTheDocument();
+    }
+  });
+
+  it("persists a selected palette in localStorage without a profile PATCH", async () => {
+    mockFetch((url, init) => {
+      if (url.endsWith("/api/users/me") && init?.method === "PATCH") {
+        return jsonResponse(500, {
+          error: { code: "INTERNAL_ERROR", message: "Palette must not patch profile" },
+        });
+      }
+      if (url.endsWith("/api/users/me")) {
+        return jsonResponse(200, publicUser);
+      }
+      if (url.endsWith("/api/projects")) {
+        return jsonResponse(200, { projects: [] });
+      }
+      return unexpectedRequest();
+    });
+    const user = userEvent.setup();
+
+    const first = renderApp("/projects");
+
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    const selector = screen.getByRole("combobox", { name: /color palette/i });
+    expect(document.documentElement.dataset.palette).toBe("Forest");
+    await user.selectOptions(selector, "Ocean");
+    expect(document.documentElement.dataset.palette).toBe("Ocean");
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Ocean");
+    first.unmount();
+
+    renderApp("/projects");
+    expect(await screen.findByRole("combobox", { name: /color palette/i })).toHaveValue("Ocean");
+    expect(document.documentElement.dataset.palette).toBe("Ocean");
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Ocean");
+    expectNoSessionTokenStorage();
+  });
+
+  it("keeps the stored palette after logout and themes guest pages", async () => {
+    let authenticated = true;
+    const fetchMock = mockFetch((url, init) => {
+      if (url.endsWith("/api/auth/logout") && init?.method === "POST") {
+        authenticated = false;
+        return new Response(null, { status: 204 });
+      }
+      if (url.endsWith("/api/users/me")) {
+        return authenticated ? jsonResponse(200, publicUser) : unauthenticated();
+      }
+      if (url.endsWith("/api/projects")) {
+        return authenticated
+          ? jsonResponse(200, { projects: [] })
+          : unauthenticated();
+      }
+      return unexpectedRequest();
+    });
+    const user = userEvent.setup();
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "Aurora");
+
+    renderApp("/projects");
+
+    expect(await screen.findByText(/signed in as ada@example.com/i)).toBeInTheDocument();
+    expect(document.documentElement.dataset.palette).toBe("Aurora");
+    expect(screen.getByRole("combobox", { name: /color palette/i })).toHaveValue("Aurora");
+
+    await user.click(screen.getByRole("button", { name: /log out/i }));
+    expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
+    expectNoProductSidebar();
+    expect(screen.queryByRole("combobox", { name: /color palette/i })).not.toBeInTheDocument();
+    expect(document.documentElement.dataset.palette).toBe("Aurora");
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Aurora");
+    expectAllCredentialsIncluded(fetchMock);
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.endsWith("/api/users/me") &&
+          init?.method === "PATCH",
+      ),
+    ).toBe(false);
+    expectNoSessionTokenStorage();
+  });
+
+  it("themes guest login from stored palette and defaults invalid storage to Forest", async () => {
+    mockFetch((url) => {
+      if (url.endsWith("/api/users/me")) {
+        return unauthenticated();
+      }
+      return unexpectedRequest();
+    });
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "Lagoon");
+
+    const first = renderApp("/login");
+    expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
+    expect(document.documentElement.dataset.palette).toBe("Lagoon");
+    expectNoProductSidebar();
+    expect(screen.queryByRole("combobox", { name: /color palette/i })).not.toBeInTheDocument();
+    first.unmount();
+
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "unknown-palette");
+    renderApp("/register");
+    expect(await screen.findByRole("heading", { name: /^register$/i })).toBeInTheDocument();
+    expect(document.documentElement.dataset.palette).toBe("Forest");
+    expectNoProductSidebar();
+    expect(screen.queryByRole("combobox", { name: /color palette/i })).not.toBeInTheDocument();
   });
 });

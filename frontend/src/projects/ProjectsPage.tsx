@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Folders } from "lucide-react";
+import { Folders, Plus } from "lucide-react";
 import {
   createProject,
   isForbidden,
@@ -9,16 +9,14 @@ import {
 } from "../api/client";
 import type { PublicProjectDto } from "../api/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { CreateProjectDialog } from "./CreateProjectDialog";
 
 type ProjectsPageProps = {
   onSelectProject: (projectId: string) => void;
   onUnauthenticated: () => void;
   selectedProjectId?: string | null;
   reloadKey?: string;
+  onProjectsChanged?: () => void;
 };
 
 type ListState =
@@ -44,14 +42,20 @@ export function ProjectsPage({
   onUnauthenticated,
   selectedProjectId = null,
   reloadKey,
+  onProjectsChanged,
 }: ProjectsPageProps) {
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
   const [createState, setCreateState] = useState<CreateState>({ kind: "ready" });
+  const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
   const loadProjects = useCallback(async (): Promise<boolean> => {
-    setListState({ kind: "loading" });
+    setListState((current) =>
+      current.kind === "success" || current.kind === "empty"
+        ? current
+        : { kind: "loading" },
+    );
     try {
       const result = await listProjects();
       const projects = activeProjects(result.projects);
@@ -80,6 +84,15 @@ export function ProjectsPage({
     void loadProjects();
   }, [loadProjects, reloadKey]);
 
+  function closeCreateDialog(): void {
+    setCreateOpen(false);
+    setName("");
+    setDescription("");
+    if (createState.kind === "error") {
+      setCreateState({ kind: "ready" });
+    }
+  }
+
   async function onCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setCreateState({ kind: "saving" });
@@ -91,14 +104,21 @@ export function ProjectsPage({
       await createProject(payload);
       setName("");
       setDescription("");
-      const loaded = await loadProjects();
-      if (loaded) {
-        setCreateState({ kind: "success", message: "Project created." });
+      setCreateOpen(false);
+      if (onProjectsChanged === undefined) {
+        const loaded = await loadProjects();
+        if (loaded) {
+          setCreateState({ kind: "success", message: "Project created." });
+        }
+        return;
       }
+      setCreateState({ kind: "success", message: "Project created." });
+      onProjectsChanged();
     } catch (err) {
       if (isUnauthenticated(err)) {
         setListState({ kind: "unauthenticated", message: toUserMessage(err) });
         setCreateState({ kind: "ready" });
+        setCreateOpen(false);
         onUnauthenticated();
         return;
       }
@@ -116,64 +136,48 @@ export function ProjectsPage({
 
   return (
     <section aria-labelledby="projects-heading" className="grid gap-4">
-      <h2
-        id="projects-heading"
-        className="flex items-center gap-2 text-base font-semibold tracking-tight"
-      >
-        <Folders aria-hidden="true" className="size-4 shrink-0" />
-        Projects
-      </h2>
-      {listBlocked ? null : (
-        <Card>
-          <CardHeader className="p-4 pb-2">
-            <h3 id="create-project-heading" className="text-sm font-semibold">
-              Create project
-            </h3>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <form
-              onSubmit={(event) => void onCreate(event)}
-              aria-labelledby="create-project-heading"
-              className="grid gap-3"
-            >
-              <Label className="grid gap-2">
-                Name
-                <Input
-                  type="text"
-                  name="name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  disabled={creating}
-                />
-              </Label>
-              <Label className="grid gap-2">
-                Description
-                <Textarea
-                  name="description"
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  disabled={creating}
-                />
-              </Label>
-              <Button type="submit" size="sm" disabled={creating}>
-                {creating ? "Creating…" : "Create project"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-      {creating ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          Creating project…
-        </p>
-      ) : null}
+      <div className="flex items-center justify-between gap-2">
+        <h2
+          id="projects-heading"
+          className="flex items-center gap-2 text-base font-semibold tracking-tight"
+        >
+          <Folders aria-hidden="true" className="size-4 shrink-0" />
+          Projects
+        </h2>
+        {listBlocked ? null : (
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            aria-label="Create project"
+            onClick={() => {
+              setCreateState({ kind: "ready" });
+              setCreateOpen(true);
+            }}
+          >
+            <Plus aria-hidden="true" />
+          </Button>
+        )}
+      </div>
+      <CreateProjectDialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setCreateOpen(true);
+            return;
+          }
+          closeCreateDialog();
+        }}
+        name={name}
+        description={description}
+        onNameChange={setName}
+        onDescriptionChange={setDescription}
+        onSubmit={onCreate}
+        creating={creating}
+        errorMessage={createState.kind === "error" ? createState.message : undefined}
+      />
       {createState.kind === "success" ? (
         <p className="text-sm text-muted-foreground" role="status">
-          {createState.message}
-        </p>
-      ) : null}
-      {createState.kind === "error" ? (
-        <p className="text-sm text-destructive" role="alert">
           {createState.message}
         </p>
       ) : null}

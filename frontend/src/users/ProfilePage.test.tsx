@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectNoSessionTokenStorage } from "../test/storage";
 import { ProfilePage } from "./ProfilePage";
 
 const currentUser = {
@@ -98,8 +99,7 @@ describe("ProfilePage", () => {
       email: "ada@example.com",
       displayName: "Ada Lovelace",
     });
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
   it("shows an error state when the profile update is rejected", async () => {

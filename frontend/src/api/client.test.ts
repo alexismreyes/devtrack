@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectNoSessionTokenStorage } from "../test/storage";
 import {
   ApiError,
   archiveProject,
@@ -68,8 +69,7 @@ function expectNoAuthorizationHeader(init?: RequestInit): void {
 }
 
 function expectNoTokenStorage(): void {
-  expect(window.localStorage.length).toBe(0);
-  expect(window.sessionStorage.length).toBe(0);
+  expectNoSessionTokenStorage();
 }
 
 afterEach(() => {

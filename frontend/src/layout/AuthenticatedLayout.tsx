@@ -1,7 +1,13 @@
+import { useCallback, useState } from "react";
 import { Link, Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { LogoutButton } from "../auth/LogoutButton";
 import { ProjectsPage } from "../projects/ProjectsPage";
 import { useSession } from "../session/SessionContext";
+import { UiPaletteSelector } from "../theme/UiPaletteSelector";
+
+export type AuthenticatedOutletContext = {
+  projectListEpoch: number;
+};
 
 export function AuthenticatedLayout() {
   const { session, onLoggedOut } = useSession();
@@ -9,13 +15,17 @@ export function AuthenticatedLayout() {
   const location = useLocation();
   const projectMatch = useMatch("/projects/:projectId");
   const selectedProjectId = projectMatch?.params.projectId;
+  const [projectListEpoch, setProjectListEpoch] = useState(0);
+  const refreshProjectList = useCallback(() => {
+    setProjectListEpoch((epoch) => epoch + 1);
+  }, []);
 
   if (session.kind !== "authenticated") {
     return null;
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex h-svh flex-col overflow-hidden bg-background">
       <header
         role="banner"
         className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-devtrack-bar bg-devtrack-bar px-4 text-devtrack-bar-foreground"
@@ -29,6 +39,7 @@ export function AuthenticatedLayout() {
           Signed in as {session.user.email}
         </p>
         <div className="ml-auto flex items-center gap-3">
+          <UiPaletteSelector />
           <Link
             to="/profile"
             className="text-sm font-medium underline-offset-4 hover:underline"
@@ -45,15 +56,16 @@ export function AuthenticatedLayout() {
         >
           <ProjectsPage
             selectedProjectId={selectedProjectId}
-            reloadKey={location.pathname}
+            reloadKey={`${location.pathname}:${projectListEpoch}`}
+            onProjectsChanged={refreshProjectList}
             onSelectProject={(projectId) => {
               void navigate(`/projects/${projectId}`);
             }}
             onUnauthenticated={onLoggedOut}
           />
         </aside>
-        <main className="min-w-0 flex-1 overflow-y-auto p-6">
-          <Outlet />
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-6">
+          <Outlet context={{ projectListEpoch } satisfies AuthenticatedOutletContext} />
         </main>
       </div>
     </div>

@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectNoSessionTokenStorage } from "../test/storage";
+import { UI_PALETTE_STORAGE_KEY } from "../theme/uiPalettes";
 import { LogoutButton } from "./LogoutButton";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -48,6 +50,7 @@ describe("LogoutButton", () => {
     });
     const onLoggedOut = vi.fn();
     const user = userEvent.setup();
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "Ocean");
 
     render(<LogoutButton onLoggedOut={onLoggedOut} />);
 
@@ -58,8 +61,8 @@ describe("LogoutButton", () => {
     await vi.waitFor(() => {
       expect(onLoggedOut).toHaveBeenCalledOnce();
     });
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Ocean");
+    expectNoSessionTokenStorage();
   });
 
   it("treats an unauthenticated logout response as signed out", async () => {

@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectNoSessionTokenStorage } from "../test/storage";
 import { LoginForm } from "./LoginForm";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -72,8 +73,7 @@ describe("LoginForm", () => {
         displayName: "Ada",
       });
     });
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
+    expectNoSessionTokenStorage();
   });
 
   it("shows an error state for invalid credentials", async () => {
