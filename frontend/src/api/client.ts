@@ -1,5 +1,7 @@
 import type {
+  ActivityListResponseDto,
   AddMemberRequestDto,
+  CommentAddedActivityPayload,
   CommentListResponseDto,
   CreateCommentRequestDto,
   CreateProjectRequestDto,
@@ -15,12 +17,18 @@ import type {
   ProbeResponseDto,
   ProjectListResponseDto,
   ProjectMemberRole,
+  PublicActivityDto,
   PublicCommentDto,
   PublicMemberDto,
   PublicProjectDto,
   PublicTaskDto,
   PublicUserDto,
   RegisterRequestDto,
+  TaskActivityChangeField,
+  TaskActivityFieldChange,
+  TaskActivityKind,
+  TaskActivityPayload,
+  TaskFieldsChangedActivityPayload,
   TaskListResponseDto,
   TaskPriority,
   TaskStatus,
@@ -217,6 +225,22 @@ export async function listTaskComments(
   }
   return {
     comments: body.comments.map(toPublicComment),
+  };
+}
+
+export async function listTaskActivity(
+  taskId: string,
+): Promise<ActivityListResponseDto> {
+  const body = await request("GET", activityCollectionPath(taskId));
+  if (!isActivityListResponse(body)) {
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "Unexpected activity list response",
+    );
+  }
+  return {
+    activity: body.activity.map(toPublicActivity),
   };
 }
 
@@ -673,6 +697,160 @@ function commentsCollectionPath(taskId: string): string {
 
 function commentItemPath(taskId: string, commentId: string): string {
   return `${commentsCollectionPath(taskId)}/${commentId}`;
+}
+
+function activityCollectionPath(taskId: string): string {
+  return `/api/tasks/${taskId}/activity`;
+}
+
+const TASK_ACTIVITY_KINDS: readonly TaskActivityKind[] = [
+  "TASK_CREATED",
+  "TASK_FIELDS_CHANGED",
+  "TASK_SOFT_DELETED",
+  "COMMENT_ADDED",
+];
+
+const TASK_ACTIVITY_CHANGE_FIELDS: readonly TaskActivityChangeField[] = [
+  "title",
+  "description",
+  "status",
+  "priority",
+  "dueDate",
+];
+
+function toPublicActivity(value: PublicActivityDto): PublicActivityDto {
+  return {
+    id: value.id,
+    taskId: value.taskId,
+    kind: value.kind,
+    actorUserId: value.actorUserId,
+    actorDisplayName: value.actorDisplayName,
+    createdAt: value.createdAt,
+    payload: toPublicActivityPayload(value.kind, value.payload),
+  };
+}
+
+function toPublicActivityPayload(
+  kind: TaskActivityKind,
+  payload: TaskActivityPayload,
+): TaskActivityPayload {
+  switch (kind) {
+    case "TASK_CREATED":
+    case "TASK_SOFT_DELETED":
+      return {};
+    case "TASK_FIELDS_CHANGED": {
+      const changes = (payload as TaskFieldsChangedActivityPayload).changes.map(
+        (change) => ({
+          field: change.field,
+          oldValue: change.oldValue,
+          newValue: change.newValue,
+        }),
+      );
+      return { changes };
+    }
+    case "COMMENT_ADDED": {
+      const commentPayload = payload as CommentAddedActivityPayload;
+      return {
+        commentId: commentPayload.commentId,
+        bodyPreview: commentPayload.bodyPreview,
+      };
+    }
+  }
+}
+
+function isTaskActivityKind(value: unknown): value is TaskActivityKind {
+  return (
+    typeof value === "string" &&
+    (TASK_ACTIVITY_KINDS as readonly string[]).includes(value)
+  );
+}
+
+function isTaskActivityChangeField(
+  value: unknown,
+): value is TaskActivityChangeField {
+  return (
+    typeof value === "string" &&
+    (TASK_ACTIVITY_CHANGE_FIELDS as readonly string[]).includes(value)
+  );
+}
+
+function isTaskActivityFieldChange(
+  value: unknown,
+): value is TaskActivityFieldChange {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const change = value as {
+    field?: unknown;
+    oldValue?: unknown;
+    newValue?: unknown;
+  };
+  return (
+    isTaskActivityChangeField(change.field) &&
+    (typeof change.oldValue === "string" || change.oldValue === null) &&
+    (typeof change.newValue === "string" || change.newValue === null)
+  );
+}
+
+function isActivityPayloadForKind(
+  kind: TaskActivityKind,
+  payload: unknown,
+): payload is TaskActivityPayload {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return false;
+  }
+  const record = payload as Record<string, unknown>;
+  switch (kind) {
+    case "TASK_CREATED":
+    case "TASK_SOFT_DELETED":
+      return true;
+    case "TASK_FIELDS_CHANGED":
+      return (
+        Array.isArray(record.changes) &&
+        record.changes.every(isTaskActivityFieldChange)
+      );
+    case "COMMENT_ADDED":
+      return (
+        typeof record.commentId === "string" &&
+        typeof record.bodyPreview === "string"
+      );
+  }
+}
+
+function isPublicActivity(value: unknown): value is PublicActivityDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const event = value as {
+    id?: unknown;
+    taskId?: unknown;
+    kind?: unknown;
+    actorUserId?: unknown;
+    actorDisplayName?: unknown;
+    createdAt?: unknown;
+    payload?: unknown;
+  };
+  if (
+    typeof event.id !== "string" ||
+    typeof event.taskId !== "string" ||
+    !isTaskActivityKind(event.kind) ||
+    typeof event.actorUserId !== "string" ||
+    typeof event.actorDisplayName !== "string" ||
+    typeof event.createdAt !== "string"
+  ) {
+    return false;
+  }
+  return isActivityPayloadForKind(event.kind, event.payload);
+}
+
+function isActivityListResponse(
+  value: unknown,
+): value is ActivityListResponseDto {
+  if (typeof value !== "object" || value === null || !("activity" in value)) {
+    return false;
+  }
+  const activity = (value as { activity: unknown }).activity;
+  return Array.isArray(activity) && activity.every(isPublicActivity);
 }
 
 function requirePublicComment(

@@ -3,11 +3,13 @@ import {
   MembershipForbiddenError,
   MembershipProjectNotFoundError,
 } from "../../project-members/domain/errors";
+import { ImmediateUnitOfWork } from "../../projects/access/unit-of-work";
 import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
 import { calendarDateFromString, Task } from "../domain/task";
 import { TasksService } from "../service/tasks-service";
 import { FakeProjectAccessPort } from "./fake-project-access-port";
 import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
+import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
@@ -37,6 +39,7 @@ function createService(archivedAt: Date | null = null) {
   const tasks = new InMemoryTasksRepository();
   const projects = new FakeProjectAccessPort();
   const authorization = new FakeTaskAuthorizationPort();
+  const activity = new InMemoryActivityRepository();
   seedBoth(projects, authorization, {
     id: PROJECT_ID,
     ownerUserId: OWNER_ID,
@@ -50,10 +53,17 @@ function createService(archivedAt: Date | null = null) {
     archivedAt: null,
   });
   return {
-    service: new TasksService(tasks, projects, authorization),
+    service: new TasksService(
+      tasks,
+      projects,
+      authorization,
+      activity,
+      new ImmediateUnitOfWork(),
+    ),
     tasks,
     projects,
     authorization,
+    activity,
   };
 }
 

@@ -158,6 +158,58 @@ export type UpdateCommentRequestDto = {
   body: string;
 };
 
+export type TaskActivityKind =
+  | "TASK_CREATED"
+  | "TASK_FIELDS_CHANGED"
+  | "TASK_SOFT_DELETED"
+  | "COMMENT_ADDED";
+
+export type TaskActivityChangeField =
+  | "title"
+  | "description"
+  | "status"
+  | "priority"
+  | "dueDate";
+
+export type TaskActivityFieldChange = {
+  field: TaskActivityChangeField;
+  oldValue: string | null;
+  newValue: string | null;
+};
+
+export type TaskCreatedActivityPayload = Record<string, never>;
+
+export type TaskFieldsChangedActivityPayload = {
+  changes: TaskActivityFieldChange[];
+};
+
+export type TaskSoftDeletedActivityPayload = Record<string, never>;
+
+export type CommentAddedActivityPayload = {
+  commentId: string;
+  bodyPreview: string;
+};
+
+export type TaskActivityPayload =
+  | TaskCreatedActivityPayload
+  | TaskFieldsChangedActivityPayload
+  | TaskSoftDeletedActivityPayload
+  | CommentAddedActivityPayload;
+
+export type PublicActivityDto = {
+  id: string;
+  taskId: string;
+  kind: TaskActivityKind;
+  actorUserId: string;
+  actorDisplayName: string;
+  createdAt: string;
+  payload: TaskActivityPayload;
+};
+
+export type ActivityListResponseDto = {
+  activity: PublicActivityDto[];
+};
+
 export type ErrorEnvelope = {
   error: {
     code: string;

@@ -126,8 +126,16 @@ function isTaskCommentsUrl(url: string): boolean {
   return /\/api\/tasks\/[^/]+\/comments(?:\/[^/]+)?$/.test(url);
 }
 
+function isTaskActivityUrl(url: string): boolean {
+  return /\/api\/tasks\/[^/]+\/activity$/.test(url);
+}
+
 function emptyCommentsResponse(): Response {
   return jsonResponse(200, { comments: [] });
+}
+
+function emptyActivityResponse(): Response {
+  return jsonResponse(200, { activity: [] });
 }
 
 afterEach(() => {
@@ -280,6 +288,9 @@ describe("TasksPanel", () => {
       if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
         return emptyCommentsResponse();
       }
+      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return emptyActivityResponse();
+      }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
       });
@@ -376,6 +387,9 @@ describe("TasksPanel", () => {
       if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
         return emptyCommentsResponse();
       }
+      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return emptyActivityResponse();
+      }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
       });
@@ -431,6 +445,9 @@ describe("TasksPanel", () => {
       }
       if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
         return emptyCommentsResponse();
+      }
+      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return emptyActivityResponse();
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -493,6 +510,9 @@ describe("TasksPanel", () => {
       }
       if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
         return emptyCommentsResponse();
+      }
+      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return emptyActivityResponse();
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -723,6 +743,9 @@ describe("TasksPanel", () => {
       if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
         return emptyCommentsResponse();
       }
+      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return emptyActivityResponse();
+      }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
       });
@@ -772,6 +795,9 @@ describe("TasksPanel", () => {
       if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
         return emptyCommentsResponse();
       }
+      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return emptyActivityResponse();
+      }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
       });
@@ -818,6 +844,9 @@ describe("TasksPanel", () => {
       }
       if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
         return emptyCommentsResponse();
+      }
+      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return emptyActivityResponse();
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -867,6 +896,9 @@ describe("TasksPanel", () => {
       }
       if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
         return emptyCommentsResponse();
+      }
+      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return emptyActivityResponse();
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -960,6 +992,9 @@ describe("TasksPanel", () => {
       }
       if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
         return emptyCommentsResponse();
+      }
+      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return emptyActivityResponse();
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },

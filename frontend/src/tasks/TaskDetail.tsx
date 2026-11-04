@@ -7,6 +7,7 @@ import {
   isConflict,
   isForbidden,
   isUnauthenticated,
+  listTaskActivity,
   listTaskComments,
   softDeleteTask,
   toUserMessage,
@@ -14,8 +15,10 @@ import {
   updateTaskComment,
 } from "../api/client";
 import type {
+  PublicActivityDto,
   PublicCommentDto,
   PublicTaskDto,
+  TaskActivityFieldChange,
   TaskPriority,
   TaskStatus,
 } from "../api/types";
@@ -71,8 +74,58 @@ type CommentActionState =
   | { kind: "error"; message: string }
   | { kind: "conflict"; message: string };
 
+type ActivityLoadState =
+  | { kind: "loading" }
+  | { kind: "success" }
+  | { kind: "empty" }
+  | { kind: "error"; message: string }
+  | { kind: "unauthenticated"; message: string }
+  | { kind: "forbidden"; message: string }
+  | { kind: "not_found"; message: string };
+
 const STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
+
+function formatActivityFieldValue(value: string | null): string {
+  return value === null ? "(empty)" : value;
+}
+
+function describeFieldChange(change: TaskActivityFieldChange): string {
+  return `${change.field}: ${formatActivityFieldValue(change.oldValue)} → ${formatActivityFieldValue(change.newValue)}`;
+}
+
+function activityKindLabel(kind: PublicActivityDto["kind"]): string {
+  switch (kind) {
+    case "TASK_CREATED":
+      return "Task created";
+    case "TASK_FIELDS_CHANGED":
+      return "Fields changed";
+    case "TASK_SOFT_DELETED":
+      return "Task deleted";
+    case "COMMENT_ADDED":
+      return "Comment added";
+  }
+}
+
+function activityPayloadSummary(event: PublicActivityDto): string | null {
+  switch (event.kind) {
+    case "TASK_CREATED":
+    case "TASK_SOFT_DELETED":
+      return null;
+    case "TASK_FIELDS_CHANGED": {
+      if (!("changes" in event.payload)) {
+        return null;
+      }
+      return event.payload.changes.map(describeFieldChange).join("; ");
+    }
+    case "COMMENT_ADDED": {
+      if (!("bodyPreview" in event.payload)) {
+        return null;
+      }
+      return event.payload.bodyPreview;
+    }
+  }
+}
 
 export function TaskDetail({
   taskId,
@@ -103,6 +156,10 @@ export function TaskDetail({
   const [newCommentBody, setNewCommentBody] = useState("");
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentBody, setEditCommentBody] = useState("");
+  const [activity, setActivity] = useState<PublicActivityDto[]>([]);
+  const [activityLoadState, setActivityLoadState] = useState<ActivityLoadState>({
+    kind: "loading",
+  });
 
   const applyTask = useCallback((next: PublicTaskDto) => {
     setTask(next);
@@ -150,6 +207,43 @@ export function TaskDetail({
     }
   }, [onUnauthenticated, taskId]);
 
+  const loadActivity = useCallback(async () => {
+    setActivityLoadState({ kind: "loading" });
+    try {
+      const result = await listTaskActivity(taskId);
+      setActivity(result.activity);
+      setActivityLoadState(
+        result.activity.length === 0
+          ? { kind: "empty" }
+          : { kind: "success" },
+      );
+    } catch (err) {
+      if (isUnauthenticated(err)) {
+        setActivityLoadState({
+          kind: "unauthenticated",
+          message: toUserMessage(err),
+        });
+        onUnauthenticated();
+        return;
+      }
+      if (isForbidden(err)) {
+        setActivityLoadState({
+          kind: "forbidden",
+          message: toUserMessage(err),
+        });
+        return;
+      }
+      if (err instanceof ApiError && err.code === "NOT_FOUND") {
+        setActivityLoadState({
+          kind: "not_found",
+          message: toUserMessage(err),
+        });
+        return;
+      }
+      setActivityLoadState({ kind: "error", message: toUserMessage(err) });
+    }
+  }, [onUnauthenticated, taskId]);
+
   const loadTask = useCallback(async () => {
     setLoadState({ kind: "loading" });
     setActionState({ kind: "idle" });
@@ -161,7 +255,7 @@ export function TaskDetail({
       const result = await getTask(taskId);
       applyTask(result);
       setLoadState({ kind: "success" });
-      await loadComments();
+      await Promise.all([loadComments(), loadActivity()]);
     } catch (err) {
       if (isUnauthenticated(err)) {
         setLoadState({ kind: "unauthenticated", message: toUserMessage(err) });
@@ -174,7 +268,7 @@ export function TaskDetail({
       }
       setLoadState({ kind: "error", message: toUserMessage(err) });
     }
-  }, [applyTask, loadComments, onUnauthenticated, taskId]);
+  }, [applyTask, loadActivity, loadComments, onUnauthenticated, taskId]);
 
   useEffect(() => {
     void loadTask();
@@ -664,6 +758,66 @@ export function TaskDetail({
                   <p className="text-sm text-destructive" role="alert">
                     {commentActionState.message}
                   </p>
+                ) : null}
+              </section>
+
+              <section
+                aria-labelledby="task-activity-heading"
+                className="grid gap-3 border-t border-border pt-4"
+              >
+                <h5
+                  id="task-activity-heading"
+                  className="text-sm font-semibold tracking-tight"
+                >
+                  Activity
+                </h5>
+                {activityLoadState.kind === "loading" ? (
+                  <p className="text-sm text-muted-foreground" role="status">
+                    Loading activity…
+                  </p>
+                ) : null}
+                {activityLoadState.kind === "unauthenticated" ? (
+                  <p className="text-sm text-muted-foreground" role="status">
+                    {activityLoadState.message}
+                  </p>
+                ) : null}
+                {activityLoadState.kind === "forbidden" ||
+                activityLoadState.kind === "not_found" ||
+                activityLoadState.kind === "error" ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {activityLoadState.message}
+                  </p>
+                ) : null}
+                {activityLoadState.kind === "empty" ? (
+                  <p className="text-sm text-muted-foreground" role="status">
+                    No activity yet.
+                  </p>
+                ) : null}
+                {activityLoadState.kind === "success" ? (
+                  <ul className="grid gap-3" aria-label="Task activity">
+                    {activity.map((event) => {
+                      const summary = activityPayloadSummary(event);
+                      return (
+                        <li key={event.id} className="grid gap-1">
+                          <p className="text-xs text-muted-foreground">
+                            {event.actorDisplayName}
+                            {" · "}
+                            <time dateTime={event.createdAt}>
+                              {event.createdAt}
+                            </time>
+                          </p>
+                          <p className="text-sm font-medium">
+                            {activityKindLabel(event.kind)}
+                          </p>
+                          {summary === null ? null : (
+                            <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                              {summary}
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 ) : null}
               </section>
             </>

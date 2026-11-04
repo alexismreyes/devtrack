@@ -12,8 +12,10 @@ import { PrismaProjectMembersRepository } from "../../project-members/repository
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { PrismaProjectsRepository } from "../../projects/repository/prisma-projects-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { PrismaActivityRepository } from "../../tasks/repository/prisma-activity-repository";
 import { PrismaCommentsRepository } from "../../tasks/repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repository";
+import { InMemoryActivityRepository } from "../../tasks/tests/in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "../../tasks/tests/in-memory-comments-repository";
 import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
 import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
@@ -64,6 +66,7 @@ function createSystemApp(systemRepository: FakeSystemRepository = new FakeSystem
   const projectsRepository = new InMemoryProjectsRepository();
   const tasksRepository = new InMemoryTasksRepository();
   const commentsRepository = new InMemoryCommentsRepository();
+  const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
   const app = createApp({
     corsOrigin: "http://localhost:5173",
@@ -73,6 +76,7 @@ function createSystemApp(systemRepository: FakeSystemRepository = new FakeSystem
     projectsRepository,
     tasksRepository,
     commentsRepository,
+    activityRepository,
     projectMembersRepository,
   });
   return { app, systemRepository, usersRepository, authRepository };
@@ -296,6 +300,7 @@ describe("system HTTP API persistence", () => {
       projectsRepository: new PrismaProjectsRepository(prisma),
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
+      activityRepository: new PrismaActivityRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),
       unitOfWork: new PrismaUnitOfWork(prisma),
     });

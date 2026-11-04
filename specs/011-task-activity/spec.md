@@ -1,13 +1,13 @@
 # Feature Specification: Task Activity
 
 - **ID:** 011-task-activity
-- **Status:** Draft
+- **Status:** Verified
 - **Created:** 2026-11-04
 - **Related features:** 001-foundation through 010-task-comments (Verified); proposed backlog **L**; proposed audit **C** deferred separately (not this folder)
 
 Fill every section that applies. Delete a section only when it is truly not relevant. Requirements must be testable.
 
-These artifacts are **Draft**. Material product questions Q-066–Q-079 are **Decided** (recorded in section 15). Do not invent further business rules beyond those answers. Decided constraints: **task events only** (task created, task field changes, task soft-delete, comments added); not a full app-wide audit table; do not implement labels (**E**); do not write `specs/005-audit/`; do not change `constitution.md`; reuse Verified `TaskAuthorizationPort` / membership roles; additive Prisma migration only; keep Verified `010-task-comments` HTTP contracts intact (comment-added emission is internal only); status remains Draft until explicit approval.
+These artifacts are **Verified**. Material product questions Q-066–Q-079 are **Decided** (recorded in section 15). Do not invent further business rules beyond those answers. Decided constraints: **task events only** (task created, task field changes, task soft-delete, comments added); not a full app-wide audit table; do not implement labels (**E**); do not write `specs/005-audit/`; do not change `constitution.md`; reuse Verified `TaskAuthorizationPort` / membership roles; additive Prisma migration only; keep Verified `010-task-comments` HTTP contracts intact (comment-added emission is internal only). Implementation may proceed on T001–T016 only.
 
 This ID is **011-task-activity** (proposed product ID **L**). Do not write `specs/005-audit/`. Do not specify labels (**E**) beyond a non-goal. Do not specify app-wide audit (**C**) beyond the Decided overlap resolution (Q-066).
 
@@ -167,11 +167,14 @@ As a developer, I want Verified comments HTTP contracts, task field rules, Kanba
 - Then it is versioned and additive under `backend/prisma/`
 - Then no `migrate reset` and no volume delete are required or performed for this feature
 
-### Scenario AC-012: Draft gate
+### Scenario AC-012: Approval gate
 
-- Given these artifacts remain Draft
-- When implementation is requested
+- Given these artifacts were Draft
+- When implementation is requested before approval
 - Then work stops until explicit approval
+- Given these artifacts are Approved
+- When implementation proceeds on T001–T016
+- Then the approval gate is satisfied
 
 ### Scenario AC-013: Domain and port boundaries
 
@@ -259,7 +262,7 @@ Business concepts (not Prisma prescription):
 - No-op field PATCH: do not emit field-change activity (Q-072).
 - Emission failure: fail the triggering write when activity insert fails in the same transaction (Q-077).
 - Database unreachable: `503` with envelope; no secrets leaked.
-- Implementation while Draft: not allowed; stop until explicit approval.
+- Implementation while Draft: not allowed; gate cleared — artifacts are Approved.
 
 ## 14. Traceability
 
@@ -294,7 +297,7 @@ Business concepts (not Prisma prescription):
 - **Authz reuse:** Verified `TaskAuthorizationPort` / membership roles.
 - **Migrations:** additive only; no migrate reset; no volume delete.
 - **Comments contracts:** keep intact; comment-added emission is internal only.
-- **Status:** Draft until user approval.
+- **Status:** Verified.
 
 ### Decided — Q-066–Q-079 (user numbered options)
 
@@ -327,7 +330,7 @@ Business concepts (not Prisma prescription):
 
 ## 16. Approval
 
-- Requirements reviewed: No (Draft)
+- Requirements reviewed: Yes
 - Material ambiguities resolved: Yes — Q-066–Q-079 Decided
-- Approved for planning: No (plan is Draft alongside this spec; awaiting user Approve)
-- Approved for implementation: No
+- Approved for planning: Yes
+- Approved for implementation: Yes

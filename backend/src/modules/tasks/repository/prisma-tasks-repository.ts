@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import { currentPrisma } from "../../../infrastructure/prisma/prisma-context";
 import { DatabaseUnavailableError, TaskNotFoundError } from "../domain/errors";
 import { parseTaskPriority, parseTaskStatus, Task } from "../domain/task";
 import type {
@@ -98,6 +99,10 @@ function toTask(row: {
 export class PrismaTasksRepository implements TasksRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  private client() {
+    return currentPrisma(this.prisma);
+  }
+
   async create(input: CreateTaskInput): Promise<Task> {
     const task = Task.create(
       input.projectId,
@@ -108,7 +113,7 @@ export class PrismaTasksRepository implements TasksRepository {
       input.dueDate,
     );
     try {
-      const row = await this.prisma.task.create({
+      const row = await this.client().task.create({
         data: {
           id: task.id,
           projectId: task.projectId,
@@ -130,7 +135,7 @@ export class PrismaTasksRepository implements TasksRepository {
 
   async findById(id: string): Promise<Task | null> {
     try {
-      const row = await this.prisma.task.findUnique({
+      const row = await this.client().task.findUnique({
         where: { id },
         select: TASK_SELECT,
       });
@@ -145,7 +150,7 @@ export class PrismaTasksRepository implements TasksRepository {
     filters: ListTasksFilters = {},
   ): Promise<Task[]> {
     try {
-      const rows = await this.prisma.task.findMany({
+      const rows = await this.client().task.findMany({
         where: {
           projectId,
           deletedAt: null,
@@ -168,7 +173,7 @@ export class PrismaTasksRepository implements TasksRepository {
       return [];
     }
     try {
-      const rows = await this.prisma.task.findMany({
+      const rows = await this.client().task.findMany({
         where: {
           projectId: { in: projectIds },
           deletedAt: null,
@@ -189,7 +194,7 @@ export class PrismaTasksRepository implements TasksRepository {
     }
     const updated = existing.withDetails(input);
     try {
-      const row = await this.prisma.task.update({
+      const row = await this.client().task.update({
         where: { id },
         data: {
           title: updated.title,
@@ -213,7 +218,7 @@ export class PrismaTasksRepository implements TasksRepository {
     }
     const deleted = existing.softDelete();
     try {
-      const row = await this.prisma.task.update({
+      const row = await this.client().task.update({
         where: { id },
         data: { deletedAt: deleted.deletedAt },
         select: TASK_SELECT,

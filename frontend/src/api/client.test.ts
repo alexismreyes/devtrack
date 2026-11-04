@@ -17,6 +17,7 @@ import {
   listMembers,
   listProbes,
   listProjects,
+  listTaskActivity,
   listTaskComments,
   listTasks,
   login,
@@ -920,6 +921,141 @@ describe("task comments API client", () => {
       status: 401,
       code: "UNAUTHENTICATED",
       message: "Authentication is required",
+    });
+    expectNoTokenStorage();
+  });
+});
+
+describe("task activity API client", () => {
+  const createdEvent = {
+    id: "activity-1",
+    taskId: "task-1",
+    kind: "TASK_CREATED" as const,
+    actorUserId: "user-1",
+    actorDisplayName: "Ada",
+    createdAt: "2026-11-04T12:00:00.000Z",
+    payload: {},
+  };
+
+  const fieldsChangedEvent = {
+    id: "activity-2",
+    taskId: "task-1",
+    kind: "TASK_FIELDS_CHANGED" as const,
+    actorUserId: "user-1",
+    actorDisplayName: "Ada",
+    createdAt: "2026-11-04T13:00:00.000Z",
+    payload: {
+      changes: [
+        {
+          field: "title" as const,
+          oldValue: "Write tests",
+          newValue: "Ship it",
+        },
+      ],
+    },
+  };
+
+  const commentAddedEvent = {
+    id: "activity-3",
+    taskId: "task-1",
+    kind: "COMMENT_ADDED" as const,
+    actorUserId: "user-2",
+    actorDisplayName: "Bob",
+    createdAt: "2026-11-04T14:00:00.000Z",
+    payload: {
+      commentId: "comment-1",
+      bodyPreview: "Looks good",
+    },
+  };
+
+  it("lists activity with credentials included and strips non-public fields", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/activity");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        activity: [
+          {
+            ...commentAddedEvent,
+            deletedAt: "must-not-be-kept",
+            token: "must-not-be-kept",
+            sessionId: "must-not-be-kept",
+          },
+          {
+            ...fieldsChangedEvent,
+            passwordHash: "must-not-be-kept",
+          },
+          {
+            ...createdEvent,
+            stack: "must-not-be-kept",
+          },
+        ],
+      });
+    });
+
+    await expect(listTaskActivity("task-1")).resolves.toEqual({
+      activity: [commentAddedEvent, fieldsChangedEvent, createdEvent],
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("maps unauthenticated activity access without storing credentials", async () => {
+    mockFetch(() =>
+      jsonResponse(401, {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Authentication is required",
+        },
+      }),
+    );
+
+    const error = await listTaskActivity("task-1").catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "UNAUTHENTICATED",
+      message: "Authentication is required",
+    });
+    expectNoTokenStorage();
+  });
+
+  it("maps forbidden and not-found activity access without storing credentials", async () => {
+    mockFetch(() =>
+      jsonResponse(403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "You cannot access this project",
+        },
+      }),
+    );
+
+    const forbidden = await listTaskActivity("task-1").catch(
+      (err: unknown) => err,
+    );
+    expect(forbidden).toMatchObject({
+      status: 403,
+      code: "FORBIDDEN",
+    });
+
+    mockFetch(() =>
+      jsonResponse(404, {
+        error: {
+          code: "NOT_FOUND",
+          message: "Task not found",
+        },
+      }),
+    );
+
+    const missing = await listTaskActivity("task-1").catch(
+      (err: unknown) => err,
+    );
+    expect(missing).toMatchObject({
+      status: 404,
+      code: "NOT_FOUND",
     });
     expectNoTokenStorage();
   });

@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import { currentPrisma } from "../../../infrastructure/prisma/prisma-context";
 import {
   CommentNotFoundError,
   DatabaseUnavailableError,
@@ -90,6 +91,10 @@ function toComment(row: {
 export class PrismaCommentsRepository implements CommentsRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  private client() {
+    return currentPrisma(this.prisma);
+  }
+
   async create(input: CreateCommentInput): Promise<TaskComment> {
     const comment = TaskComment.create(
       input.taskId,
@@ -97,7 +102,7 @@ export class PrismaCommentsRepository implements CommentsRepository {
       input.body,
     );
     try {
-      const row = await this.prisma.taskComment.create({
+      const row = await this.client().taskComment.create({
         data: {
           id: comment.id,
           taskId: comment.taskId,
@@ -116,7 +121,7 @@ export class PrismaCommentsRepository implements CommentsRepository {
 
   async findById(id: string): Promise<TaskComment | null> {
     try {
-      const row = await this.prisma.taskComment.findUnique({
+      const row = await this.client().taskComment.findUnique({
         where: { id },
         select: COMMENT_SELECT,
       });
@@ -128,7 +133,7 @@ export class PrismaCommentsRepository implements CommentsRepository {
 
   async listByTaskId(taskId: string): Promise<TaskComment[]> {
     try {
-      const rows = await this.prisma.taskComment.findMany({
+      const rows = await this.client().taskComment.findMany({
         where: {
           taskId,
           deletedAt: null,
@@ -149,7 +154,7 @@ export class PrismaCommentsRepository implements CommentsRepository {
     }
     const updated = existing.withBody(body);
     try {
-      const row = await this.prisma.taskComment.update({
+      const row = await this.client().taskComment.update({
         where: { id },
         data: { body: updated.body },
         select: COMMENT_SELECT,
@@ -167,7 +172,7 @@ export class PrismaCommentsRepository implements CommentsRepository {
     }
     const deleted = existing.softDelete();
     try {
-      const row = await this.prisma.taskComment.update({
+      const row = await this.client().taskComment.update({
         where: { id },
         data: { deletedAt: deleted.deletedAt },
         select: COMMENT_SELECT,

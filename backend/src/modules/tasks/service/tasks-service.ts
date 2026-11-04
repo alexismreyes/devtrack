@@ -1,4 +1,5 @@
 import type { TaskAuthorizationPort } from "../../project-members/access/task-authorization-port";
+import type { UnitOfWork } from "../../projects/access/unit-of-work";
 import type { ProjectAccessPort } from "../../projects/access/project-access-port";
 import {
   summarizeDashboard,
@@ -6,6 +7,11 @@ import {
 } from "../domain/dashboard-summary";
 import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
 import type { Task } from "../domain/task";
+import {
+  buildTaskFieldChanges,
+  TaskActivityEvent,
+} from "../domain/task-activity";
+import type { ActivityRepository } from "../repository/activity-repository";
 import type {
   ListTasksFilters,
   TasksRepository,
@@ -25,6 +31,8 @@ export class TasksService {
     private readonly tasks: TasksRepository,
     private readonly projects: ProjectAccessPort,
     private readonly authorization: TaskAuthorizationPort,
+    private readonly activity: ActivityRepository,
+    private readonly unitOfWork: UnitOfWork,
   ) {}
 
   async create(
@@ -37,13 +45,19 @@ export class TasksService {
       projectId,
     );
     this.assertParentWritable(snapshot.archivedAt);
-    return this.tasks.create({
-      projectId,
-      title: input.title,
-      description: input.description,
-      status: input.status,
-      priority: input.priority,
-      dueDate: input.dueDate,
+    return this.unitOfWork.run(async () => {
+      const task = await this.tasks.create({
+        projectId,
+        title: input.title,
+        description: input.description,
+        status: input.status,
+        priority: input.priority,
+        dueDate: input.dueDate,
+      });
+      await this.activity.create(
+        TaskActivityEvent.taskCreated(task.id, actorId),
+      );
+      return task;
     });
   }
 
@@ -84,8 +98,18 @@ export class TasksService {
       task.projectId,
     );
     this.assertParentWritable(snapshot.archivedAt);
+    const changes = buildTaskFieldChanges(task, input);
+    // Validate normalized update even when no-op (preserve prior invariant).
     task.withDetails(input);
-    return this.tasks.update(taskId, input);
+    return this.unitOfWork.run(async () => {
+      const updated = await this.tasks.update(taskId, input);
+      if (changes.length > 0) {
+        await this.activity.create(
+          TaskActivityEvent.taskFieldsChanged(taskId, actorId, changes),
+        );
+      }
+      return updated;
+    });
   }
 
   async softDelete(actorId: string, taskId: string): Promise<Task> {
@@ -95,7 +119,13 @@ export class TasksService {
       task.projectId,
     );
     this.assertParentWritable(snapshot.archivedAt);
-    return this.tasks.softDelete(taskId);
+    return this.unitOfWork.run(async () => {
+      const deleted = await this.tasks.softDelete(taskId);
+      await this.activity.create(
+        TaskActivityEvent.taskSoftDeleted(taskId, actorId),
+      );
+      return deleted;
+    });
   }
 
   private async requireLiveTask(taskId: string): Promise<Task> {

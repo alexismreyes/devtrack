@@ -8,9 +8,11 @@ import {
   TaskNotFoundError,
   TaskParentArchivedError,
 } from "../domain/errors";
+import { ImmediateUnitOfWork } from "../../projects/access/unit-of-work";
 import { CommentsService } from "../service/comments-service";
 import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { FakeUsersIdentityPort } from "./fake-users-identity-port";
+import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
@@ -24,6 +26,7 @@ const MISSING_ID = "99999999-9999-4999-8999-999999999999";
 function createHarness(archivedAt: Date | null = null) {
   const comments = new InMemoryCommentsRepository();
   const tasks = new InMemoryTasksRepository();
+  const activity = new InMemoryActivityRepository();
   const authorization = new FakeTaskAuthorizationPort();
   const identities = new FakeUsersIdentityPort();
   authorization.seed(
@@ -56,8 +59,10 @@ function createHarness(archivedAt: Date | null = null) {
     tasks,
     authorization,
     identities,
+    activity,
+    new ImmediateUnitOfWork(),
   );
-  return { service, comments, tasks, authorization, identities };
+  return { service, comments, tasks, activity, authorization, identities };
 }
 
 async function seedLiveTask(tasks: InMemoryTasksRepository) {

@@ -7,6 +7,7 @@ import { PrismaAuthRepository } from "./modules/auth/repository/prisma-auth-repo
 import { PrismaProjectMembersRepository } from "./modules/project-members/repository/prisma-project-members-repository";
 import { PrismaProjectsRepository } from "./modules/projects/repository/prisma-projects-repository";
 import { PrismaSystemRepository } from "./modules/system/repository/prisma-system-repository";
+import { PrismaActivityRepository } from "./modules/tasks/repository/prisma-activity-repository";
 import { PrismaCommentsRepository } from "./modules/tasks/repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "./modules/tasks/repository/prisma-tasks-repository";
 import { PrismaUsersRepository } from "./modules/users/repository/prisma-users-repository";
@@ -21,6 +22,7 @@ const authRepository = new PrismaAuthRepository(prisma);
 const projectsRepository = new PrismaProjectsRepository(prisma);
 const tasksRepository = new PrismaTasksRepository(prisma);
 const commentsRepository = new PrismaCommentsRepository(prisma);
+const activityRepository = new PrismaActivityRepository(prisma);
 const projectMembersRepository = new PrismaProjectMembersRepository(prisma);
 const app = createApp({
   corsOrigin: config.corsOrigin,
@@ -30,6 +32,7 @@ const app = createApp({
   projectsRepository,
   tasksRepository,
   commentsRepository,
+  activityRepository,
   projectMembersRepository,
   unitOfWork: new PrismaUnitOfWork(prisma),
 });

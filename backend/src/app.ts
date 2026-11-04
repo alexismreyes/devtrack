@@ -30,12 +30,16 @@ import { ProjectsController } from "./modules/projects/controller/projects-contr
 import type { ProjectsRepository } from "./modules/projects/repository/projects-repository";
 import { createProjectsRouter } from "./modules/projects/routes/projects-routes";
 import { ProjectsService } from "./modules/projects/service/projects-service";
+import { ActivityController } from "./modules/tasks/controller/activity-controller";
 import { CommentsController } from "./modules/tasks/controller/comments-controller";
 import { TasksController } from "./modules/tasks/controller/tasks-controller";
+import type { ActivityRepository } from "./modules/tasks/repository/activity-repository";
 import type { CommentsRepository } from "./modules/tasks/repository/comments-repository";
 import type { TasksRepository } from "./modules/tasks/repository/tasks-repository";
+import { createActivityRouter } from "./modules/tasks/routes/activity-routes";
 import { createCommentsRouter } from "./modules/tasks/routes/comments-routes";
 import { createTasksRouter } from "./modules/tasks/routes/tasks-routes";
+import { ActivityService } from "./modules/tasks/service/activity-service";
 import { CommentsService } from "./modules/tasks/service/comments-service";
 import { TasksService } from "./modules/tasks/service/tasks-service";
 import { UsersController } from "./modules/users/controller/users-controller";
@@ -52,6 +56,7 @@ export type AppDependencies = {
   projectsRepository: ProjectsRepository;
   tasksRepository: TasksRepository;
   commentsRepository: CommentsRepository;
+  activityRepository: ActivityRepository;
   projectMembersRepository: ProjectMembersRepository;
   unitOfWork?: UnitOfWork;
 };
@@ -59,6 +64,7 @@ export type AppDependencies = {
 export function createApp(deps: AppDependencies): Express {
   const app = express();
 
+  const unitOfWork = deps.unitOfWork ?? new ImmediateUnitOfWork();
   const usersIdentity = new UsersIdentityAdapter(deps.usersRepository);
   const authService = new AuthService(deps.authRepository, usersIdentity);
   const usersService = new UsersService(deps.usersRepository);
@@ -75,7 +81,7 @@ export function createApp(deps: AppDependencies): Express {
     deps.projectsRepository,
     projectMembershipAccess,
     ownerMembershipWrite,
-    deps.unitOfWork ?? new ImmediateUnitOfWork(),
+    unitOfWork,
   );
   const projectAccess = new ProjectAccessAdapter(deps.projectsRepository);
   const projectMembersService = new ProjectMembersService(
@@ -91,9 +97,19 @@ export function createApp(deps: AppDependencies): Express {
     deps.tasksRepository,
     projectAccess,
     taskAuthorization,
+    deps.activityRepository,
+    unitOfWork,
   );
   const commentsService = new CommentsService(
     deps.commentsRepository,
+    deps.tasksRepository,
+    taskAuthorization,
+    usersIdentity,
+    deps.activityRepository,
+    unitOfWork,
+  );
+  const activityService = new ActivityService(
+    deps.activityRepository,
     deps.tasksRepository,
     taskAuthorization,
     usersIdentity,
@@ -108,6 +124,7 @@ export function createApp(deps: AppDependencies): Express {
   );
   const tasksController = new TasksController(tasksService);
   const commentsController = new CommentsController(commentsService);
+  const activityController = new ActivityController(activityService);
   const requireAuth = createRequireAuth(authService);
 
   app.use(
@@ -125,6 +142,7 @@ export function createApp(deps: AppDependencies): Express {
   app.use(createProjectMembersRouter(projectMembersController, requireAuth));
   app.use(createTasksRouter(tasksController, requireAuth));
   app.use(createCommentsRouter(commentsController, requireAuth));
+  app.use(createActivityRouter(activityController, requireAuth));
   app.use(errorHandler);
 
   return app;

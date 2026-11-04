@@ -64,13 +64,21 @@ function isCommentsListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/tasks/task-1/comments";
 }
 
+function isActivityListUrl(url: string): boolean {
+  return url === "http://localhost:3000/api/tasks/task-1/activity";
+}
+
 function defaultTaskHandler(
   url: string,
   init?: RequestInit,
   comments: unknown[] = [],
+  activityEvents: unknown[] = [],
 ): Response {
   if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { comments });
+  }
+  if (isActivityListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+    return jsonResponse(200, { activity: activityEvents });
   }
   if (url.endsWith("/api/tasks/task-1") && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, task);
@@ -79,6 +87,44 @@ function defaultTaskHandler(
     error: { code: "INTERNAL_ERROR", message: `Unexpected ${init?.method ?? "GET"} ${url}` },
   });
 }
+
+const createdActivity = {
+  id: "activity-1",
+  taskId: "task-1",
+  kind: "TASK_CREATED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T12:00:00.000Z",
+  payload: {},
+};
+
+const fieldsChangedActivity = {
+  id: "activity-2",
+  taskId: "task-1",
+  kind: "TASK_FIELDS_CHANGED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T13:00:00.000Z",
+  payload: {
+    changes: [
+      { field: "title" as const, oldValue: "Write tests", newValue: "Ship it" },
+      { field: "status" as const, oldValue: "TODO", newValue: "DONE" },
+    ],
+  },
+};
+
+const commentAddedActivity = {
+  id: "activity-3",
+  taskId: "task-1",
+  kind: "COMMENT_ADDED" as const,
+  actorUserId: "user-2",
+  actorDisplayName: "Bob",
+  createdAt: "2026-11-04T14:00:00.000Z",
+  payload: {
+    commentId: "comment-1",
+    bodyPreview: "First note",
+  },
+};
 
 afterEach(() => {
   window.localStorage.clear();
@@ -378,7 +424,6 @@ describe("TaskDetail", () => {
     expect(within(list).getByText("Other note")).toBeInTheDocument();
     expect(within(list).getByText(/ada/i)).toBeInTheDocument();
     expect(screen.queryByText(/markdown/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/activity/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/label/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/@user/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
@@ -586,5 +631,187 @@ describe("TaskDetail", () => {
     expect(screen.getByRole("button", { name: /close task/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save task/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
+  });
+
+  it("lists activity newest first with field changes and comment preview (AC-010)", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      return defaultTaskHandler(url, init, [ownComment], [
+        commentAddedActivity,
+        fieldsChangedActivity,
+        createdActivity,
+      ]);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: /^activity$/i })).toBeInTheDocument();
+    const list = await screen.findByRole("list", { name: /task activity/i });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    expect(within(items[0] as HTMLElement).getByText(/comment added/i)).toBeInTheDocument();
+    expect(within(items[0] as HTMLElement).getByText("First note")).toBeInTheDocument();
+    expect(within(items[0] as HTMLElement).getByText(/bob/i)).toBeInTheDocument();
+    expect(within(items[1] as HTMLElement).getByText(/fields changed/i)).toBeInTheDocument();
+    expect(
+      within(items[1] as HTMLElement).getByText(
+        /title: Write tests → Ship it; status: TODO → DONE/i,
+      ),
+    ).toBeInTheDocument();
+    expect(within(items[2] as HTMLElement).getByText(/task created/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^comments$/i })).toBeInTheDocument();
+    expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/label/i)).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url === "http://localhost:3000/api/tasks/task-1/activity" &&
+          init?.method === "GET" &&
+          init.credentials === "include",
+      ),
+    ).toBe(true);
+    expectNoSessionTokenStorage();
+  });
+
+  it("shows an empty activity state", async () => {
+    mockFetch((url, init) => defaultTaskHandler(url, init, [], []));
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(/no activity yet/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^activity$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^comments$/i })).toBeInTheDocument();
+  });
+
+  it("shows activity forbidden and not-found states", async () => {
+    mockFetch((url, init) => {
+      if (isActivityListUrl(url)) {
+        return jsonResponse(403, {
+          error: {
+            code: "FORBIDDEN",
+            message: "You cannot access this project",
+          },
+        });
+      }
+      return defaultTaskHandler(url, init);
+    });
+
+    const { unmount } = render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/you cannot access this project/i),
+    ).toBeInTheDocument();
+    unmount();
+
+    mockFetch((url, init) => {
+      if (isActivityListUrl(url)) {
+        return jsonResponse(404, {
+          error: {
+            code: "NOT_FOUND",
+            message: "Task not found",
+          },
+        });
+      }
+      return defaultTaskHandler(url, init);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(/task not found/i)).toBeInTheDocument();
+  });
+
+  it("shows activity error and unauthenticated states", async () => {
+    mockFetch((url, init) => {
+      if (isActivityListUrl(url)) {
+        return jsonResponse(500, {
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "Activity unavailable",
+          },
+        });
+      }
+      return defaultTaskHandler(url, init);
+    });
+
+    const { unmount } = render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(/activity unavailable/i)).toBeInTheDocument();
+    unmount();
+
+    const onUnauthenticated = vi.fn();
+    mockFetch((url, init) => {
+      if (isActivityListUrl(url)) {
+        return jsonResponse(401, {
+          error: {
+            code: "UNAUTHENTICATED",
+            message: "Authentication is required",
+          },
+        });
+      }
+      return defaultTaskHandler(url, init);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={onUnauthenticated}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/authentication is required/i),
+    ).toBeInTheDocument();
+    expect(onUnauthenticated).toHaveBeenCalledOnce();
   });
 });

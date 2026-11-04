@@ -18,8 +18,10 @@ import { PrismaProjectMembersRepository } from "../../project-members/repository
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
+import { PrismaActivityRepository } from "../repository/prisma-activity-repository";
 import { PrismaCommentsRepository } from "../repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../repository/prisma-tasks-repository";
+import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
@@ -55,6 +57,7 @@ function createTasksApp() {
   const projectsRepository = new InMemoryProjectsRepository();
   const tasksRepository = new InMemoryTasksRepository();
   const commentsRepository = new InMemoryCommentsRepository();
+  const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
   const app = createApp({
     corsOrigin: "http://localhost:5173",
@@ -64,6 +67,7 @@ function createTasksApp() {
     projectsRepository,
     tasksRepository,
     commentsRepository,
+    activityRepository,
     projectMembersRepository,
   });
   return { app, tasksRepository };
@@ -1145,6 +1149,7 @@ describe("tasks HTTP API persistence", () => {
       projectsRepository: new PrismaProjectsRepository(prisma),
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
+      activityRepository: new PrismaActivityRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),
       unitOfWork: new PrismaUnitOfWork(prisma),
     });

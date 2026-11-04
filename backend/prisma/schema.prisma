@@ -31,6 +31,7 @@ model User {
   ownedProjects      Project[]
   projectMemberships ProjectMember[]
   authoredTaskComments TaskComment[]
+  taskActivityEvents TaskActivityEvent[]
 
   @@map("users")
 }
@@ -71,6 +72,13 @@ enum ProjectMemberRole {
   OWNER
   EDITOR
   VIEWER
+}
+
+enum TaskActivityKind {
+  TASK_CREATED
+  TASK_FIELDS_CHANGED
+  TASK_SOFT_DELETED
+  COMMENT_ADDED
 }
 
 model Project {
@@ -114,6 +122,7 @@ model Task {
   deletedAt   DateTime?
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
   comments    TaskComment[]
+  activityEvents TaskActivityEvent[]
 
   @@index([projectId])
   @@map("tasks")
@@ -131,4 +140,19 @@ model TaskComment {
 
   @@index([taskId])
   @@map("task_comments")
+}
+
+model TaskActivityEvent {
+  id          String           @id @db.Uuid
+  taskId      String           @db.Uuid
+  actorUserId String           @db.Uuid
+  kind        TaskActivityKind
+  payload     Json
+  createdAt   DateTime
+  task        Task             @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  actor       User             @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([taskId])
+  @@index([taskId, createdAt])
+  @@map("task_activity_events")
 }

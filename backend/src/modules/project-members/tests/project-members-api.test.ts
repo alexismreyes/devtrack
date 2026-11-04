@@ -14,8 +14,10 @@ import { PrismaSystemRepository } from "../../system/repository/prisma-system-re
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
+import { PrismaActivityRepository } from "../../tasks/repository/prisma-activity-repository";
 import { PrismaCommentsRepository } from "../../tasks/repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repository";
+import { InMemoryActivityRepository } from "../../tasks/tests/in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "../../tasks/tests/in-memory-comments-repository";
 import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
 import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
@@ -55,6 +57,7 @@ function createMembersApp() {
   const projectsRepository = new InMemoryProjectsRepository();
   const tasksRepository = new InMemoryTasksRepository();
   const commentsRepository = new InMemoryCommentsRepository();
+  const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
   const app = createApp({
     corsOrigin: "http://localhost:5173",
@@ -64,6 +67,7 @@ function createMembersApp() {
     projectsRepository,
     tasksRepository,
     commentsRepository,
+    activityRepository,
     projectMembersRepository,
   });
   return { app, usersRepository, projectMembersRepository };
@@ -435,6 +439,7 @@ describe("project-members HTTP API persistence", () => {
       projectsRepository: new PrismaProjectsRepository(prisma),
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
+      activityRepository: new PrismaActivityRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),
       unitOfWork: new PrismaUnitOfWork(prisma),
     });

@@ -1,4 +1,5 @@
 import type { TaskAuthorizationPort } from "../../project-members/access/task-authorization-port";
+import type { UnitOfWork } from "../../projects/access/unit-of-work";
 import type { UsersIdentityPort } from "../../users/identity/users-identity-port";
 import {
   CommentForbiddenError,
@@ -7,6 +8,8 @@ import {
   TaskParentArchivedError,
 } from "../domain/errors";
 import type { TaskComment } from "../domain/task-comment";
+import { TaskActivityEvent } from "../domain/task-activity";
+import type { ActivityRepository } from "../repository/activity-repository";
 import type { CommentsRepository } from "../repository/comments-repository";
 import type { TasksRepository } from "../repository/tasks-repository";
 
@@ -25,6 +28,8 @@ export class CommentsService {
     private readonly tasks: TasksRepository,
     private readonly authorization: TaskAuthorizationPort,
     private readonly identities: UsersIdentityPort,
+    private readonly activity: ActivityRepository,
+    private readonly unitOfWork: UnitOfWork,
   ) {}
 
   async create(
@@ -38,12 +43,22 @@ export class CommentsService {
       task.projectId,
     );
     this.assertParentWritable(snapshot.archivedAt);
-    const comment = await this.comments.create({
-      taskId: task.id,
-      authorUserId: actorId,
-      body,
+    return this.unitOfWork.run(async () => {
+      const comment = await this.comments.create({
+        taskId: task.id,
+        authorUserId: actorId,
+        body,
+      });
+      await this.activity.create(
+        TaskActivityEvent.commentAdded(
+          task.id,
+          actorId,
+          comment.id,
+          comment.body,
+        ),
+      );
+      return this.toView(comment);
     });
-    return this.toView(comment);
   }
 
   async listByTask(actorId: string, taskId: string): Promise<CommentView[]> {

@@ -16,8 +16,10 @@ import { PrismaUsersRepository } from "../../users/repository/prisma-users-repos
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
 import { PrismaProjectMembersRepository } from "../../project-members/repository/prisma-project-members-repository";
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
+import { PrismaActivityRepository } from "../../tasks/repository/prisma-activity-repository";
 import { PrismaCommentsRepository } from "../../tasks/repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repository";
+import { InMemoryActivityRepository } from "../../tasks/tests/in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "../../tasks/tests/in-memory-comments-repository";
 import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
 import { PrismaProjectsRepository } from "../repository/prisma-projects-repository";
@@ -55,6 +57,7 @@ function createProjectsApp() {
   const projectsRepository = new InMemoryProjectsRepository();
   const tasksRepository = new InMemoryTasksRepository();
   const commentsRepository = new InMemoryCommentsRepository();
+  const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
   const app = createApp({
     corsOrigin: "http://localhost:5173",
@@ -64,6 +67,7 @@ function createProjectsApp() {
     projectsRepository,
     tasksRepository,
     commentsRepository,
+    activityRepository,
     projectMembersRepository,
   });
   return { app, projectsRepository };
@@ -659,6 +663,7 @@ describe("projects HTTP API persistence", () => {
       projectsRepository: new PrismaProjectsRepository(prisma),
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
+      activityRepository: new PrismaActivityRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),
       unitOfWork: new PrismaUnitOfWork(prisma),
     });

@@ -83,7 +83,13 @@ Last confirmed: 2026-10-31 (features `001`–`009`).
 
 - **Spec:** `specs/010-task-comments/`
 - **What:** Persisted plain-text discussion on a task; author edit; author or OWNER soft-delete.
-- **Approach:** Owned by `tasks` (no peer comments domain). Prisma `TaskComment` with `deletedAt`. Create/list via `TaskAuthorizationPort` task write/read; author-only PATCH; soft-delete author or effective OWNER; no restore; no mentions/rich text. UI in existing `TaskDetail` Dialog. Deferred: **L** task events, **E** labels.
+- **Approach:** Owned by `tasks` (no peer comments domain). Prisma `TaskComment` with `deletedAt`. Create/list via `TaskAuthorizationPort` task write/read; author-only PATCH; soft-delete author or effective OWNER; no restore; no mentions/rich text. UI in existing `TaskDetail` Dialog. Deferred: **E** labels (**L** shipped as `011-task-activity`).
+
+### 011 — Task Activity
+
+- **Spec:** `specs/011-task-activity/`
+- **What:** Task-scoped activity feed for created, field changes, soft-delete, and comments added.
+- **Approach:** Owned by `tasks`. Prisma `task_activity_events`. Emit in the same transaction as the write. `GET /api/tasks/:taskId/activity` → `{ activity }` (newest first, task read). Comment-added stores `commentId` + body preview. Read-only in `TaskDetail`. Not app-wide audit **C**. Deferred: **E** labels.
 
 ---
 

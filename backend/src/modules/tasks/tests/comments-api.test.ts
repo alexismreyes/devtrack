@@ -9,6 +9,7 @@ import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
+import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
@@ -44,6 +45,7 @@ function createCommentsApp() {
   const projectsRepository = new InMemoryProjectsRepository();
   const tasksRepository = new InMemoryTasksRepository();
   const commentsRepository = new InMemoryCommentsRepository();
+  const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
   const app = createApp({
     corsOrigin: "http://localhost:5173",
@@ -53,6 +55,7 @@ function createCommentsApp() {
     projectsRepository,
     tasksRepository,
     commentsRepository,
+    activityRepository,
     projectMembersRepository,
   });
   return { app, commentsRepository, tasksRepository };

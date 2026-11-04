@@ -2,11 +2,11 @@
 
 - **Feature ID:** 011-task-activity
 - **Specification:** `spec.md`
-- **Status:** Draft
+- **Status:** Verified
 
 Inspect the repo before filling this in. Do not assume planned components exist. Application source stays under `frontend/` or `backend/`, never under `specs/`.
 
-These artifacts are **Draft**. Q-066–Q-079 in `spec.md` section 15 are **Decided**. Do not invent further product rules. Do not implement labels (**E**). Do not write `specs/005-audit/`. Do not change `constitution.md`. Do not implement until Approved.
+These artifacts are **Verified**. Q-066–Q-079 in `spec.md` section 15 are **Decided**. Do not invent further product rules. Do not implement labels (**E**). Do not write `specs/005-audit/`. Do not change `constitution.md`. Implementation may proceed on T001–T016 only.
 
 ## 1. Summary
 
@@ -205,7 +205,7 @@ Do not add `specs/005-audit/`. Do not add frontend label modules.
 
 ## 11. Sequence
 
-1. User Approves Draft artifacts (material Qs already Decided).
+1. User Approves artifacts (done; material Qs Decided).
 2. Inspect current tasks/comments wiring (T001).
 3. Domain kinds + field-diff helpers + repository contract + in-memory fake.
 4. Prisma model + additive migration + adapter.
@@ -217,7 +217,7 @@ Do not add `specs/005-audit/`. Do not add frontend label modules.
 
 ## 12. Risks
 
-- **Approval gate** — Draft until user Approves; implementation blocked until then.
+- **Approval gate** — Cleared; artifacts Approved.
 - **Overlap with C** — mitigated by Q-066 Decided; risk of implementers building a generic audit — reject in review.
 - **Comment contract drift** — emission must stay internal; regression-test comment create response.
 - **Transaction complexity** — Prisma transaction across task write + activity insert must not leak Prisma into domain; use composition-root/unit-of-work carefully.
@@ -248,8 +248,8 @@ Do not add `specs/005-audit/`. Do not add frontend label modules.
 
 ## 14. Approval
 
-- Specification reviewed: No (Draft; Qs Decided)
-- Architecture reviewed: No (Draft; awaiting user Approve)
+- Specification reviewed: Yes
+- Architecture reviewed: Yes
 - Risks understood: Yes (recorded)
-- Approved for task breakdown: No (tasks are Draft planning aids only)
-- Approved for implementation: No
+- Approved for task breakdown: Yes
+- Approved for implementation: Yes
