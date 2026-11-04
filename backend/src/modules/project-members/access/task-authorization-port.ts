@@ -13,4 +13,9 @@ export interface TaskAuthorizationPort {
     actorId: string,
     projectId: string,
   ): Promise<AuthorizedProjectSnapshot>;
+  /** Effective project OWNER (OWNER role or ownerUserId grant). */
+  requireProjectOwner(
+    actorId: string,
+    projectId: string,
+  ): Promise<AuthorizedProjectSnapshot>;
 }

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { expectNoSessionTokenStorage } from "../test/storage";
@@ -13,6 +13,24 @@ const task = {
   priority: "MEDIUM" as const,
   dueDate: "2026-11-01" as string | null,
   createdAt: "2026-10-29T18:00:00.000Z",
+};
+
+const ownComment = {
+  id: "comment-1",
+  taskId: "task-1",
+  authorUserId: "user-1",
+  authorDisplayName: "Ada",
+  body: "First note",
+  createdAt: "2026-11-04T10:00:00.000Z",
+};
+
+const otherComment = {
+  id: "comment-2",
+  taskId: "task-1",
+  authorUserId: "user-2",
+  authorDisplayName: "Bob",
+  body: "Other note",
+  createdAt: "2026-11-04T11:00:00.000Z",
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -42,6 +60,26 @@ function mockFetch(
   return fetchMock;
 }
 
+function isCommentsListUrl(url: string): boolean {
+  return url === "http://localhost:3000/api/tasks/task-1/comments";
+}
+
+function defaultTaskHandler(
+  url: string,
+  init?: RequestInit,
+  comments: unknown[] = [],
+): Response {
+  if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+    return jsonResponse(200, { comments });
+  }
+  if (url.endsWith("/api/tasks/task-1") && (init?.method === "GET" || init?.method === undefined)) {
+    return jsonResponse(200, task);
+  }
+  return jsonResponse(500, {
+    error: { code: "INTERNAL_ERROR", message: `Unexpected ${init?.method ?? "GET"} ${url}` },
+  });
+}
+
 afterEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
@@ -56,10 +94,12 @@ describe("TaskDetail", () => {
       resolveGet = resolve;
     });
     mockFetch((url, init) => {
-      expect(url).toBe("http://localhost:3000/api/tasks/task-1");
-      expect(init?.method).toBe("GET");
-      expect(init?.credentials).toBe("include");
-      return getPromise;
+      if (url === "http://localhost:3000/api/tasks/task-1") {
+        expect(init?.method).toBe("GET");
+        expect(init?.credentials).toBe("include");
+        return getPromise;
+      }
+      return defaultTaskHandler(url, init);
     });
 
     render(
@@ -107,7 +147,7 @@ describe("TaskDetail", () => {
         );
         return jsonResponse(200, updated);
       }
-      return jsonResponse(200, task);
+      return defaultTaskHandler(url, init);
     });
     const user = userEvent.setup();
 
@@ -144,7 +184,7 @@ describe("TaskDetail", () => {
         expect(init.body).toBeUndefined();
         return emptyResponse(204);
       }
-      return jsonResponse(200, task);
+      return defaultTaskHandler(url, init);
     });
     const user = userEvent.setup();
 
@@ -223,8 +263,8 @@ describe("TaskDetail", () => {
   });
 
   it("shows an archived-parent conflict when update is rejected", async () => {
-    mockFetch((_url, init) => {
-      if (init?.method === "PATCH") {
+    mockFetch((url, init) => {
+      if (init?.method === "PATCH" && url.endsWith("/api/tasks/task-1")) {
         return jsonResponse(409, {
           error: {
             code: "CONFLICT",
@@ -232,7 +272,7 @@ describe("TaskDetail", () => {
           },
         });
       }
-      return jsonResponse(200, task);
+      return defaultTaskHandler(url, init);
     });
     const user = userEvent.setup();
 
@@ -254,7 +294,7 @@ describe("TaskDetail", () => {
   });
 
   it("hides write controls when the actor cannot write", async () => {
-    mockFetch(() => jsonResponse(200, task));
+    mockFetch((url, init) => defaultTaskHandler(url, init));
 
     render(
       <TaskDetail
@@ -276,7 +316,7 @@ describe("TaskDetail", () => {
   });
 
   it("disables update and delete when the parent project is archived", async () => {
-    mockFetch(() => jsonResponse(200, task));
+    mockFetch((url, init) => defaultTaskHandler(url, init));
 
     render(
       <TaskDetail
@@ -296,7 +336,7 @@ describe("TaskDetail", () => {
 
   it("does not store a bearer token or session id", async () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
-    mockFetch(() => jsonResponse(200, task));
+    mockFetch((url, init) => defaultTaskHandler(url, init));
 
     render(
       <TaskDetail
@@ -312,5 +352,239 @@ describe("TaskDetail", () => {
     expect(await screen.findByRole("heading", { name: /write tests/i })).toBeInTheDocument();
     expect(setItem).not.toHaveBeenCalled();
     expectNoSessionTokenStorage();
+  });
+
+  it("lists live comments as plain text with credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      return defaultTaskHandler(url, init, [ownComment, otherComment]);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: /^comments$/i })).toBeInTheDocument();
+    const list = await screen.findByRole("list", { name: /task comments/i });
+    expect(within(list).getByText("First note")).toBeInTheDocument();
+    expect(within(list).getByText("Other note")).toBeInTheDocument();
+    expect(within(list).getByText(/ada/i)).toBeInTheDocument();
+    expect(screen.queryByText(/markdown/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/activity/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/label/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/@user/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url === "http://localhost:3000/api/tasks/task-1/comments" &&
+          init?.method === "GET" &&
+          init.credentials === "include",
+      ),
+    ).toBe(true);
+    expectNoSessionTokenStorage();
+  });
+
+  it("lets a writer create a comment and keeps viewer create chrome hidden", async () => {
+    const created = {
+      ...ownComment,
+      id: "comment-3",
+      body: "Fresh comment",
+      createdAt: "2026-11-04T12:00:00.000Z",
+    };
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isCommentsListUrl(url) && init?.method === "POST") {
+        expect(init.body).toBe(JSON.stringify({ body: "Fresh comment" }));
+        return jsonResponse(201, created);
+      }
+      return defaultTaskHandler(url, init, [ownComment]);
+    });
+    const user = userEvent.setup();
+
+    const { rerender } = render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await user.type(await screen.findByLabelText(/new comment/i), "Fresh comment");
+    await user.click(screen.getByRole("button", { name: /add comment/i }));
+    expect(await screen.findByText(/comment added/i)).toBeInTheDocument();
+    expect(screen.getByText("Fresh comment")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url === "http://localhost:3000/api/tasks/task-1/comments" &&
+          init?.method === "POST",
+      ),
+    ).toBe(true);
+
+    rerender(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={false}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: /^comments$/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/new comment/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add comment/i })).not.toBeInTheDocument();
+    expectNoSessionTokenStorage();
+  });
+
+  it("lets the author edit and soft-delete their own comment", async () => {
+    let listed = [ownComment, otherComment];
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (
+        url === "http://localhost:3000/api/tasks/task-1/comments/comment-1" &&
+        init?.method === "PATCH"
+      ) {
+        expect(init.body).toBe(JSON.stringify({ body: "Edited note" }));
+        const updated = { ...ownComment, body: "Edited note" };
+        listed = [updated, otherComment];
+        return jsonResponse(200, updated);
+      }
+      if (
+        url === "http://localhost:3000/api/tasks/task-1/comments/comment-1" &&
+        init?.method === "DELETE"
+      ) {
+        expect(init.body).toBeUndefined();
+        listed = [otherComment];
+        return emptyResponse(204);
+      }
+      return defaultTaskHandler(url, init, listed);
+    });
+    const user = userEvent.setup();
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const list = await screen.findByRole("list", { name: /task comments/i });
+    const ownItem = within(list).getByText("First note").closest("li");
+    expect(ownItem).not.toBeNull();
+    const otherItem = within(list).getByText("Other note").closest("li");
+    expect(otherItem).not.toBeNull();
+
+    expect(
+      within(ownItem as HTMLElement).getByRole("button", { name: /edit comment/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(ownItem as HTMLElement).getByRole("button", { name: /delete comment/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(otherItem as HTMLElement).queryByRole("button", { name: /edit comment/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(otherItem as HTMLElement).queryByRole("button", { name: /delete comment/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(ownItem as HTMLElement).getByRole("button", { name: /edit comment/i }),
+    );
+    const editField = screen.getByLabelText(/edit comment/i);
+    await user.clear(editField);
+    await user.type(editField, "Edited note");
+    await user.click(screen.getByRole("button", { name: /save comment/i }));
+    expect(await screen.findByText(/comment updated/i)).toBeInTheDocument();
+    expect(screen.getByText("Edited note")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /delete comment/i }));
+    expect(await screen.findByText(/comment deleted/i)).toBeInTheDocument();
+    expect(screen.queryByText("Edited note")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.endsWith("/comments/comment-1") &&
+          init?.method === "DELETE",
+      ),
+    ).toBe(true);
+    expectNoSessionTokenStorage();
+  });
+
+  it("shows OWNER soft-delete chrome for another user's comment", async () => {
+    mockFetch((url, init) => defaultTaskHandler(url, init, [otherComment]));
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        canManageMembers={true}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const list = await screen.findByRole("list", { name: /task comments/i });
+    const item = within(list).getByText("Other note").closest("li");
+    expect(item).not.toBeNull();
+    expect(
+      within(item as HTMLElement).queryByRole("button", { name: /edit comment/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(item as HTMLElement).getByRole("button", { name: /delete comment/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an empty comments state and keeps the existing dialog chrome", async () => {
+    mockFetch((url, init) => defaultTaskHandler(url, init, []));
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(/no comments yet/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /close task/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save task/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
   });
 });

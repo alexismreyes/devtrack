@@ -14,7 +14,9 @@ import { PrismaSystemRepository } from "../../system/repository/prisma-system-re
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
+import { PrismaCommentsRepository } from "../../tasks/repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repository";
+import { InMemoryCommentsRepository } from "../../tasks/tests/in-memory-comments-repository";
 import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
 import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
@@ -52,6 +54,7 @@ function createMembersApp() {
   const systemRepository = new FakeSystemRepository();
   const projectsRepository = new InMemoryProjectsRepository();
   const tasksRepository = new InMemoryTasksRepository();
+  const commentsRepository = new InMemoryCommentsRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
   const app = createApp({
     corsOrigin: "http://localhost:5173",
@@ -60,6 +63,7 @@ function createMembersApp() {
     authRepository,
     projectsRepository,
     tasksRepository,
+    commentsRepository,
     projectMembersRepository,
   });
   return { app, usersRepository, projectMembersRepository };
@@ -430,6 +434,7 @@ describe("project-members HTTP API persistence", () => {
       authRepository: new PrismaAuthRepository(prisma),
       projectsRepository: new PrismaProjectsRepository(prisma),
       tasksRepository: new PrismaTasksRepository(prisma),
+      commentsRepository: new PrismaCommentsRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),
       unitOfWork: new PrismaUnitOfWork(prisma),
     });

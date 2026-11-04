@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DuplicateMembershipError,
   MembershipNotFoundError,
@@ -11,18 +11,26 @@ const USER_A = "11111111-1111-4111-8111-111111111111";
 const USER_B = "22222222-2222-4222-8222-222222222222";
 
 describe("InMemoryProjectMembersRepository", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("creates, finds, lists by project newest first, and lists project ids by user", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const members = new InMemoryProjectMembersRepository();
     const older = await members.create({
       projectId: PROJECT_A,
       userId: USER_A,
       role: "OWNER",
     });
+    vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
     const newer = await members.create({
       projectId: PROJECT_A,
       userId: USER_B,
       role: "EDITOR",
     });
+    vi.setSystemTime(new Date("2026-01-01T00:00:02.000Z"));
     await members.create({
       projectId: PROJECT_B,
       userId: USER_A,

@@ -46,3 +46,24 @@ export class DatabaseUnavailableError extends Error {
     this.name = "DatabaseUnavailableError";
   }
 }
+
+export class CommentNotFoundError extends Error {
+  constructor() {
+    super("Comment was not found");
+    this.name = "CommentNotFoundError";
+  }
+}
+
+export class InvalidCommentBodyError extends Error {
+  constructor() {
+    super("Comment body is required");
+    this.name = "InvalidCommentBodyError";
+  }
+}
+
+export class CommentForbiddenError extends Error {
+  constructor() {
+    super("Not allowed to modify this comment");
+    this.name = "CommentForbiddenError";
+  }
+}

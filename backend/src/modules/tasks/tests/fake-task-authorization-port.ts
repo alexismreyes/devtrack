@@ -53,10 +53,17 @@ export class FakeTaskAuthorizationPort implements TaskAuthorizationPort {
     return this.require(actorId, projectId, "write_task");
   }
 
+  async requireProjectOwner(
+    actorId: string,
+    projectId: string,
+  ): Promise<AuthorizedProjectSnapshot> {
+    return this.require(actorId, projectId, "manage_members");
+  }
+
   private async require(
     actorId: string,
     projectId: string,
-    operation: "read_task" | "write_task",
+    operation: "read_task" | "write_task" | "manage_members",
   ): Promise<AuthorizedProjectSnapshot> {
     const project = this.projectsById.get(projectId);
     if (project === undefined) {

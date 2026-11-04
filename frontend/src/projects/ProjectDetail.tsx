@@ -52,6 +52,7 @@ export function ProjectDetail({
   const [actionState, setActionState] = useState<ActionState>({ kind: "idle" });
   const [project, setProject] = useState<PublicProjectDto | null>(null);
   const [actorRole, setActorRole] = useState<ProjectMemberRole | null>(null);
+  const [actorUserId, setActorUserId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
 
@@ -65,6 +66,7 @@ export function ProjectDetail({
     setEditOpen(false);
     setMembersOpen(false);
     setActorRole(null);
+    setActorUserId(null);
     try {
       const result = await getProject(projectId);
       const actor = await getProfile();
@@ -82,6 +84,7 @@ export function ProjectDetail({
         }
       }
       applyProject(result);
+      setActorUserId(actor.id);
       setActorRole(
         resolveActorProjectRole({
           actorId: actor.id,
@@ -319,6 +322,8 @@ export function ProjectDetail({
             projectId={projectId}
             archived={archived}
             canWriteTasks={writeTasks}
+            canManageMembers={showMembers}
+            currentUserId={actorUserId}
             onUnauthenticated={onUnauthenticated}
           />
         </>

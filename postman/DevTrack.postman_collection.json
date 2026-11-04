@@ -1,0 +1,462 @@
+{
+  "info": {
+    "_postman_id": "devtrack-local-api",
+    "name": "DevTrack",
+    "description": "Local DevTrack API, grouped by domain (through 009-collaboration).\n\n**Base URL:** `{{baseUrl}}` (default `http://localhost:3000`).\n\n**Auth:** HTTP-only cookie `devtrack_session`. Run **auth / Register** or **auth / Login** first. Enable the cookie jar (Settings → General → Cookies). Do not put a bearer token in headers.\n\n**Errors:** `{ \"error\": { \"code\": \"...\", \"message\": \"...\" } }`.\n\n**Suggested order:** health → register/login → users/me → create project → members → tasks → dashboard → probes.\n\n**Roles (project-members):** `OWNER` | `EDITOR` | `VIEWER`. Creating owner is always OWNER. Add existing users by email (no invite email). EDITOR: project patch + task writes. VIEWER: read/list. Only OWNER manages members and archive.\n\n**Task enums:** status `TODO` | `IN_PROGRESS` | `DONE`; priority `LOW` | `MEDIUM` | `HIGH`. Soft-delete is HTTP DELETE (sets `deletedAt`; no restore).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "projectId",
+      "value": ""
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "memberUserId",
+      "value": ""
+    },
+    {
+      "key": "memberEmail",
+      "value": "member@example.com"
+    }
+  ],
+  "item": [
+    {
+      "name": "system",
+      "description": "`system` domain. `/health` and `/ready` are public. Probe create/list require a session. Probes are a shared non-product list (no owner). Probe UI was removed from the React app; HTTP remains.",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/health",
+            "description": "Liveness. Does not query PostgreSQL.\n\n**Auth:** none\n\n**200:** `{ \"status\": \"ok\" }`"
+          }
+        },
+        {
+          "name": "GET /ready",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/ready",
+            "description": "Readiness via the `system` repository.\n\n**Auth:** none\n\n**200:** `{ \"status\": \"ready\" }`\n**503:** `SERVICE_UNAVAILABLE`"
+          }
+        },
+        {
+          "name": "POST /api/system/probes",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/api/system/probes",
+            "description": "Create a system probe. Body must be `{}` or omitted.\n\n**Auth:** session cookie\n\n**201:** `{ \"id\", \"recordedAt\" }`\n**400:** `VALIDATION_ERROR`\n**401:** `UNAUTHENTICATED`\n**503:** `SERVICE_UNAVAILABLE`"
+          }
+        },
+        {
+          "name": "GET /api/system/probes",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/system/probes",
+            "description": "List probes, newest first.\n\n**Auth:** session cookie\n\n**200:** `{ \"probes\": [{ \"id\", \"recordedAt\" }] }`\n**401:** `UNAUTHENTICATED`"
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth",
+      "description": "`auth` domain. Register and login issue `Set-Cookie: devtrack_session` (HttpOnly, Path=/, SameSite=Lax, Max-Age 7 days). Logout revokes that session only.",
+      "item": [
+        {
+          "name": "POST /api/auth/register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('register issues a session cookie or returns an error envelope', function () {",
+                  "  pm.expect([201, 400, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dev@example.com\",\n  \"password\": \"changeme\",\n  \"displayName\": \"Dev\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register",
+            "description": "Create a user and authenticate. Email stored lowercase; unique case-insensitive.\n\n**Auth:** none\n\n**201:** `{ \"id\", \"email\", \"displayName\" }` + `Set-Cookie`\n**400:** `VALIDATION_ERROR`\n**409:** `CONFLICT`"
+          }
+        },
+        {
+          "name": "POST /api/auth/login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login issues a session cookie or returns an error envelope', function () {",
+                  "  pm.expect([200, 400, 401]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dev@example.com\",\n  \"password\": \"changeme\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Authenticate. Failed login uses a generic message.\n\n**Auth:** none\n\n**200:** `{ \"id\", \"email\", \"displayName\" }` + `Set-Cookie`\n**401:** `INVALID_CREDENTIALS`"
+          }
+        },
+        {
+          "name": "POST /api/auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/logout",
+            "description": "Revoke the current session and clear the cookie.\n\n**Auth:** session cookie\n\n**204:** empty body\n**401:** `UNAUTHENTICATED`"
+          }
+        }
+      ]
+    },
+    {
+      "name": "users",
+      "description": "`users` domain. Own profile only. No user directory.",
+      "item": [
+        {
+          "name": "GET /api/users/me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/users/me",
+            "description": "**Auth:** session cookie\n\n**200:** `{ \"id\", \"email\", \"displayName\" }`\n**401:** `UNAUTHENTICATED`"
+          }
+        },
+        {
+          "name": "PATCH /api/users/me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Dev Updated\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/me",
+            "description": "Update `displayName` only. Sending `email` is rejected.\n\n**Auth:** session cookie\n\n**200:** public user DTO\n**400:** `VALIDATION_ERROR`"
+          }
+        }
+      ]
+    },
+    {
+      "name": "projects",
+      "description": "`projects` domain. List returns active projects the actor may see (owner or member). Default list excludes archived. Creating actor is `ownerUserId`. Archive/unarchive require OWNER. Create Project saves `{{projectId}}`.",
+      "item": [
+        {
+          "name": "POST /api/projects",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('projectId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Study project\",\n  \"description\": \"Optional notes\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects",
+            "description": "Create a project. Also inserts creating OWNER membership.\n\n**Auth:** session cookie\n\n**201:** `{ \"id\", \"ownerUserId\", \"name\", \"description\", \"createdAt\", \"archivedAt\" }`\n**400:** `VALIDATION_ERROR`"
+          }
+        },
+        {
+          "name": "GET /api/projects",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/projects",
+            "description": "List active authorized projects (owned or member). No `includeArchived` query.\n\n**Auth:** session cookie\n\n**200:** `{ \"projects\": [...] }`"
+          }
+        },
+        {
+          "name": "GET /api/projects/:id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/projects/{{projectId}}",
+            "description": "Read one authorized project. Archived GET is creating-owner only (members get 403).\n\n**200** / **401** / **403** / **404**"
+          }
+        },
+        {
+          "name": "PATCH /api/projects/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Study project (updated)\",\n  \"description\": \"Updated notes\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}",
+            "description": "Update `name` and/or `description`. OWNER or EDITOR. Archived → `409`.\n\n**200** / **400** / **401** / **403** / **404** / **409**"
+          }
+        },
+        {
+          "name": "POST /api/projects/:id/archive",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/archive",
+            "description": "Set `archivedAt`. OWNER only. Idempotent.\n\n**200** PublicProjectDto"
+          }
+        },
+        {
+          "name": "POST /api/projects/:id/unarchive",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/unarchive",
+            "description": "Clear `archivedAt`. OWNER only. Idempotent.\n\n**200** PublicProjectDto"
+          }
+        }
+      ]
+    },
+    {
+      "name": "project-members",
+      "description": "`project-members` domain (009-collaboration). Roles: `OWNER` | `EDITOR` | `VIEWER`. Add existing registered users by email. Only OWNER may add/update/remove. List is readable by any authorized member. Saves `{{memberUserId}}` from Add Member.",
+      "item": [
+        {
+          "name": "GET /api/projects/:projectId/members",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members",
+            "description": "List members for an authorized project.\n\n**Auth:** session cookie\n\n**200:** `{ \"members\": [{ \"id\", \"userId\", \"email\", \"displayName\", \"role\", \"createdAt\" }] }`\n**401** / **403** / **404**"
+          }
+        },
+        {
+          "name": "POST /api/projects/:projectId/members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('memberUserId', body.userId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{memberEmail}}\",\n  \"role\": \"EDITOR\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members",
+            "description": "Add an existing user by email. Role must be `OWNER` | `EDITOR` | `VIEWER`. Set `{{memberEmail}}` to a registered user.\n\n**Auth:** OWNER session\n\n**201:** PublicMemberDto\n**400:** `VALIDATION_ERROR`\n**403:** `FORBIDDEN`\n**404:** user/project not found\n**409:** duplicate membership"
+          }
+        },
+        {
+          "name": "PATCH /api/projects/:projectId/members/:userId",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"VIEWER\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members/{{memberUserId}}",
+            "description": "Change a member's role. OWNER only. Demoting/removing the last creating OWNER is rejected by domain rules.\n\n**200:** PublicMemberDto\n**400** / **401** / **403** / **404**"
+          }
+        },
+        {
+          "name": "DELETE /api/projects/:projectId/members/:userId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/members/{{memberUserId}}",
+            "description": "Remove a member. OWNER only. Body `{}` or omitted.\n\n**204:** empty body\n**401** / **403** / **404**"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tasks",
+      "description": "`tasks` domain (004) + dashboard summary (008). Soft-delete via DELETE. List filters: optional `status` and/or `priority`. Kanban UI uses the same PATCH status. Create Task saves `{{taskId}}`.",
+      "item": [
+        {
+          "name": "GET /api/dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/dashboard",
+            "description": "Summary for the caller's authorized active projects. No query params. Pending = TODO+IN_PROGRESS; completed = DONE; overdue = non-DONE with dueDate before UTC today.\n\n**Auth:** session cookie\n\n**200:** `{ \"projectCount\", \"taskCount\", \"pendingCount\", \"completedCount\", \"overdueCount\", \"projects\": [{ \"id\", \"name\", \"taskCount\", \"pendingCount\", \"completedCount\", \"overdueCount\" }] }`\n**400:** if unknown query keys\n**401:** `UNAUTHENTICATED`"
+          }
+        },
+        {
+          "name": "POST /api/projects/:projectId/tasks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('taskId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"First task\",\n  \"description\": \"Optional\",\n  \"dueDate\": \"2026-12-31\",\n  \"status\": \"TODO\",\n  \"priority\": \"MEDIUM\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/tasks",
+            "description": "Create a task. Required: `title`. Optional: `description`, `dueDate` (YYYY-MM-DD), `status`, `priority`. Defaults: status `TODO`, priority `MEDIUM`. OWNER or EDITOR. Archived parent → `409`.\n\n**201:** PublicTaskDto (no `deletedAt`)\n**400** / **401** / **403** / **404** / **409**"
+          }
+        },
+        {
+          "name": "GET /api/projects/:projectId/tasks",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/projects/{{projectId}}/tasks?status=TODO&priority=MEDIUM",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "projects", "{{projectId}}", "tasks"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "TODO",
+                  "description": "Optional: TODO | IN_PROGRESS | DONE",
+                  "disabled": true
+                },
+                {
+                  "key": "priority",
+                  "value": "MEDIUM",
+                  "description": "Optional: LOW | MEDIUM | HIGH",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List non-deleted tasks for the project. Optional filters: `status`, `priority`. Enable query params as needed. Authorized members may list (including when archived, for creating owner).\n\n**200:** `{ \"tasks\": [...] }`"
+          }
+        },
+        {
+          "name": "GET /api/tasks/:id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}",
+            "description": "Get one task. Soft-deleted → `404`.\n\n**200:** PublicTaskDto\n**401** / **403** / **404**"
+          }
+        },
+        {
+          "name": "PATCH /api/tasks/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"First task (updated)\",\n  \"status\": \"IN_PROGRESS\",\n  \"priority\": \"HIGH\",\n  \"dueDate\": \"2026-12-15\",\n  \"description\": \"Updated\"\n}"
+            },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}",
+            "description": "Update allowed fields. At least one required. Cannot change `projectId` / `id` / `createdAt` / `deletedAt`. OWNER or EDITOR. Kanban columns call this with `{ \"status\": \"...\" }`.\n\n**200** / **400** / **401** / **403** / **404** / **409** (archived parent)"
+          }
+        },
+        {
+          "name": "DELETE /api/tasks/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}",
+            "description": "Soft-delete: sets `deletedAt`, does not remove the row. No restore API. Later GET → `404`. OWNER or EDITOR. Archived parent → `409`.\n\n**204:** empty body"
+          }
+        }
+      ]
+    }
+  ]
+}

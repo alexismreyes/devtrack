@@ -6,7 +6,9 @@ import {
   createProbe,
   createProject,
   createTask,
+  createTaskComment,
   addMember,
+  deleteTaskComment,
   getDashboard,
   getHealth,
   getProfile,
@@ -15,6 +17,7 @@ import {
   listMembers,
   listProbes,
   listProjects,
+  listTaskComments,
   listTasks,
   login,
   logout,
@@ -26,6 +29,7 @@ import {
   updateProfile,
   updateProject,
   updateTask,
+  updateTaskComment,
 } from "./client";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -797,6 +801,126 @@ describe("tasks API client", () => {
     });
     expect(JSON.stringify(conflict)).not.toMatch(/DATABASE_URL/i);
     expect(JSON.stringify(conflict)).not.toMatch(/postgresql:\/\//i);
+    expectNoTokenStorage();
+  });
+});
+
+describe("task comments API client", () => {
+  const comment = {
+    id: "comment-1",
+    taskId: "task-1",
+    authorUserId: "user-1",
+    authorDisplayName: "Ada",
+    body: "Looks good",
+    createdAt: "2026-11-04T18:00:00.000Z",
+  };
+
+  it("lists comments with credentials included and strips non-public fields", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/comments");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        comments: [
+          {
+            ...comment,
+            deletedAt: "must-not-be-kept",
+            token: "must-not-be-kept",
+            sessionId: "must-not-be-kept",
+          },
+        ],
+      });
+    });
+
+    await expect(listTaskComments("task-1")).resolves.toEqual({
+      comments: [comment],
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("creates a comment with credentials included and no token storage", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/comments");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(JSON.stringify({ body: "Looks good" }));
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(201, {
+        ...comment,
+        deletedAt: "must-not-be-kept",
+      });
+    });
+
+    await expect(
+      createTaskComment("task-1", { body: "Looks good" }),
+    ).resolves.toEqual(comment);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("patches a comment body with credentials included", async () => {
+    const updated = { ...comment, body: "Revised" };
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/comments/comment-1",
+      );
+      expect(init?.method).toBe("PATCH");
+      expect(init?.body).toBe(JSON.stringify({ body: "Revised" }));
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, updated);
+    });
+
+    await expect(
+      updateTaskComment("task-1", "comment-1", { body: "Revised" }),
+    ).resolves.toEqual(updated);
+    expectNoTokenStorage();
+  });
+
+  it("soft-deletes a comment with DELETE, empty body, 204, and credentials included", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/comments/comment-1",
+      );
+      expect(init?.method).toBe("DELETE");
+      expect(init?.body).toBeUndefined();
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return emptyResponse(204);
+    });
+
+    await expect(
+      deleteTaskComment("task-1", "comment-1"),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("maps unauthenticated comment access without storing credentials", async () => {
+    mockFetch(() =>
+      jsonResponse(401, {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Authentication is required",
+        },
+      }),
+    );
+
+    const error = await listTaskComments("task-1").catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "UNAUTHENTICATED",
+      message: "Authentication is required",
+    });
     expectNoTokenStorage();
   });
 });

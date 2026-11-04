@@ -433,7 +433,7 @@ describe("App frontend shell", () => {
       "href",
       "/projects",
     );
-    const totals = screen.getByRole("list", { name: /owner totals/i });
+    const totals = await screen.findByRole("list", { name: /owner totals/i });
     expect(totals).toHaveTextContent(/projects 1/i);
     expect(totals).toHaveTextContent(/tasks 3/i);
     expect(totals).toHaveTextContent(/pending 2/i);

@@ -68,7 +68,8 @@ export function errorHandler(
       }
       case "ProfileForbiddenError":
       case "ProjectForbiddenError":
-      case "MembershipForbiddenError": {
+      case "MembershipForbiddenError":
+      case "CommentForbiddenError": {
         const mapped = forbidden(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
@@ -76,7 +77,8 @@ export function errorHandler(
       case "ProjectNotFoundError":
       case "MembershipProjectNotFoundError":
       case "MemberUserNotFoundError":
-      case "MembershipNotFoundError": {
+      case "MembershipNotFoundError":
+      case "CommentNotFoundError": {
         const mapped = notFound(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
@@ -104,6 +106,7 @@ export function errorHandler(
       case "InvalidTaskStatusError":
       case "InvalidTaskPriorityError":
       case "InvalidTaskDueDateError":
+      case "InvalidCommentBodyError":
       case "InvalidProjectMemberRoleError":
         sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
         return;

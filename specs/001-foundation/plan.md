@@ -2,7 +2,7 @@
 
 - **Feature ID:** 001-foundation
 - **Specification:** `spec.md`
-- **Status:** Verified
+- **Status:** Draft
 
 Inspect the repo before filling this in. Do not assume planned components exist. Application source stays under `frontend/` or `backend/`, never under `specs/`.
 
@@ -232,7 +232,7 @@ Do not claim tests passed without running them. Destructive DB resets and volume
 
 ## 11. Sequence
 
-1. Confirm this spec/plan/tasks are Approved. Execution of T001–T018 is Held until explicitly requested.
+1. Confirm this spec/plan/tasks are approved. Do not implement while Draft.
 2. Add root gitignore, env example, and Compose `db` service with named volume and healthcheck.
 3. Scaffold `backend/` TypeScript/Express without product domains.
 4. Add Prisma schema and first `SystemProbe` migration; document generate vs migrate vs deploy.
@@ -275,10 +275,7 @@ Do not claim tests passed without running them. Destructive DB resets and volume
 
 ## 14. Approval
 
-- Specification reviewed: Yes
-- Architecture reviewed: Yes
-- Risks understood: Yes
-- Approved for task breakdown: Yes
-- Approved to execute tasks: Yes
-- Independent review: PASS WITH NON-BLOCKING FINDINGS
-- Verified: Yes; local Compose only (Q-006 deferred)
+- Specification reviewed: No
+- Architecture reviewed: No
+- Risks understood: No
+- Approved for task breakdown: No

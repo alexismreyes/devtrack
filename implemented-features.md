@@ -79,6 +79,12 @@ Last confirmed: 2026-10-31 (features `001`–`009`).
 - **What:** Project membership, explicit roles, backend resource-level authorization, Members Dialog.
 - **Approach:** Domain `project-members`. Roles `OWNER` / `EDITOR` / `VIEWER`. Prisma `ProjectMember`. Add existing users by email (no SMTP). `ownerUserId` still grants OWNER. `GET /api/projects` lists projects the actor may see. EDITOR: edit + task writes, no archive/members admin. VIEWER: read/list. Archived GET remains creating-owner only. Members UI is a board-header Dialog, not a new page.
 
+### 010 — Task Comments
+
+- **Spec:** `specs/010-task-comments/`
+- **What:** Persisted plain-text discussion on a task; author edit; author or OWNER soft-delete.
+- **Approach:** Owned by `tasks` (no peer comments domain). Prisma `TaskComment` with `deletedAt`. Create/list via `TaskAuthorizationPort` task write/read; author-only PATCH; soft-delete author or effective OWNER; no restore; no mentions/rich text. UI in existing `TaskDetail` Dialog. Deferred: **L** task events, **E** labels.
+
 ---
 
 ## Related files

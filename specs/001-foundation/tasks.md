@@ -51,42 +51,42 @@ Blocking questions Q-001, Q-002, Q-003, Q-004, Q-005, and Q-008 are resolved in 
 
 ## Dependencies
 
-| Task | Depends on | Verification |
-| ---- | ---------- | ------------ |
-| T001 | none | Inspection notes match the repo |
-| T002 | T001 | Artifacts Approved; resolved constraints still recorded |
-| T003 | T002 | Files exist; no committed secrets |
-| T004 | T003 | Compose `db` PostgreSQL 16 + named volume + healthcheck |
-| T005 | T002 | Backend compiles; CORS and error envelope wired; listens using env config |
-| T006 | T005, T004 | Schema + migration files under `backend/prisma/` |
-| T007 | T006 | Domain tests (after T010) / typecheck |
-| T008 | T007 | Adapter maps Prisma → domain; no Prisma types leak |
-| T009 | T008 | Routes return specified statuses and envelopes |
-| T010 | T009 | Executed Vitest/SuperTest results |
-| T011 | T002, T009 | Frontend builds; `VITE_API_URL` is browser-reachable |
-| T012 | T011 | UI states observable |
-| T013 | T012 | Executed Vitest + Testing Library results |
-| T014 | T004, T009, T012 | `docker compose` starts three services with published ports |
-| T015 | T010, T013, T014 | Executed typecheck and tests |
-| T016 | T014, T015 | Each AC has evidence |
-| T017 | T016 | Reviewer verdict |
-| T018 | T017 | `memory.md` matches verified repo |
+| Task | Depends on       | Verification                                                              |
+| ---- | ---------------- | ------------------------------------------------------------------------- |
+| T001 | none             | Inspection notes match the repo                                           |
+| T002 | T001             | Artifacts Approved; resolved constraints still recorded                   |
+| T003 | T002             | Files exist; no committed secrets                                         |
+| T004 | T003             | Compose `db` PostgreSQL 16 + named volume + healthcheck                   |
+| T005 | T002             | Backend compiles; CORS and error envelope wired; listens using env config |
+| T006 | T005, T004       | Schema + migration files under `backend/prisma/`                          |
+| T007 | T006             | Domain tests (after T010) / typecheck                                     |
+| T008 | T007             | Adapter maps Prisma → domain; no Prisma types leak                        |
+| T009 | T008             | Routes return specified statuses and envelopes                            |
+| T010 | T009             | Executed Vitest/SuperTest results                                         |
+| T011 | T002, T009       | Frontend builds; `VITE_API_URL` is browser-reachable                      |
+| T012 | T011             | UI states observable                                                      |
+| T013 | T012             | Executed Vitest + Testing Library results                                 |
+| T014 | T004, T009, T012 | `docker compose` starts three services with published ports               |
+| T015 | T010, T013, T014 | Executed typecheck and tests                                              |
+| T016 | T014, T015       | Each AC has evidence                                                      |
+| T017 | T016             | Reviewer verdict                                                          |
+| T018 | T017             | `memory.md` matches verified repo                                         |
 
 ## Acceptance coverage
 
-| Criterion | Task(s) | Evidence |
-| --------- | ------- | -------- |
-| AC-001 | T004, T014, T016 | Compose start output; service names; PostgreSQL 16; named volume |
-| AC-002 | T009, T010, T016 | `GET /health` result |
-| AC-003 | T008, T009, T016 | `GET /ready` success with DB up |
-| AC-004 | T009, T010, T016 | `GET /ready` failure with error envelope, no DB leak |
-| AC-005 | T009, T012, T016 | UI create + persisted row + list via `VITE_API_URL` |
-| AC-006 | T009, T012, T013, T016 | Empty list API + empty UI |
-| AC-007 | T012, T016 | UI error when DB down |
-| AC-008 | T009, T010, T016 | Invalid `POST` rejected with `VALIDATION_ERROR` |
-| AC-009 | T007, T008, T009, T016, T017 | Layout and mapping review |
-| AC-010 | T003, T016 | Repo inspection |
-| AC-011 | T010, T013, T015 | Executed Vitest / Testing Library / SuperTest / typecheck |
+| Criterion | Task(s)                      | Evidence                                                         |
+| --------- | ---------------------------- | ---------------------------------------------------------------- |
+| AC-001    | T004, T014, T016             | Compose start output; service names; PostgreSQL 16; named volume |
+| AC-002    | T009, T010, T016             | `GET /health` result                                             |
+| AC-003    | T008, T009, T016             | `GET /ready` success with DB up                                  |
+| AC-004    | T009, T010, T016             | `GET /ready` failure with error envelope, no DB leak             |
+| AC-005    | T009, T012, T016             | UI create + persisted row + list via `VITE_API_URL`              |
+| AC-006    | T009, T012, T013, T016       | Empty list API + empty UI                                        |
+| AC-007    | T012, T016                   | UI error when DB down                                            |
+| AC-008    | T009, T010, T016             | Invalid `POST` rejected with `VALIDATION_ERROR`                  |
+| AC-009    | T007, T008, T009, T016, T017 | Layout and mapping review                                        |
+| AC-010    | T003, T016                   | Repo inspection                                                  |
+| AC-011    | T010, T013, T015             | Executed Vitest / Testing Library / SuperTest / typecheck        |
 
 ## Completion report
 

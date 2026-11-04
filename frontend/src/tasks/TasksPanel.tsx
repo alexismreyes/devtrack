@@ -33,6 +33,8 @@ type TasksPanelProps = {
   projectId: string;
   archived: boolean;
   canWriteTasks?: boolean;
+  canManageMembers?: boolean;
+  currentUserId?: string | null;
   onUnauthenticated: () => void;
 };
 
@@ -64,6 +66,8 @@ export function TasksPanel({
   projectId,
   archived,
   canWriteTasks = true,
+  canManageMembers = false,
+  currentUserId = null,
   onUnauthenticated,
 }: TasksPanelProps) {
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
@@ -369,6 +373,8 @@ export function TasksPanel({
               taskId={selectedTaskId}
               archived={archived}
               canWrite={canWriteTasks}
+              canManageMembers={canManageMembers}
+              currentUserId={currentUserId}
               onClose={() => setSelectedTaskId(null)}
               onUpdated={() => {
                 void loadTasks();

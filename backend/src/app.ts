@@ -30,9 +30,13 @@ import { ProjectsController } from "./modules/projects/controller/projects-contr
 import type { ProjectsRepository } from "./modules/projects/repository/projects-repository";
 import { createProjectsRouter } from "./modules/projects/routes/projects-routes";
 import { ProjectsService } from "./modules/projects/service/projects-service";
+import { CommentsController } from "./modules/tasks/controller/comments-controller";
 import { TasksController } from "./modules/tasks/controller/tasks-controller";
+import type { CommentsRepository } from "./modules/tasks/repository/comments-repository";
 import type { TasksRepository } from "./modules/tasks/repository/tasks-repository";
+import { createCommentsRouter } from "./modules/tasks/routes/comments-routes";
 import { createTasksRouter } from "./modules/tasks/routes/tasks-routes";
+import { CommentsService } from "./modules/tasks/service/comments-service";
 import { TasksService } from "./modules/tasks/service/tasks-service";
 import { UsersController } from "./modules/users/controller/users-controller";
 import { UsersIdentityAdapter } from "./modules/users/identity/users-identity-adapter";
@@ -47,6 +51,7 @@ export type AppDependencies = {
   authRepository: AuthRepository;
   projectsRepository: ProjectsRepository;
   tasksRepository: TasksRepository;
+  commentsRepository: CommentsRepository;
   projectMembersRepository: ProjectMembersRepository;
   unitOfWork?: UnitOfWork;
 };
@@ -87,6 +92,12 @@ export function createApp(deps: AppDependencies): Express {
     projectAccess,
     taskAuthorization,
   );
+  const commentsService = new CommentsService(
+    deps.commentsRepository,
+    deps.tasksRepository,
+    taskAuthorization,
+    usersIdentity,
+  );
 
   const authController = new AuthController(authService);
   const usersController = new UsersController(usersService);
@@ -96,6 +107,7 @@ export function createApp(deps: AppDependencies): Express {
     projectMembersService,
   );
   const tasksController = new TasksController(tasksService);
+  const commentsController = new CommentsController(commentsService);
   const requireAuth = createRequireAuth(authService);
 
   app.use(
@@ -112,6 +124,7 @@ export function createApp(deps: AppDependencies): Express {
   app.use(createProjectsRouter(projectsController, requireAuth));
   app.use(createProjectMembersRouter(projectMembersController, requireAuth));
   app.use(createTasksRouter(tasksController, requireAuth));
+  app.use(createCommentsRouter(commentsController, requireAuth));
   app.use(errorHandler);
 
   return app;

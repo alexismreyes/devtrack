@@ -1,5 +1,7 @@
 import type {
   AddMemberRequestDto,
+  CommentListResponseDto,
+  CreateCommentRequestDto,
   CreateProjectRequestDto,
   CreateTaskRequestDto,
   DashboardProjectSummaryDto,
@@ -13,6 +15,7 @@ import type {
   ProbeResponseDto,
   ProjectListResponseDto,
   ProjectMemberRole,
+  PublicCommentDto,
   PublicMemberDto,
   PublicProjectDto,
   PublicTaskDto,
@@ -21,6 +24,7 @@ import type {
   TaskListResponseDto,
   TaskPriority,
   TaskStatus,
+  UpdateCommentRequestDto,
   UpdateMemberRequestDto,
   UpdateProfileRequestDto,
   UpdateProjectRequestDto,
@@ -202,6 +206,46 @@ export async function updateTask(
 
 export async function softDeleteTask(id: string): Promise<void> {
   await request("DELETE", `/api/tasks/${id}`);
+}
+
+export async function listTaskComments(
+  taskId: string,
+): Promise<CommentListResponseDto> {
+  const body = await request("GET", commentsCollectionPath(taskId));
+  if (!isCommentListResponse(body)) {
+    throw new ApiError(500, "INTERNAL_ERROR", "Unexpected comment list response");
+  }
+  return {
+    comments: body.comments.map(toPublicComment),
+  };
+}
+
+export async function createTaskComment(
+  taskId: string,
+  input: CreateCommentRequestDto,
+): Promise<PublicCommentDto> {
+  const body = await request("POST", commentsCollectionPath(taskId), input);
+  return requirePublicComment(body, "Unexpected comment response");
+}
+
+export async function updateTaskComment(
+  taskId: string,
+  commentId: string,
+  input: UpdateCommentRequestDto,
+): Promise<PublicCommentDto> {
+  const body = await request(
+    "PATCH",
+    commentItemPath(taskId, commentId),
+    input,
+  );
+  return requirePublicComment(body, "Unexpected comment response");
+}
+
+export async function deleteTaskComment(
+  taskId: string,
+  commentId: string,
+): Promise<void> {
+  await request("DELETE", commentItemPath(taskId, commentId));
 }
 
 export async function getDashboard(): Promise<DashboardSummaryResponseDto> {
@@ -621,4 +665,65 @@ function isMemberListResponse(value: unknown): value is MemberListResponseDto {
   }
   const members = (value as { members: unknown }).members;
   return Array.isArray(members) && members.every(isPublicMember);
+}
+
+function commentsCollectionPath(taskId: string): string {
+  return `/api/tasks/${taskId}/comments`;
+}
+
+function commentItemPath(taskId: string, commentId: string): string {
+  return `${commentsCollectionPath(taskId)}/${commentId}`;
+}
+
+function requirePublicComment(
+  value: unknown,
+  message: string,
+): PublicCommentDto {
+  if (!isPublicComment(value)) {
+    throw new ApiError(500, "INTERNAL_ERROR", message);
+  }
+  return toPublicComment(value);
+}
+
+function toPublicComment(value: PublicCommentDto): PublicCommentDto {
+  return {
+    id: value.id,
+    taskId: value.taskId,
+    authorUserId: value.authorUserId,
+    authorDisplayName: value.authorDisplayName,
+    body: value.body,
+    createdAt: value.createdAt,
+  };
+}
+
+function isPublicComment(value: unknown): value is PublicCommentDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const comment = value as {
+    id?: unknown;
+    taskId?: unknown;
+    authorUserId?: unknown;
+    authorDisplayName?: unknown;
+    body?: unknown;
+    createdAt?: unknown;
+  };
+  return (
+    typeof comment.id === "string" &&
+    typeof comment.taskId === "string" &&
+    typeof comment.authorUserId === "string" &&
+    typeof comment.authorDisplayName === "string" &&
+    typeof comment.body === "string" &&
+    typeof comment.createdAt === "string"
+  );
+}
+
+function isCommentListResponse(
+  value: unknown,
+): value is CommentListResponseDto {
+  if (typeof value !== "object" || value === null || !("comments" in value)) {
+    return false;
+  }
+  const comments = (value as { comments: unknown }).comments;
+  return Array.isArray(comments) && comments.every(isPublicComment);
 }

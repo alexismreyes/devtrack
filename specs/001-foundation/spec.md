@@ -1,7 +1,7 @@
 # Feature Specification: Foundation
 
 - **ID:** 001-foundation
-- **Status:** Verified
+- **Status:** Draft
 - **Created:** 2026-10-26
 - **Related features:** None
 
@@ -243,9 +243,7 @@ There are no third-party product integrations.
 
 ## 16. Approval
 
-- Requirements reviewed: Yes
+- Requirements reviewed: No
 - Material ambiguities resolved: Blocking questions Q-001–Q-005 and Q-008 are resolved; Q-006, Q-007, and Q-009 remain deferred and are not blocking
-- Approved for planning: Yes
-- Approved for implementation: Yes (executed T001–T018)
-- Independent review: PASS WITH NON-BLOCKING FINDINGS
-- Verified: Yes, with deferred Q-006, Q-007, Q-009 and non-blocking review notes recorded in `tasks.md`
+- Approved for planning: No
+- Approved for implementation: No

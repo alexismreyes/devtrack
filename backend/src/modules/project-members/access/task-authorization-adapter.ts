@@ -30,6 +30,13 @@ export class TaskAuthorizationAdapter implements TaskAuthorizationPort {
     return this.require(actorId, projectId, "write_task");
   }
 
+  requireProjectOwner(
+    actorId: string,
+    projectId: string,
+  ): Promise<AuthorizedProjectSnapshot> {
+    return this.require(actorId, projectId, "manage_members");
+  }
+
   private async require(
     actorId: string,
     projectId: string,
