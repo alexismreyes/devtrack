@@ -1,8 +1,15 @@
 import type {
   ActivityListResponseDto,
   AddMemberRequestDto,
+  ChecklistAddedActivityPayload,
+  ChecklistItemCompletedActivityPayload,
+  ChecklistItemUncompletedActivityPayload,
+  ChecklistListResponseDto,
+  ChecklistRemovedActivityPayload,
   CommentAddedActivityPayload,
   CommentListResponseDto,
+  CreateChecklistItemRequestDto,
+  CreateChecklistRequestDto,
   CreateCommentRequestDto,
   CreateLabelRequestDto,
   CreateProjectRequestDto,
@@ -21,6 +28,8 @@ import type {
   ProjectListResponseDto,
   ProjectMemberRole,
   PublicActivityDto,
+  PublicChecklistDto,
+  PublicChecklistItemDto,
   PublicCommentDto,
   PublicLabelDto,
   PublicMemberDto,
@@ -39,6 +48,8 @@ import type {
   TaskListResponseDto,
   TaskPriority,
   TaskStatus,
+  UpdateChecklistItemRequestDto,
+  UpdateChecklistRequestDto,
   UpdateCommentRequestDto,
   UpdateLabelRequestDto,
   UpdateMemberRequestDto,
@@ -335,6 +346,88 @@ export async function deleteTaskComment(
   commentId: string,
 ): Promise<void> {
   await request("DELETE", commentItemPath(taskId, commentId));
+}
+
+export async function listTaskChecklists(
+  taskId: string,
+): Promise<ChecklistListResponseDto> {
+  const body = await request("GET", checklistsCollectionPath(taskId));
+  if (!isChecklistListResponse(body)) {
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "Unexpected checklist list response",
+    );
+  }
+  return {
+    checklists: body.checklists.map(toPublicChecklist),
+  };
+}
+
+export async function createTaskChecklist(
+  taskId: string,
+  input: CreateChecklistRequestDto,
+): Promise<PublicChecklistDto> {
+  const body = await request("POST", checklistsCollectionPath(taskId), input);
+  return requirePublicChecklist(body, "Unexpected checklist response");
+}
+
+export async function updateTaskChecklist(
+  taskId: string,
+  checklistId: string,
+  input: UpdateChecklistRequestDto,
+): Promise<PublicChecklistDto> {
+  const body = await request(
+    "PATCH",
+    checklistItemPath(taskId, checklistId),
+    input,
+  );
+  return requirePublicChecklist(body, "Unexpected checklist response");
+}
+
+export async function deleteTaskChecklist(
+  taskId: string,
+  checklistId: string,
+): Promise<void> {
+  await request("DELETE", checklistItemPath(taskId, checklistId));
+}
+
+export async function createTaskChecklistItem(
+  taskId: string,
+  checklistId: string,
+  input: CreateChecklistItemRequestDto,
+): Promise<PublicChecklistItemDto> {
+  const body = await request(
+    "POST",
+    checklistItemsCollectionPath(taskId, checklistId),
+    input,
+  );
+  return requirePublicChecklistItem(body, "Unexpected checklist item response");
+}
+
+export async function updateTaskChecklistItem(
+  taskId: string,
+  checklistId: string,
+  itemId: string,
+  input: UpdateChecklistItemRequestDto,
+): Promise<PublicChecklistItemDto> {
+  const body = await request(
+    "PATCH",
+    checklistItemItemPath(taskId, checklistId, itemId),
+    input,
+  );
+  return requirePublicChecklistItem(body, "Unexpected checklist item response");
+}
+
+export async function deleteTaskChecklistItem(
+  taskId: string,
+  checklistId: string,
+  itemId: string,
+): Promise<void> {
+  await request(
+    "DELETE",
+    checklistItemItemPath(taskId, checklistId, itemId),
+  );
 }
 
 export async function getDashboard(): Promise<DashboardSummaryResponseDto> {
@@ -876,11 +969,38 @@ function activityCollectionPath(taskId: string): string {
   return `/api/tasks/${taskId}/activity`;
 }
 
+function checklistsCollectionPath(taskId: string): string {
+  return `/api/tasks/${taskId}/checklists`;
+}
+
+function checklistItemPath(taskId: string, checklistId: string): string {
+  return `${checklistsCollectionPath(taskId)}/${checklistId}`;
+}
+
+function checklistItemsCollectionPath(
+  taskId: string,
+  checklistId: string,
+): string {
+  return `${checklistItemPath(taskId, checklistId)}/items`;
+}
+
+function checklistItemItemPath(
+  taskId: string,
+  checklistId: string,
+  itemId: string,
+): string {
+  return `${checklistItemsCollectionPath(taskId, checklistId)}/${itemId}`;
+}
+
 const TASK_ACTIVITY_KINDS: readonly TaskActivityKind[] = [
   "TASK_CREATED",
   "TASK_FIELDS_CHANGED",
   "TASK_SOFT_DELETED",
   "COMMENT_ADDED",
+  "CHECKLIST_ADDED",
+  "CHECKLIST_REMOVED",
+  "CHECKLIST_ITEM_COMPLETED",
+  "CHECKLIST_ITEM_UNCOMPLETED",
 ];
 
 const TASK_ACTIVITY_CHANGE_FIELDS: readonly TaskActivityChangeField[] = [
@@ -926,6 +1046,27 @@ function toPublicActivityPayload(
       return {
         commentId: commentPayload.commentId,
         bodyPreview: commentPayload.bodyPreview,
+      };
+    }
+    case "CHECKLIST_ADDED":
+    case "CHECKLIST_REMOVED": {
+      const checklistPayload = payload as
+        | ChecklistAddedActivityPayload
+        | ChecklistRemovedActivityPayload;
+      return {
+        checklistId: checklistPayload.checklistId,
+        namePreview: checklistPayload.namePreview,
+      };
+    }
+    case "CHECKLIST_ITEM_COMPLETED":
+    case "CHECKLIST_ITEM_UNCOMPLETED": {
+      const itemPayload = payload as
+        | ChecklistItemCompletedActivityPayload
+        | ChecklistItemUncompletedActivityPayload;
+      return {
+        checklistId: itemPayload.checklistId,
+        itemId: itemPayload.itemId,
+        textPreview: itemPayload.textPreview,
       };
     }
   }
@@ -987,7 +1128,113 @@ function isActivityPayloadForKind(
         typeof record.commentId === "string" &&
         typeof record.bodyPreview === "string"
       );
+    case "CHECKLIST_ADDED":
+    case "CHECKLIST_REMOVED":
+      return (
+        typeof record.checklistId === "string" &&
+        typeof record.namePreview === "string"
+      );
+    case "CHECKLIST_ITEM_COMPLETED":
+    case "CHECKLIST_ITEM_UNCOMPLETED":
+      return (
+        typeof record.checklistId === "string" &&
+        typeof record.itemId === "string" &&
+        typeof record.textPreview === "string"
+      );
   }
+}
+
+function requirePublicChecklist(
+  value: unknown,
+  message: string,
+): PublicChecklistDto {
+  if (!isPublicChecklist(value)) {
+    throw new ApiError(500, "INTERNAL_ERROR", message);
+  }
+  return toPublicChecklist(value);
+}
+
+function requirePublicChecklistItem(
+  value: unknown,
+  message: string,
+): PublicChecklistItemDto {
+  if (!isPublicChecklistItem(value)) {
+    throw new ApiError(500, "INTERNAL_ERROR", message);
+  }
+  return toPublicChecklistItem(value);
+}
+
+function toPublicChecklist(value: PublicChecklistDto): PublicChecklistDto {
+  return {
+    id: value.id,
+    taskId: value.taskId,
+    name: value.name,
+    createdAt: value.createdAt,
+    items: value.items.map(toPublicChecklistItem),
+  };
+}
+
+function toPublicChecklistItem(
+  value: PublicChecklistItemDto,
+): PublicChecklistItemDto {
+  return {
+    id: value.id,
+    checklistId: value.checklistId,
+    text: value.text,
+    checked: value.checked,
+    createdAt: value.createdAt,
+  };
+}
+
+function isPublicChecklistItem(value: unknown): value is PublicChecklistItemDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const item = value as {
+    id?: unknown;
+    checklistId?: unknown;
+    text?: unknown;
+    checked?: unknown;
+    createdAt?: unknown;
+  };
+  return (
+    typeof item.id === "string" &&
+    typeof item.checklistId === "string" &&
+    typeof item.text === "string" &&
+    typeof item.checked === "boolean" &&
+    typeof item.createdAt === "string"
+  );
+}
+
+function isPublicChecklist(value: unknown): value is PublicChecklistDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const checklist = value as {
+    id?: unknown;
+    taskId?: unknown;
+    name?: unknown;
+    createdAt?: unknown;
+    items?: unknown;
+  };
+  return (
+    typeof checklist.id === "string" &&
+    typeof checklist.taskId === "string" &&
+    typeof checklist.name === "string" &&
+    typeof checklist.createdAt === "string" &&
+    Array.isArray(checklist.items) &&
+    checklist.items.every(isPublicChecklistItem)
+  );
+}
+
+function isChecklistListResponse(
+  value: unknown,
+): value is ChecklistListResponseDto {
+  if (typeof value !== "object" || value === null || !("checklists" in value)) {
+    return false;
+  }
+  const checklists = (value as { checklists: unknown }).checklists;
+  return Array.isArray(checklists) && checklists.every(isPublicChecklist);
 }
 
 function isPublicActivity(value: unknown): value is PublicActivityDto {

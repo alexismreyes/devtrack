@@ -181,9 +181,14 @@ describe("KanbanBoard drag-and-drop", () => {
       "flex-1",
       "overflow-y-auto",
     );
-    expect(screen.getByRole("columnheader", { name: "TODO" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "IN_PROGRESS" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "DONE" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "To do" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "In progress" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Done" })).toBeInTheDocument();
+    expect(screen.getByTestId("kanban-column-header-TODO")).toHaveClass("bg-muted");
+    expect(screen.getByTestId("kanban-column-header-IN_PROGRESS")).toBeInTheDocument();
+    expect(screen.getByTestId("kanban-column-header-DONE")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add task to todo/i })).toBeInTheDocument();
   });
 

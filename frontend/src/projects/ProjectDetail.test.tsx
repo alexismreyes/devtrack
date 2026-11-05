@@ -183,9 +183,9 @@ describe("ProjectDetail", () => {
     expect(screen.queryByRole("button", { name: /save project/i })).not.toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /^tasks$/i })).toBeInTheDocument();
     expect(await screen.findByText(/no tasks yet/i)).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "TODO" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "IN_PROGRESS" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "DONE" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "To do" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "In progress" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Done" })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: /^tasks$/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/pending/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/overdue/i)).not.toBeInTheDocument();
@@ -284,7 +284,7 @@ describe("ProjectDetail", () => {
 
     expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to projects/i })).toBeInTheDocument();
-    expect(await screen.findByRole("columnheader", { name: "TODO" })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "To do" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /edit project/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /archive project/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^members$/i })).not.toBeInTheDocument();

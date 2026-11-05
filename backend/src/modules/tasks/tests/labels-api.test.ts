@@ -10,6 +10,7 @@ import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
+import { InMemoryChecklistsRepository } from "./in-memory-checklists-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
@@ -60,6 +61,7 @@ function createLabelsApp() {
     tasksRepository,
     commentsRepository,
     activityRepository,
+    checklistsRepository: new InMemoryChecklistsRepository(),
     labelsRepository,
     taskLabelsRepository,
     projectMembersRepository,

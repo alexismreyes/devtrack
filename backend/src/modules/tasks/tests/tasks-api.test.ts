@@ -19,9 +19,11 @@ import { InMemoryProjectMembersRepository } from "../../project-members/tests/in
 import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
 import { PrismaActivityRepository } from "../repository/prisma-activity-repository";
+import { PrismaChecklistsRepository } from "../repository/prisma-checklists-repository";
 import { PrismaCommentsRepository } from "../repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../repository/prisma-tasks-repository";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
+import { InMemoryChecklistsRepository } from "./in-memory-checklists-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
@@ -74,6 +76,7 @@ function createTasksApp() {
     tasksRepository,
     commentsRepository,
     activityRepository,
+    checklistsRepository: new InMemoryChecklistsRepository(),
     labelsRepository,
     taskLabelsRepository,
     projectMembersRepository,
@@ -1159,6 +1162,7 @@ describe("tasks HTTP API persistence", () => {
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),
+      checklistsRepository: new PrismaChecklistsRepository(prisma),
       labelsRepository: new PrismaLabelsRepository(prisma),
       taskLabelsRepository: new PrismaTaskLabelsRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),

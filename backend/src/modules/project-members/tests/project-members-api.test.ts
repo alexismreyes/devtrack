@@ -15,11 +15,13 @@ import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
 import { PrismaActivityRepository } from "../../tasks/repository/prisma-activity-repository";
+import { PrismaChecklistsRepository } from "../../tasks/repository/prisma-checklists-repository";
 import { PrismaCommentsRepository } from "../../tasks/repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repository";
 import { PrismaLabelsRepository } from "../../tasks/repository/prisma-labels-repository";
 import { PrismaTaskLabelsRepository } from "../../tasks/repository/prisma-task-labels-repository";
 import { InMemoryActivityRepository } from "../../tasks/tests/in-memory-activity-repository";
+import { InMemoryChecklistsRepository } from "../../tasks/tests/in-memory-checklists-repository";
 import { InMemoryCommentsRepository } from "../../tasks/tests/in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "../../tasks/tests/in-memory-labels-repository";
 import { InMemoryTaskLabelsRepository } from "../../tasks/tests/in-memory-task-labels-repository";
@@ -74,6 +76,7 @@ function createMembersApp() {
     tasksRepository,
     commentsRepository,
     activityRepository,
+    checklistsRepository: new InMemoryChecklistsRepository(),
     labelsRepository,
     taskLabelsRepository,
     projectMembersRepository,
@@ -448,6 +451,7 @@ describe("project-members HTTP API persistence", () => {
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),
+      checklistsRepository: new PrismaChecklistsRepository(prisma),
       labelsRepository: new PrismaLabelsRepository(prisma),
       taskLabelsRepository: new PrismaTaskLabelsRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),

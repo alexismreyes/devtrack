@@ -60,6 +60,60 @@ const commentAddedActivity = {
   },
 };
 
+const checklistAddedActivity = {
+  id: "activity-4",
+  taskId: "task-1",
+  kind: "CHECKLIST_ADDED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T15:00:00.000Z",
+  payload: {
+    checklistId: "checklist-1",
+    namePreview: "QA",
+  },
+};
+
+const checklistRemovedActivity = {
+  id: "activity-5",
+  taskId: "task-1",
+  kind: "CHECKLIST_REMOVED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T16:00:00.000Z",
+  payload: {
+    checklistId: "checklist-1",
+    namePreview: "QA",
+  },
+};
+
+const checklistItemCompletedActivity = {
+  id: "activity-6",
+  taskId: "task-1",
+  kind: "CHECKLIST_ITEM_COMPLETED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T17:00:00.000Z",
+  payload: {
+    checklistId: "checklist-1",
+    itemId: "item-1",
+    textPreview: "Write tests",
+  },
+};
+
+const checklistItemUncompletedActivity = {
+  id: "activity-7",
+  taskId: "task-1",
+  kind: "CHECKLIST_ITEM_UNCOMPLETED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T18:00:00.000Z",
+  payload: {
+    checklistId: "checklist-1",
+    itemId: "item-1",
+    textPreview: "Write tests",
+  },
+};
+
 describe("buildCommentsActivityTimeline", () => {
   it("interleaves newest-first and omits COMMENT_ADDED", () => {
     const timeline = buildCommentsActivityTimeline(
@@ -72,6 +126,36 @@ describe("buildCommentsActivityTimeline", () => {
       "activity-activity-2",
       "comment-comment-1",
       "activity-activity-1",
+    ]);
+    expect(
+      timeline.some(
+        (item) =>
+          item.type === "activity" && item.event.kind === "COMMENT_ADDED",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps the four checklist activity kinds in the timeline (Q-124)", () => {
+    const timeline = buildCommentsActivityTimeline(
+      [],
+      [
+        checklistItemUncompletedActivity,
+        checklistItemCompletedActivity,
+        checklistRemovedActivity,
+        checklistAddedActivity,
+        commentAddedActivity,
+      ],
+    );
+
+    expect(
+      timeline.map((item) =>
+        item.type === "activity" ? item.event.kind : item.type,
+      ),
+    ).toEqual([
+      "CHECKLIST_ITEM_UNCOMPLETED",
+      "CHECKLIST_ITEM_COMPLETED",
+      "CHECKLIST_REMOVED",
+      "CHECKLIST_ADDED",
     ]);
     expect(
       timeline.some(
@@ -128,6 +212,50 @@ describe("CommentsActivityPanel", () => {
     expect(edit).toHaveClass("underline-offset-4");
     expect(edit.className).not.toMatch(/\bborder\b/);
     expect(del).toHaveClass("text-destructive");
-    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
+  });
+
+  it("renders checklist activity kinds with name and text previews (AC-008/Q-124)", () => {
+    render(
+      <CommentsActivityPanel
+        canWrite={true}
+        commentMutationsDisabled={false}
+        comments={[]}
+        commentsLoadState={{ kind: "empty" }}
+        activity={[
+          checklistItemUncompletedActivity,
+          checklistItemCompletedActivity,
+          checklistRemovedActivity,
+          checklistAddedActivity,
+          commentAddedActivity,
+        ]}
+        activityLoadState={{ kind: "success" }}
+        commentActionState={{ kind: "idle" }}
+        newCommentBody=""
+        editingCommentId={null}
+        editCommentBody=""
+        onNewCommentBodyChange={vi.fn()}
+        onEditCommentBodyChange={vi.fn()}
+        onCreateComment={vi.fn()}
+        onStartEditComment={vi.fn()}
+        onCancelEditComment={vi.fn()}
+        onSaveComment={vi.fn()}
+        onDeleteComment={vi.fn()}
+        canEditComment={() => false}
+        canSoftDeleteComment={() => false}
+      />,
+    );
+
+    const list = screen.getByRole("list", { name: /comments and activity/i });
+    expect(within(list).getByText(/checklist added/i)).toBeInTheDocument();
+    expect(within(list).getByText(/checklist removed/i)).toBeInTheDocument();
+    expect(
+      within(list).getByText(/checklist item completed/i),
+    ).toBeInTheDocument();
+    expect(
+      within(list).getByText(/checklist item uncompleted/i),
+    ).toBeInTheDocument();
+    expect(within(list).getAllByText("QA")).toHaveLength(2);
+    expect(within(list).getAllByText("Write tests")).toHaveLength(2);
+    expect(within(list).queryByText(/comment added/i)).not.toBeInTheDocument();
   });
 });

@@ -47,13 +47,13 @@ const doneTask = {
 
 function expectStatusColumns(hidden = false): void {
   expect(
-    screen.getByRole("columnheader", { name: "TODO", hidden }),
+    screen.getByRole("columnheader", { name: "To do", hidden }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("columnheader", { name: "IN_PROGRESS", hidden }),
+    screen.getByRole("columnheader", { name: "In progress", hidden }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("columnheader", { name: "DONE", hidden }),
+    screen.getByRole("columnheader", { name: "Done", hidden }),
   ).toBeInTheDocument();
 }
 
@@ -68,11 +68,20 @@ function expectNoListBoardToggle(): void {
   expect(screen.queryByRole("tab", { name: /^board$/i })).not.toBeInTheDocument();
 }
 
+const STATUS_HEADER: Record<"TODO" | "IN_PROGRESS" | "DONE", string> = {
+  TODO: "To do",
+  IN_PROGRESS: "In progress",
+  DONE: "Done",
+};
+
 function columnSection(
   status: "TODO" | "IN_PROGRESS" | "DONE",
   hidden = false,
 ): HTMLElement {
-  const header = screen.getByRole("columnheader", { name: status, hidden });
+  const header = screen.getByRole("columnheader", {
+    name: STATUS_HEADER[status],
+    hidden,
+  });
   const section = header.closest("section");
   if (section === null) {
     throw new Error(`Missing ${status} column`);
@@ -569,7 +578,10 @@ describe("TasksPanel", () => {
 
     expect(await screen.findByText(/task updated/i)).toBeInTheDocument();
     expect(
-      await screen.findByRole("columnheader", { name: "IN_PROGRESS", hidden: true }),
+      await screen.findByRole("columnheader", {
+        name: "In progress",
+        hidden: true,
+      }),
     ).toBeInTheDocument();
     expect(
       within(columnSection("IN_PROGRESS", true)).getByRole("button", {

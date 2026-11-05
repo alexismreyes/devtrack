@@ -8,6 +8,7 @@ import { PrismaProjectMembersRepository } from "./modules/project-members/reposi
 import { PrismaProjectsRepository } from "./modules/projects/repository/prisma-projects-repository";
 import { PrismaSystemRepository } from "./modules/system/repository/prisma-system-repository";
 import { PrismaActivityRepository } from "./modules/tasks/repository/prisma-activity-repository";
+import { PrismaChecklistsRepository } from "./modules/tasks/repository/prisma-checklists-repository";
 import { PrismaCommentsRepository } from "./modules/tasks/repository/prisma-comments-repository";
 import { PrismaLabelsRepository } from "./modules/tasks/repository/prisma-labels-repository";
 import { PrismaTaskLabelsRepository } from "./modules/tasks/repository/prisma-task-labels-repository";
@@ -25,6 +26,7 @@ const projectsRepository = new PrismaProjectsRepository(prisma);
 const tasksRepository = new PrismaTasksRepository(prisma);
 const commentsRepository = new PrismaCommentsRepository(prisma);
 const activityRepository = new PrismaActivityRepository(prisma);
+const checklistsRepository = new PrismaChecklistsRepository(prisma);
 const labelsRepository = new PrismaLabelsRepository(prisma);
 const taskLabelsRepository = new PrismaTaskLabelsRepository(prisma);
 const projectMembersRepository = new PrismaProjectMembersRepository(prisma);
@@ -37,6 +39,7 @@ const app = createApp({
   tasksRepository,
   commentsRepository,
   activityRepository,
+  checklistsRepository,
   labelsRepository,
   taskLabelsRepository,
   projectMembersRepository,

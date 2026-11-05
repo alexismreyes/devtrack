@@ -79,6 +79,10 @@ enum TaskActivityKind {
   TASK_FIELDS_CHANGED
   TASK_SOFT_DELETED
   COMMENT_ADDED
+  CHECKLIST_ADDED
+  CHECKLIST_REMOVED
+  CHECKLIST_ITEM_COMPLETED
+  CHECKLIST_ITEM_UNCOMPLETED
 }
 
 model Project {
@@ -125,9 +129,34 @@ model Task {
   comments    TaskComment[]
   activityEvents TaskActivityEvent[]
   taskLabels  TaskLabel[]
+  checklists  TaskChecklist[]
 
   @@index([projectId])
   @@map("tasks")
+}
+
+model TaskChecklist {
+  id        String              @id @db.Uuid
+  taskId    String              @db.Uuid
+  name      String
+  createdAt DateTime
+  task      Task                @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  items     TaskChecklistItem[]
+
+  @@index([taskId])
+  @@map("task_checklists")
+}
+
+model TaskChecklistItem {
+  id          String        @id @db.Uuid
+  checklistId String        @db.Uuid
+  text        String
+  checked     Boolean       @default(false)
+  createdAt   DateTime
+  checklist   TaskChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  @@index([checklistId])
+  @@map("task_checklist_items")
 }
 
 model ProjectLabel {

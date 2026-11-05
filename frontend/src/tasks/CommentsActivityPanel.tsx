@@ -89,6 +89,14 @@ function activityKindLabel(kind: PublicActivityDto["kind"]): string {
       return "Task deleted";
     case "COMMENT_ADDED":
       return "Comment added";
+    case "CHECKLIST_ADDED":
+      return "Checklist added";
+    case "CHECKLIST_REMOVED":
+      return "Checklist removed";
+    case "CHECKLIST_ITEM_COMPLETED":
+      return "Checklist item completed";
+    case "CHECKLIST_ITEM_UNCOMPLETED":
+      return "Checklist item uncompleted";
   }
 }
 
@@ -108,6 +116,20 @@ function activityPayloadSummary(event: PublicActivityDto): string | null {
         return null;
       }
       return event.payload.bodyPreview;
+    }
+    case "CHECKLIST_ADDED":
+    case "CHECKLIST_REMOVED": {
+      if (!("namePreview" in event.payload)) {
+        return null;
+      }
+      return event.payload.namePreview;
+    }
+    case "CHECKLIST_ITEM_COMPLETED":
+    case "CHECKLIST_ITEM_UNCOMPLETED": {
+      if (!("textPreview" in event.payload)) {
+        return null;
+      }
+      return event.payload.textPreview;
     }
   }
 }
