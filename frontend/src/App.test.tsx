@@ -122,6 +122,10 @@ function isMembersListUrl(url: string): boolean {
   return /\/api\/projects\/[^/]+\/members$/.test(url);
 }
 
+function isLabelsListUrl(url: string): boolean {
+  return /\/api\/projects\/[^/]+\/labels$/.test(url);
+}
+
 function renderApp(path = "/"): ReturnType<typeof render> {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -472,6 +476,9 @@ describe("App frontend shell", () => {
       if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
         return jsonResponse(200, { tasks: [] });
       }
+      if (isLabelsListUrl(url)) {
+        return jsonResponse(200, { labels: [] });
+      }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, { members: [ownerMember] });
       }
@@ -535,6 +542,9 @@ describe("App frontend shell", () => {
       if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
         return jsonResponse(200, { tasks: [] });
       }
+      if (isLabelsListUrl(url)) {
+        return jsonResponse(200, { labels: [] });
+      }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, { members: [ownerMember] });
       }
@@ -580,6 +590,9 @@ describe("App frontend shell", () => {
       }
       if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
         return jsonResponse(200, { tasks: [] });
+      }
+      if (isLabelsListUrl(url)) {
+        return jsonResponse(200, { labels: [] });
       }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, { members: [ownerMember] });
@@ -743,9 +756,13 @@ describe("App frontend shell", () => {
               priority: "MEDIUM",
               dueDate: null,
               createdAt: "2026-10-29T18:00:00.000Z",
+              labels: [],
             },
           ],
         });
+      }
+      if (isLabelsListUrl(url)) {
+        return jsonResponse(200, { labels: [] });
       }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, { members: [ownerMember] });
@@ -921,6 +938,9 @@ describe("App frontend shell", () => {
       }
       if (/\/api\/projects\/[^/]+\/tasks/.test(url)) {
         return jsonResponse(200, { tasks: [] });
+      }
+      if (isLabelsListUrl(url)) {
+        return jsonResponse(200, { labels: [] });
       }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, {

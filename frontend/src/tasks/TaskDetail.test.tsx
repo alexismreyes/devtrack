@@ -13,6 +13,15 @@ const task = {
   priority: "MEDIUM" as const,
   dueDate: "2026-11-01" as string | null,
   createdAt: "2026-10-29T18:00:00.000Z",
+  labels: [] as Array<{ id: string; name: string; color: "RED" | "BLUE" }>,
+};
+
+const bugLabel = {
+  id: "label-1",
+  projectId: "proj-1",
+  name: "Bug",
+  color: "RED" as const,
+  createdAt: "2026-11-05T12:00:00.000Z",
 };
 
 const ownComment = {
@@ -68,17 +77,25 @@ function isActivityListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/tasks/task-1/activity";
 }
 
+function isLabelsListUrl(url: string): boolean {
+  return url === "http://localhost:3000/api/projects/proj-1/labels";
+}
+
 function defaultTaskHandler(
   url: string,
   init?: RequestInit,
   comments: unknown[] = [],
   activityEvents: unknown[] = [],
+  labels: unknown[] = [],
 ): Response {
   if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { comments });
   }
   if (isActivityListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { activity: activityEvents });
+  }
+  if (isLabelsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+    return jsonResponse(200, { labels });
   }
   if (url.endsWith("/api/tasks/task-1") && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, task);
@@ -166,10 +183,99 @@ describe("TaskDetail", () => {
     expect(screen.getByLabelText(/task title/i)).toHaveValue("Write tests");
     expect(screen.getByLabelText(/task description/i)).toHaveValue("Cover the UI");
     expect(screen.getByLabelText(/task due date/i)).toHaveValue("2026-11-01");
+    expect(screen.getByTestId("task-detail-layout")).toHaveClass(
+      "md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]",
+    );
+    expect(screen.getByTestId("task-detail-main")).toBeInTheDocument();
+    expect(screen.getByTestId("task-detail-side")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /comments & activity/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^labels$/i })).toBeInTheDocument();
+    expect(screen.getByText(/no labels assigned/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save labels/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^dates$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /checklist/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /attachment/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
   });
 
-  it("updates allowed fields with credentials included", async () => {
+  it("assigns labels for writers with PUT replace-set on Done and credentials included", async () => {
+    const onUpdated = vi.fn();
+    mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (url.endsWith("/api/tasks/task-1/labels") && init?.method === "PUT") {
+        expect(init.body).toBe(JSON.stringify({ labelIds: ["label-1"] }));
+        return jsonResponse(200, { labels: [bugLabel] });
+      }
+      return defaultTaskHandler(url, init, [], [], [bugLabel]);
+    });
+    const user = userEvent.setup();
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={onUpdated}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /^labels$/i }));
+    const assignList = await screen.findByRole("list", { name: /assign labels/i });
+    await user.click(within(assignList).getByRole("checkbox", { name: /bug/i }));
+    await user.click(screen.getByRole("button", { name: /^done$/i }));
+
+    expect(await screen.findByText(/labels updated/i)).toBeInTheDocument();
+    const assigned = screen.getByRole("list", { name: /task labels/i });
+    expect(within(assigned).getByText("Bug")).toHaveAttribute(
+      "data-label-color",
+      "RED",
+    );
+    expect(onUpdated).toHaveBeenCalled();
+    expectNoSessionTokenStorage();
+  });
+
+  it("shows assigned chips without opening Labels and keeps viewer catalog read-only", async () => {
+    const user = userEvent.setup();
+    mockFetch((url, init) => {
+      if (url.endsWith("/api/tasks/task-1") && (init?.method === "GET" || init?.method === undefined)) {
+        return jsonResponse(200, {
+          ...task,
+          labels: [{ id: "label-1", name: "Bug", color: "RED" }],
+        });
+      }
+      return defaultTaskHandler(url, init, [], [], [bugLabel]);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const chips = await screen.findByRole("list", { name: /task labels/i });
+    expect(within(chips).getByText("Bug")).toHaveAttribute("data-label-color", "RED");
+    expect(screen.queryByRole("button", { name: /save labels/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^labels$/i }));
+    const catalog = await screen.findByRole("list", { name: /assign labels/i });
+    expect(within(catalog).getByText("Bug")).toBeInTheDocument();
+    expect(within(catalog).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /create a new label/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("updates allowed fields with credentials included and reloads activity", async () => {
     const updated = {
       ...task,
       title: "Ship it",
@@ -179,7 +285,8 @@ describe("TaskDetail", () => {
       dueDate: null,
     };
     const onUpdated = vi.fn();
-    mockFetch((url, init) => {
+    let activityEvents: unknown[] = [createdActivity];
+    const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
       if (url.endsWith("/api/tasks/task-1") && init?.method === "PATCH") {
         expect(init.body).toBe(
@@ -191,9 +298,10 @@ describe("TaskDetail", () => {
             priority: "HIGH",
           }),
         );
+        activityEvents = [createdActivity, fieldsChangedActivity];
         return jsonResponse(200, updated);
       }
-      return defaultTaskHandler(url, init);
+      return defaultTaskHandler(url, init, [], activityEvents);
     });
     const user = userEvent.setup();
 
@@ -219,7 +327,68 @@ describe("TaskDetail", () => {
 
     expect(await screen.findByText(/task updated/i)).toBeInTheDocument();
     expect(onUpdated).toHaveBeenCalledOnce();
+    const sideList = await screen.findByRole("list", {
+      name: /comments and activity/i,
+    });
+    expect(within(sideList).getByText(/fields changed/i)).toBeInTheDocument();
+    expect(
+      within(sideList).queryByText(/comment added/i),
+    ).not.toBeInTheDocument();
+    const activityGets = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    );
+    expect(activityGets.length).toBeGreaterThanOrEqual(2);
     expectNoSessionTokenStorage();
+  });
+
+  it("keeps a successful Save when activity reload fails", async () => {
+    const updated = {
+      ...task,
+      title: "Ship it",
+    };
+    let activityCalls = 0;
+    mockFetch((url, init) => {
+      if (url.endsWith("/api/tasks/task-1") && init?.method === "PATCH") {
+        return jsonResponse(200, updated);
+      }
+      if (isActivityListUrl(url)) {
+        activityCalls += 1;
+        if (activityCalls > 1) {
+          return jsonResponse(500, {
+            error: {
+              code: "INTERNAL_ERROR",
+              message: "Activity unavailable",
+            },
+          });
+        }
+        return jsonResponse(200, { activity: [] });
+      }
+      return defaultTaskHandler(url, init);
+    });
+    const user = userEvent.setup();
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const title = await screen.findByLabelText(/task title/i);
+    await user.clear(title);
+    await user.type(title, "Ship it");
+    await user.click(screen.getByRole("button", { name: /save task/i }));
+
+    expect(await screen.findByText(/task updated/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/task title/i)).toHaveValue("Ship it");
+    expect(await screen.findByText(/activity unavailable/i)).toBeInTheDocument();
   });
 
   it("soft-deletes with DELETE and an empty 204 body", async () => {
@@ -418,13 +587,16 @@ describe("TaskDetail", () => {
       />,
     );
 
-    expect(await screen.findByRole("heading", { name: /^comments$/i })).toBeInTheDocument();
-    const list = await screen.findByRole("list", { name: /task comments/i });
+    expect(
+      await screen.findByRole("heading", { name: /comments & activity/i }),
+    ).toBeInTheDocument();
+    const list = await screen.findByRole("list", { name: /comments and activity/i });
     expect(within(list).getByText("First note")).toBeInTheDocument();
     expect(within(list).getByText("Other note")).toBeInTheDocument();
     expect(within(list).getByText(/ada/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/new comment/i)).toBeInTheDocument();
     expect(screen.queryByText(/markdown/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/label/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/@user/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
     expect(
@@ -469,6 +641,13 @@ describe("TaskDetail", () => {
       />,
     );
 
+    const activityGetsBefore = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+
     await user.type(await screen.findByLabelText(/new comment/i), "Fresh comment");
     await user.click(screen.getByRole("button", { name: /add comment/i }));
     expect(await screen.findByText(/comment added/i)).toBeInTheDocument();
@@ -481,6 +660,13 @@ describe("TaskDetail", () => {
           init?.method === "POST",
       ),
     ).toBe(true);
+    const activityGetsAfter = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+    expect(activityGetsAfter).toBeGreaterThan(activityGetsBefore);
 
     rerender(
       <TaskDetail
@@ -495,7 +681,9 @@ describe("TaskDetail", () => {
       />,
     );
 
-    expect(await screen.findByRole("heading", { name: /^comments$/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /comments & activity/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText(/new comment/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add comment/i })).not.toBeInTheDocument();
     expectNoSessionTokenStorage();
@@ -539,18 +727,22 @@ describe("TaskDetail", () => {
       />,
     );
 
-    const list = await screen.findByRole("list", { name: /task comments/i });
+    const list = await screen.findByRole("list", { name: /comments and activity/i });
     const ownItem = within(list).getByText("First note").closest("li");
     expect(ownItem).not.toBeNull();
     const otherItem = within(list).getByText("Other note").closest("li");
     expect(otherItem).not.toBeNull();
 
-    expect(
-      within(ownItem as HTMLElement).getByRole("button", { name: /edit comment/i }),
-    ).toBeInTheDocument();
-    expect(
-      within(ownItem as HTMLElement).getByRole("button", { name: /delete comment/i }),
-    ).toBeInTheDocument();
+    const editLink = within(ownItem as HTMLElement).getByRole("button", {
+      name: /edit comment/i,
+    });
+    const deleteLink = within(ownItem as HTMLElement).getByRole("button", {
+      name: /delete comment/i,
+    });
+    expect(editLink).toHaveClass("underline-offset-4");
+    expect(editLink.className).not.toMatch(/\bborder\b/);
+    expect(deleteLink).toHaveClass("underline-offset-4");
+    expect(deleteLink).toHaveClass("text-destructive");
     expect(
       within(otherItem as HTMLElement).queryByRole("button", { name: /edit comment/i }),
     ).not.toBeInTheDocument();
@@ -558,15 +750,30 @@ describe("TaskDetail", () => {
       within(otherItem as HTMLElement).queryByRole("button", { name: /delete comment/i }),
     ).not.toBeInTheDocument();
 
-    await user.click(
-      within(ownItem as HTMLElement).getByRole("button", { name: /edit comment/i }),
-    );
+    const activityGetsBeforeEdit = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+
+    await user.click(editLink);
     const editField = screen.getByLabelText(/edit comment/i);
     await user.clear(editField);
     await user.type(editField, "Edited note");
+    expect(screen.getByRole("button", { name: /cancel edit/i })).toHaveClass(
+      "underline-offset-4",
+    );
     await user.click(screen.getByRole("button", { name: /save comment/i }));
     expect(await screen.findByText(/comment updated/i)).toBeInTheDocument();
     expect(screen.getByText("Edited note")).toBeInTheDocument();
+    const activityGetsAfterEdit = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+    expect(activityGetsAfterEdit).toBeGreaterThan(activityGetsBeforeEdit);
 
     await user.click(screen.getByRole("button", { name: /delete comment/i }));
     expect(await screen.findByText(/comment deleted/i)).toBeInTheDocument();
@@ -580,6 +787,13 @@ describe("TaskDetail", () => {
           init?.method === "DELETE",
       ),
     ).toBe(true);
+    const activityGetsAfterDelete = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+    expect(activityGetsAfterDelete).toBeGreaterThan(activityGetsAfterEdit);
     expectNoSessionTokenStorage();
   });
 
@@ -600,7 +814,7 @@ describe("TaskDetail", () => {
       />,
     );
 
-    const list = await screen.findByRole("list", { name: /task comments/i });
+    const list = await screen.findByRole("list", { name: /comments and activity/i });
     const item = within(list).getByText("Other note").closest("li");
     expect(item).not.toBeNull();
     expect(
@@ -611,7 +825,7 @@ describe("TaskDetail", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows an empty comments state and keeps the existing dialog chrome", async () => {
+  it("shows an empty comments and activity state and keeps chrome", async () => {
     mockFetch((url, init) => defaultTaskHandler(url, init, []));
 
     render(
@@ -627,13 +841,15 @@ describe("TaskDetail", () => {
       />,
     );
 
-    expect(await screen.findByText(/no comments yet/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/no comments or activity yet/i),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /close task/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save task/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
   });
 
-  it("lists activity newest first with field changes and comment preview (AC-010)", async () => {
+  it("interleaves comments and activity newest-first and omits COMMENT_ADDED", async () => {
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
       return defaultTaskHandler(url, init, [ownComment], [
@@ -655,23 +871,23 @@ describe("TaskDetail", () => {
       />,
     );
 
-    expect(await screen.findByRole("heading", { name: /^activity$/i })).toBeInTheDocument();
-    const list = await screen.findByRole("list", { name: /task activity/i });
+    expect(
+      await screen.findByRole("heading", { name: /comments & activity/i }),
+    ).toBeInTheDocument();
+    const list = await screen.findByRole("list", { name: /comments and activity/i });
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(3);
-    expect(within(items[0] as HTMLElement).getByText(/comment added/i)).toBeInTheDocument();
-    expect(within(items[0] as HTMLElement).getByText("First note")).toBeInTheDocument();
-    expect(within(items[0] as HTMLElement).getByText(/bob/i)).toBeInTheDocument();
-    expect(within(items[1] as HTMLElement).getByText(/fields changed/i)).toBeInTheDocument();
+    expect(within(items[0] as HTMLElement).getByText(/fields changed/i)).toBeInTheDocument();
     expect(
-      within(items[1] as HTMLElement).getByText(
+      within(items[0] as HTMLElement).getByText(
         /title: Write tests → Ship it; status: TODO → DONE/i,
       ),
     ).toBeInTheDocument();
-    expect(within(items[2] as HTMLElement).getByText(/task created/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^comments$/i })).toBeInTheDocument();
+    expect(within(items[1] as HTMLElement).getByText(/task created/i)).toBeInTheDocument();
+    expect(within(items[2] as HTMLElement).getByText("First note")).toBeInTheDocument();
+    expect(screen.queryByText(/comment added/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/label/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(
         ([url, init]) =>
@@ -684,7 +900,7 @@ describe("TaskDetail", () => {
     expectNoSessionTokenStorage();
   });
 
-  it("shows an empty activity state", async () => {
+  it("shows a unified empty timeline when both sources are empty", async () => {
     mockFetch((url, init) => defaultTaskHandler(url, init, [], []));
 
     render(
@@ -698,9 +914,12 @@ describe("TaskDetail", () => {
       />,
     );
 
-    expect(await screen.findByText(/no activity yet/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^activity$/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^comments$/i })).toBeInTheDocument();
+    expect(
+      await screen.findByText(/no comments or activity yet/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /comments & activity/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows activity forbidden and not-found states", async () => {

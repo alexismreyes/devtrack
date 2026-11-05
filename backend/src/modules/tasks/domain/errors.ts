@@ -67,3 +67,31 @@ export class CommentForbiddenError extends Error {
     this.name = "CommentForbiddenError";
   }
 }
+
+export class LabelNotFoundError extends Error {
+  constructor() {
+    super("Label was not found");
+    this.name = "LabelNotFoundError";
+  }
+}
+
+export class InvalidLabelNameError extends Error {
+  constructor() {
+    super("Label name must be 1–40 characters after trim");
+    this.name = "InvalidLabelNameError";
+  }
+}
+
+export class InvalidLabelColorError extends Error {
+  constructor() {
+    super("Label color is invalid");
+    this.name = "InvalidLabelColorError";
+  }
+}
+
+export class DuplicateLabelNameError extends Error {
+  constructor() {
+    super("A label with this name already exists in the project");
+    this.name = "DuplicateLabelNameError";
+  }
+}

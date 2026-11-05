@@ -10,6 +10,8 @@ import { TasksService } from "../service/tasks-service";
 import { FakeProjectAccessPort } from "./fake-project-access-port";
 import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
+import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
@@ -36,7 +38,9 @@ function seedBoth(
 }
 
 function createService(archivedAt: Date | null = null) {
-  const tasks = new InMemoryTasksRepository();
+  const labels = new InMemoryLabelsRepository();
+  const taskLabels = new InMemoryTaskLabelsRepository(labels);
+  const tasks = new InMemoryTasksRepository(taskLabels.joins);
   const projects = new FakeProjectAccessPort();
   const authorization = new FakeTaskAuthorizationPort();
   const activity = new InMemoryActivityRepository();
@@ -58,12 +62,15 @@ function createService(archivedAt: Date | null = null) {
       projects,
       authorization,
       activity,
+      taskLabels,
       new ImmediateUnitOfWork(),
     ),
     tasks,
     projects,
     authorization,
     activity,
+    labels,
+    taskLabels,
   };
 }
 

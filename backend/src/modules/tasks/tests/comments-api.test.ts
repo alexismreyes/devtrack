@@ -11,6 +11,8 @@ import type { SystemRepository } from "../../system/repository/system-repository
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
+import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
 class FakeSystemRepository implements SystemRepository {
@@ -43,7 +45,9 @@ function createCommentsApp() {
   const authRepository = new InMemoryAuthRepository(usersRepository);
   const systemRepository = new FakeSystemRepository();
   const projectsRepository = new InMemoryProjectsRepository();
-  const tasksRepository = new InMemoryTasksRepository();
+  const labelsRepository = new InMemoryLabelsRepository();
+  const taskLabelsRepository = new InMemoryTaskLabelsRepository(labelsRepository);
+  const tasksRepository = new InMemoryTasksRepository(taskLabelsRepository.joins);
   const commentsRepository = new InMemoryCommentsRepository();
   const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
@@ -56,6 +60,8 @@ function createCommentsApp() {
     tasksRepository,
     commentsRepository,
     activityRepository,
+    labelsRepository,
+    taskLabelsRepository,
     projectMembersRepository,
   });
   return { app, commentsRepository, tasksRepository };

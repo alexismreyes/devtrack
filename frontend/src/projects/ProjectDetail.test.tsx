@@ -96,6 +96,10 @@ function isMembersListUrl(url: string): boolean {
   return /\/api\/projects\/[^/]+\/members$/.test(url);
 }
 
+function isLabelsListUrl(url: string): boolean {
+  return /\/api\/projects\/[^/]+\/labels$/.test(url);
+}
+
 function respondBoardReads(
   url: string,
   init: RequestInit | undefined,
@@ -113,6 +117,9 @@ function respondBoardReads(
   }
   if (isTaskListUrl(url)) {
     return jsonResponse(200, { tasks: [] });
+  }
+  if (isLabelsListUrl(url) && (init?.method === undefined || init.method === "GET")) {
+    return jsonResponse(200, { labels: [] });
   }
   if (isMembersListUrl(url) && (init?.method === undefined || init.method === "GET")) {
     return jsonResponse(200, { members });
@@ -199,11 +206,36 @@ describe("ProjectDetail", () => {
 
     renderDetail();
 
+    expect(await screen.findByRole("button", { name: /^labels$/i })).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: /^members$/i }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: /^members$/i })).toBeInTheDocument();
     expect(await within(dialog).findByText("Ada")).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/member email/i)).toBeInTheDocument();
+    expectNoSessionTokenStorage();
+  });
+
+  it("opens the Labels Dialog from the board header", async () => {
+    mockFetch((url, init) => {
+      const common = respondBoardReads(url, init);
+      if (common !== null) {
+        return common;
+      }
+      return jsonResponse(500, {
+        error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
+      });
+    });
+    const user = userEvent.setup();
+
+    renderDetail();
+
+    expect(await screen.findByRole("button", { name: /^members$/i })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /^labels$/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: /^labels$/i })).toBeInTheDocument();
+    expect(await within(dialog).findByText(/no labels yet/i)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/new label name/i)).toBeInTheDocument();
+    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
     expectNoSessionTokenStorage();
   });
 
@@ -256,6 +288,7 @@ describe("ProjectDetail", () => {
     expect(screen.queryByRole("button", { name: /edit project/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /archive project/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^members$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^labels$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^add task$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add task to todo/i })).not.toBeInTheDocument();
   });

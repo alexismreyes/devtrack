@@ -21,6 +21,7 @@ const todoTask: PublicTaskDto = {
   priority: "MEDIUM",
   dueDate: null,
   createdAt: "2026-10-29T18:00:00.000Z",
+  labels: [],
 };
 
 const datedTask: PublicTaskDto = {
@@ -29,6 +30,16 @@ const datedTask: PublicTaskDto = {
   title: "Dated work",
   priority: "HIGH",
   dueDate: "2026-11-01",
+};
+
+const labeledTask: PublicTaskDto = {
+  ...todoTask,
+  id: "task-labeled",
+  title: "Labeled work",
+  labels: [
+    { id: "label-1", name: "Bug", color: "RED" },
+    { id: "label-2", name: "Frontend", color: "BLUE" },
+  ],
 };
 
 describe("resolveKanbanDrop", () => {
@@ -123,6 +134,31 @@ describe("KanbanBoard drag-and-drop", () => {
         /due /i,
       ),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows assigned label names and color tokens on the card face", () => {
+    render(
+      <KanbanBoard
+        tasks={[labeledTask]}
+        onSelectTask={vi.fn()}
+        onMoveTask={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const card = document.querySelector(
+      '[data-kanban-card="task-labeled"]',
+    ) as HTMLElement;
+    const labels = within(card).getByRole("list", { name: /task labels/i });
+    expect(within(labels).getByText("Bug")).toHaveAttribute(
+      "data-label-color",
+      "RED",
+    );
+    expect(within(labels).getByText("Frontend")).toHaveAttribute(
+      "data-label-color",
+      "BLUE",
+    );
+    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
   });
 
   it("keeps compact left-aligned columns instead of stretching the full main width", () => {

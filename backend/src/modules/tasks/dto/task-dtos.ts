@@ -3,6 +3,9 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "../domain/task";
+import type { TaskView } from "../service/tasks-service";
+import type { TaskEmbeddedLabelDto } from "./label-dtos";
+import { toTaskEmbeddedLabelDto } from "./label-dtos";
 
 export type PublicTaskDto = {
   id: string;
@@ -13,6 +16,7 @@ export type PublicTaskDto = {
   priority: TaskPriority;
   dueDate: string | null;
   createdAt: string;
+  labels: TaskEmbeddedLabelDto[];
 };
 
 export type TaskListResponseDto = {
@@ -38,18 +42,10 @@ export type UpdateTaskRequestDto = {
 export type ListTasksQueryDto = {
   status?: TaskStatus;
   priority?: TaskPriority;
+  labelId?: string;
 };
 
-export function toPublicTaskDto(task: {
-  id: string;
-  projectId: string;
-  title: string;
-  description: string | null;
-  status: TaskStatus;
-  priority: TaskPriority;
-  dueDate: Date | null;
-  createdAt: Date;
-}): PublicTaskDto {
+export function toPublicTaskDto(task: TaskView): PublicTaskDto {
   return {
     id: task.id,
     projectId: task.projectId,
@@ -59,5 +55,6 @@ export function toPublicTaskDto(task: {
     priority: task.priority,
     dueDate: task.dueDate === null ? null : formatCalendarDate(task.dueDate),
     createdAt: task.createdAt.toISOString(),
+    labels: task.labels.map(toTaskEmbeddedLabelDto),
   };
 }

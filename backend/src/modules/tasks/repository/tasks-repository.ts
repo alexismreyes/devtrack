@@ -20,6 +20,7 @@ export type UpdateTaskInput = {
 export type ListTasksFilters = {
   status?: TaskStatus;
   priority?: TaskPriority;
+  labelId?: string;
 };
 
 export interface TasksRepository {

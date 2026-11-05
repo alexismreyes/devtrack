@@ -19,8 +19,12 @@ import { InMemoryProjectMembersRepository } from "../../project-members/tests/in
 import { PrismaActivityRepository } from "../../tasks/repository/prisma-activity-repository";
 import { PrismaCommentsRepository } from "../../tasks/repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repository";
+import { PrismaLabelsRepository } from "../../tasks/repository/prisma-labels-repository";
+import { PrismaTaskLabelsRepository } from "../../tasks/repository/prisma-task-labels-repository";
 import { InMemoryActivityRepository } from "../../tasks/tests/in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "../../tasks/tests/in-memory-comments-repository";
+import { InMemoryLabelsRepository } from "../../tasks/tests/in-memory-labels-repository";
+import { InMemoryTaskLabelsRepository } from "../../tasks/tests/in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
 import { PrismaProjectsRepository } from "../repository/prisma-projects-repository";
 import { InMemoryProjectsRepository } from "./in-memory-projects-repository";
@@ -55,7 +59,9 @@ function createProjectsApp() {
   const authRepository = new InMemoryAuthRepository(usersRepository);
   const systemRepository = new FakeSystemRepository();
   const projectsRepository = new InMemoryProjectsRepository();
-  const tasksRepository = new InMemoryTasksRepository();
+  const labelsRepository = new InMemoryLabelsRepository();
+  const taskLabelsRepository = new InMemoryTaskLabelsRepository(labelsRepository);
+  const tasksRepository = new InMemoryTasksRepository(taskLabelsRepository.joins);
   const commentsRepository = new InMemoryCommentsRepository();
   const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
@@ -68,6 +74,8 @@ function createProjectsApp() {
     tasksRepository,
     commentsRepository,
     activityRepository,
+    labelsRepository,
+    taskLabelsRepository,
     projectMembersRepository,
   });
   return { app, projectsRepository };
@@ -664,6 +672,8 @@ describe("projects HTTP API persistence", () => {
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),
+      labelsRepository: new PrismaLabelsRepository(prisma),
+      taskLabelsRepository: new PrismaTaskLabelsRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),
       unitOfWork: new PrismaUnitOfWork(prisma),
     });

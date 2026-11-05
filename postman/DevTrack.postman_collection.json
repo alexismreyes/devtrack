@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "devtrack-local-api",
     "name": "DevTrack",
-    "description": "Local DevTrack API, grouped by domain (through 009-collaboration).\n\n**Base URL:** `{{baseUrl}}` (default `http://localhost:3000`).\n\n**Auth:** HTTP-only cookie `devtrack_session`. Run **auth / Register** or **auth / Login** first. Enable the cookie jar (Settings → General → Cookies). Do not put a bearer token in headers.\n\n**Errors:** `{ \"error\": { \"code\": \"...\", \"message\": \"...\" } }`.\n\n**Suggested order:** health → register/login → users/me → create project → members → tasks → dashboard → probes.\n\n**Roles (project-members):** `OWNER` | `EDITOR` | `VIEWER`. Creating owner is always OWNER. Add existing users by email (no invite email). EDITOR: project patch + task writes. VIEWER: read/list. Only OWNER manages members and archive.\n\n**Task enums:** status `TODO` | `IN_PROGRESS` | `DONE`; priority `LOW` | `MEDIUM` | `HIGH`. Soft-delete is HTTP DELETE (sets `deletedAt`; no restore).",
+    "description": "Local DevTrack API, grouped by domain (through 014-task-detail-polish).\n\n**Base URL:** `{{baseUrl}}` (default `http://localhost:3000`).\n\n**Auth:** HTTP-only cookie `devtrack_session`. Run **auth / Register** or **auth / Login** first. Enable the cookie jar (Settings → General → Cookies). Do not put a bearer token in headers.\n\n**Errors:** `{ \"error\": { \"code\": \"...\", \"message\": \"...\" } }`.\n\n**Suggested order:** health → register/login → users/me → create project → members → tasks → labels → comments → activity → dashboard → probes.\n\n**Roles (project-members):** `OWNER` | `EDITOR` | `VIEWER`. Creating owner is always OWNER. Add existing users by email (no invite email). EDITOR: project patch + task writes + label catalog/assign. VIEWER: read/list. Only OWNER manages members and archive.\n\n**Task enums:** status `TODO` | `IN_PROGRESS` | `DONE`; priority `LOW` | `MEDIUM` | `HIGH`. Soft-delete is HTTP DELETE (sets `deletedAt`; no restore).\n\n**Labels (012):** colors `RED` | `ORANGE` | `YELLOW` | `GREEN` | `TEAL` | `BLUE` | `PURPLE` | `PINK` | `GRAY`. Catalog under `/api/projects/:projectId/labels`. Assign via `PUT /api/tasks/:taskId/labels` `{ \"labelIds\": [...] }` replace-set. Task DTOs include `labels: [{ id, name, color }]`. Optional list filter `labelId`.\n\n**Comments (010):** create/list/PATCH/soft-delete under `/api/tasks/:taskId/comments`. Create = task write; list = task read; PATCH author-only; DELETE author or effective OWNER. Soft-delete hides from list; no restore. Plain text body.\n\n**Activity (011):** `GET /api/tasks/:taskId/activity` → `{ activity }` newest-first. Kinds: `TASK_CREATED`, `TASK_FIELDS_CHANGED`, `TASK_SOFT_DELETED`, `COMMENT_ADDED`. TaskDetail UI omits `COMMENT_ADDED` rows when interleaved with live comments.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -25,6 +25,14 @@
     {
       "key": "memberEmail",
       "value": "member@example.com"
+    },
+    {
+      "key": "commentId",
+      "value": ""
+    },
+    {
+      "key": "labelId",
+      "value": ""
     }
   ],
   "item": [
@@ -36,7 +44,12 @@
           "name": "GET /health",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/health",
             "description": "Liveness. Does not query PostgreSQL.\n\n**Auth:** none\n\n**200:** `{ \"status\": \"ok\" }`"
           }
@@ -45,7 +58,12 @@
           "name": "GET /ready",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/ready",
             "description": "Readiness via the `system` repository.\n\n**Auth:** none\n\n**200:** `{ \"status\": \"ready\" }`\n**503:** `SERVICE_UNAVAILABLE`"
           }
@@ -55,10 +73,19 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "body": { "mode": "raw", "raw": "{}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
             "url": "{{baseUrl}}/api/system/probes",
             "description": "Create a system probe. Body must be `{}` or omitted.\n\n**Auth:** session cookie\n\n**201:** `{ \"id\", \"recordedAt\" }`\n**400:** `VALIDATION_ERROR`\n**401:** `UNAUTHENTICATED`\n**503:** `SERVICE_UNAVAILABLE`"
           }
@@ -67,7 +94,12 @@
           "name": "GET /api/system/probes",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/system/probes",
             "description": "List probes, newest first.\n\n**Auth:** session cookie\n\n**200:** `{ \"probes\": [{ \"id\", \"recordedAt\" }] }`\n**401:** `UNAUTHENTICATED`"
           }
@@ -96,8 +128,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -125,8 +163,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -140,7 +184,12 @@
           "name": "POST /api/auth/logout",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/auth/logout",
             "description": "Revoke the current session and clear the cookie.\n\n**Auth:** session cookie\n\n**204:** empty body\n**401:** `UNAUTHENTICATED`"
           }
@@ -155,7 +204,12 @@
           "name": "GET /api/users/me",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/users/me",
             "description": "**Auth:** session cookie\n\n**200:** `{ \"id\", \"email\", \"displayName\" }`\n**401:** `UNAUTHENTICATED`"
           }
@@ -165,8 +219,14 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -201,8 +261,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -216,7 +282,12 @@
           "name": "GET /api/projects",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/projects",
             "description": "List active authorized projects (owned or member). No `includeArchived` query.\n\n**Auth:** session cookie\n\n**200:** `{ \"projects\": [...] }`"
           }
@@ -225,7 +296,12 @@
           "name": "GET /api/projects/:id",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/projects/{{projectId}}",
             "description": "Read one authorized project. Archived GET is creating-owner only (members get 403).\n\n**200** / **401** / **403** / **404**"
           }
@@ -235,8 +311,14 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -251,10 +333,19 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "body": { "mode": "raw", "raw": "{}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
             "url": "{{baseUrl}}/api/projects/{{projectId}}/archive",
             "description": "Set `archivedAt`. OWNER only. Idempotent.\n\n**200** PublicProjectDto"
           }
@@ -264,10 +355,19 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "body": { "mode": "raw", "raw": "{}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
             "url": "{{baseUrl}}/api/projects/{{projectId}}/unarchive",
             "description": "Clear `archivedAt`. OWNER only. Idempotent.\n\n**200** PublicProjectDto"
           }
@@ -282,7 +382,12 @@
           "name": "GET /api/projects/:projectId/members",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/projects/{{projectId}}/members",
             "description": "List members for an authorized project.\n\n**Auth:** session cookie\n\n**200:** `{ \"members\": [{ \"id\", \"userId\", \"email\", \"displayName\", \"role\", \"createdAt\" }] }`\n**401** / **403** / **404**"
           }
@@ -306,8 +411,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -322,8 +433,14 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -338,10 +455,19 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "body": { "mode": "raw", "raw": "{}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
             "url": "{{baseUrl}}/api/projects/{{projectId}}/members/{{memberUserId}}",
             "description": "Remove a member. OWNER only. Body `{}` or omitted.\n\n**204:** empty body\n**401** / **403** / **404**"
           }
@@ -350,13 +476,18 @@
     },
     {
       "name": "tasks",
-      "description": "`tasks` domain (004) + dashboard summary (008). Soft-delete via DELETE. List filters: optional `status` and/or `priority`. Kanban UI uses the same PATCH status. Create Task saves `{{taskId}}`.",
+      "description": "`tasks` domain (004) + dashboard (008) + label embedding/filter (012). Soft-delete via DELETE. List filters: optional `status`, `priority`, and/or `labelId`. PublicTaskDto includes `labels: [{ id, name, color }]`. Kanban uses PATCH status. Create Task saves `{{taskId}}`.",
       "item": [
         {
           "name": "GET /api/dashboard",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/dashboard",
             "description": "Summary for the caller's authorized active projects. No query params. Pending = TODO+IN_PROGRESS; completed = DONE; overdue = non-DONE with dueDate before UTC today.\n\n**Auth:** session cookie\n\n**200:** `{ \"projectCount\", \"taskCount\", \"pendingCount\", \"completedCount\", \"overdueCount\", \"projects\": [{ \"id\", \"name\", \"taskCount\", \"pendingCount\", \"completedCount\", \"overdueCount\" }] }`\n**400:** if unknown query keys\n**401:** `UNAUTHENTICATED`"
           }
@@ -380,26 +511,44 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"title\": \"First task\",\n  \"description\": \"Optional\",\n  \"dueDate\": \"2026-12-31\",\n  \"status\": \"TODO\",\n  \"priority\": \"MEDIUM\"\n}"
             },
             "url": "{{baseUrl}}/api/projects/{{projectId}}/tasks",
-            "description": "Create a task. Required: `title`. Optional: `description`, `dueDate` (YYYY-MM-DD), `status`, `priority`. Defaults: status `TODO`, priority `MEDIUM`. OWNER or EDITOR. Archived parent → `409`.\n\n**201:** PublicTaskDto (no `deletedAt`)\n**400** / **401** / **403** / **404** / **409**"
+            "description": "Create a task. Required: `title`. Optional: `description`, `dueDate` (YYYY-MM-DD), `status`, `priority`. Defaults: status `TODO`, priority `MEDIUM`. OWNER or EDITOR. Archived parent → `409`. Response includes `labels` (usually `[]`).\n\n**201:** PublicTaskDto (no `deletedAt`)\n**400** / **401** / **403** / **404** / **409**"
           }
         },
         {
           "name": "GET /api/projects/:projectId/tasks",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/api/projects/{{projectId}}/tasks?status=TODO&priority=MEDIUM",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "projects", "{{projectId}}", "tasks"],
+              "raw": "{{baseUrl}}/api/projects/{{projectId}}/tasks?status=TODO&priority=MEDIUM&labelId={{labelId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "projects",
+                "{{projectId}}",
+                "tasks"
+              ],
               "query": [
                 {
                   "key": "status",
@@ -412,19 +561,30 @@
                   "value": "MEDIUM",
                   "description": "Optional: LOW | MEDIUM | HIGH",
                   "disabled": true
+                },
+                {
+                  "key": "labelId",
+                  "value": "{{labelId}}",
+                  "description": "Optional UUID: filter tasks that have this catalog label (AND with status/priority)",
+                  "disabled": true
                 }
               ]
             },
-            "description": "List non-deleted tasks for the project. Optional filters: `status`, `priority`. Enable query params as needed. Authorized members may list (including when archived, for creating owner).\n\n**200:** `{ \"tasks\": [...] }`"
+            "description": "List non-deleted tasks for the project. Optional filters: `status`, `priority`, `labelId` (single UUID; AND with others). Enable query params as needed. Each task includes `labels: [{ id, name, color }]`. Authorized members may list.\n\n**200:** `{ \"tasks\": [...] }`"
           }
         },
         {
           "name": "GET /api/tasks/:id",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Accept", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/api/tasks/{{taskId}}",
-            "description": "Get one task. Soft-deleted → `404`.\n\n**200:** PublicTaskDto\n**401** / **403** / **404**"
+            "description": "Get one task. Soft-deleted → `404`. Includes `labels: [{ id, name, color }]`.\n\n**200:** PublicTaskDto\n**401** / **403** / **404**"
           }
         },
         {
@@ -432,8 +592,14 @@
           "request": {
             "method": "PATCH",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -448,12 +614,247 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
-            "body": { "mode": "raw", "raw": "{}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
             "url": "{{baseUrl}}/api/tasks/{{taskId}}",
             "description": "Soft-delete: sets `deletedAt`, does not remove the row. No restore API. Later GET → `404`. OWNER or EDITOR. Archived parent → `409`.\n\n**204:** empty body"
+          }
+        }
+      ]
+    },
+    {
+      "name": "comments",
+      "description": "`tasks` comments (010-task-comments). Create = task write; list = task read; PATCH author-only; DELETE author or effective OWNER (soft-delete via `deletedAt`). Create Comment saves `{{commentId}}`. No restore. No mentions/rich text.",
+      "item": [
+        {
+          "name": "POST /api/tasks/:taskId/comments",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('commentId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"First comment\"\n}"
+            },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}/comments",
+            "description": "Create a comment on a live task. Required: non-empty `body` (trimmed). OWNER or EDITOR. Also emits `COMMENT_ADDED` activity. Archived parent → `409`/`403` parity with task writes.\n\n**201:** `{ id, taskId, authorUserId, authorDisplayName, body, createdAt }` (no `deletedAt`)\n**400** / **401** / **403** / **404** / **409**"
+          }
+        },
+        {
+          "name": "GET /api/tasks/:taskId/comments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}/comments",
+            "description": "List live comments oldest-first. Soft-deleted omitted. Any task reader (OWNER/EDITOR/VIEWER).\n\n**200:** `{ \"comments\": [...] }`\n**401** / **403** / **404**"
+          }
+        },
+        {
+          "name": "PATCH /api/tasks/:taskId/comments/:commentId",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Updated comment\"\n}"
+            },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}/comments/{{commentId}}",
+            "description": "Author-only body update. Non-authors (including OWNER/EDITOR) → `403`. Soft-deleted comment → `404`. Does not emit activity.\n\n**200:** PublicCommentDto\n**400** / **401** / **403** / **404** / **409**"
+          }
+        },
+        {
+          "name": "DELETE /api/tasks/:taskId/comments/:commentId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}/comments/{{commentId}}",
+            "description": "Soft-delete: sets `deletedAt`. Author or effective project OWNER. No restore. Already deleted → `404`. Does not emit activity.\n\n**204:** empty body"
+          }
+        }
+      ]
+    },
+    {
+      "name": "activity",
+      "description": "`tasks` activity (011-task-activity). Read-only list. Newest `createdAt` first. Task read authz. Forward-only (no backfill). UI may omit `COMMENT_ADDED` when showing live comments.",
+      "item": [
+        {
+          "name": "GET /api/tasks/:taskId/activity",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}/activity",
+            "description": "List activity for a live task. Kinds: `TASK_CREATED`, `TASK_FIELDS_CHANGED` (payload.changes with old/new), `TASK_SOFT_DELETED`, `COMMENT_ADDED` (commentId + bodyPreview). Soft-deleted task → `404`.\n\n**200:** `{ \"activity\": [{ id, taskId, kind, actorUserId, actorDisplayName, createdAt, payload }] }`\n**401** / **403** / **404**\n\nNo public write routes for activity."
+          }
+        }
+      ]
+    },
+    {
+      "name": "labels",
+      "description": "`tasks` labels (012-task-labels). Per-project catalog + many labels per task. Catalog mutate and assign = OWNER/EDITOR (`requireTaskWrite`). Reads = task read. Colors: RED ORANGE YELLOW GREEN TEAL BLUE PURPLE PINK GRAY. Create Label saves `{{labelId}}`. Hard-delete clears assignments. No label activity events.",
+      "item": [
+        {
+          "name": "GET /api/projects/:projectId/labels",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/labels",
+            "description": "List catalog labels for a project.\n\n**200:** `{ \"labels\": [{ id, projectId, name, color, createdAt }] }`\n**401** / **403** / **404**"
+          }
+        },
+        {
+          "name": "POST /api/projects/:projectId/labels",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('labelId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Urgent\",\n  \"color\": \"RED\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/labels",
+            "description": "Create catalog label. Required: `name` (1–40 after trim), `color` token. Unique case-insensitive name per project.\n\n**201:** PublicLabelDto\n**400** / **401** / **403** / **404** / **409** (duplicate name or archived)"
+          }
+        },
+        {
+          "name": "PATCH /api/projects/:projectId/labels/:labelId",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Urgent (renamed)\",\n  \"color\": \"ORANGE\"\n}"
+            },
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/labels/{{labelId}}",
+            "description": "Update name and/or color. At least one field required.\n\n**200:** PublicLabelDto\n**400** / **401** / **403** / **404** / **409**"
+          }
+        },
+        {
+          "name": "DELETE /api/projects/:projectId/labels/:labelId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/projects/{{projectId}}/labels/{{labelId}}",
+            "description": "Hard-delete catalog label and clear all task assignments (Cascade). No restore.\n\n**204:** empty body"
+          }
+        },
+        {
+          "name": "PUT /api/tasks/:taskId/labels",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"labelIds\": [\"{{labelId}}\"]\n}"
+            },
+            "url": "{{baseUrl}}/api/tasks/{{taskId}}/labels",
+            "description": "Replace-set assigned labels for a task. Body: `{ \"labelIds\": [uuid, ...] }` (may be `[]`). Labels must belong to the task's project. OWNER or EDITOR.\n\n**200:** `{ \"labels\": [{ id, name, color }] }` (same shape as PublicTaskDto.labels)\n**400** / **401** / **403** / **404** / **409**"
           }
         }
       ]

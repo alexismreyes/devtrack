@@ -15,6 +15,15 @@ const task = {
   priority: "MEDIUM" as const,
   dueDate: "2026-11-01" as string | null,
   createdAt: "2026-10-29T18:00:00.000Z",
+  labels: [] as Array<{ id: string; name: string; color: "RED" | "BLUE" }>,
+};
+
+const bugLabel = {
+  id: "label-1",
+  projectId: "proj-1",
+  name: "Bug",
+  color: "RED" as const,
+  createdAt: "2026-11-05T12:00:00.000Z",
 };
 
 const otherTask = {
@@ -130,12 +139,36 @@ function isTaskActivityUrl(url: string): boolean {
   return /\/api\/tasks\/[^/]+\/activity$/.test(url);
 }
 
+function isLabelsListUrl(url: string): boolean {
+  return /\/api\/projects\/[^/]+\/labels$/.test(url);
+}
+
 function emptyCommentsResponse(): Response {
   return jsonResponse(200, { comments: [] });
 }
 
 function emptyActivityResponse(): Response {
   return jsonResponse(200, { activity: [] });
+}
+
+function emptyLabelsResponse(): Response {
+  return jsonResponse(200, { labels: [] });
+}
+
+function respondCommonReads(
+  url: string,
+  init: RequestInit | undefined,
+): Response | null {
+  if (isLabelsListUrl(url) && (init?.method === undefined || init.method === "GET")) {
+    return emptyLabelsResponse();
+  }
+  if (isTaskCommentsUrl(url) && (init?.method === undefined || init.method === "GET")) {
+    return emptyCommentsResponse();
+  }
+  if (isTaskActivityUrl(url) && (init?.method === undefined || init.method === "GET")) {
+    return emptyActivityResponse();
+  }
+  return null;
 }
 
 afterEach(() => {
@@ -152,9 +185,12 @@ describe("TasksPanel", () => {
       resolveList = resolve;
     });
     const fetchMock = mockFetch((url, init) => {
-      expect(url).toBe("http://localhost:3000/api/projects/proj-1/tasks");
       expect(init?.method).toBe("GET");
       expect(init?.credentials).toBe("include");
+      if (isLabelsListUrl(url)) {
+        return emptyLabelsResponse();
+      }
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/tasks");
       return listPromise;
     });
 
@@ -180,7 +216,13 @@ describe("TasksPanel", () => {
     expectNoUngroupedTaskList();
     expectNoListBoardToggle();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) =>
+          typeof url === "string" &&
+          url === "http://localhost:3000/api/projects/proj-1/tasks",
+      ),
+    ).toBe(true);
   });
 
   it("hides add-task and column add controls when the actor cannot write tasks", async () => {
@@ -204,11 +246,14 @@ describe("TasksPanel", () => {
 
   it("lists tasks for the selected project with credentials included", async () => {
     const fetchMock = mockFetch((url, init) => {
-      expect(url).toBe("http://localhost:3000/api/projects/proj-1/tasks");
       expect(init?.credentials).toBe("include");
       const headers = init?.headers as Record<string, string> | undefined;
       expect(headers?.Authorization).toBeUndefined();
       expect(headers?.authorization).toBeUndefined();
+      if (isLabelsListUrl(url)) {
+        return emptyLabelsResponse();
+      }
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/tasks");
       return jsonResponse(200, { tasks: [task, otherTask, doneTask] });
     });
 
@@ -261,7 +306,13 @@ describe("TasksPanel", () => {
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
     expect(screen.queryByAltText(/trello/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) =>
+          typeof url === "string" &&
+          url === "http://localhost:3000/api/projects/proj-1/tasks",
+      ),
+    ).toBe(true);
     expectNoSessionTokenStorage();
   });
 
@@ -285,11 +336,9 @@ describe("TasksPanel", () => {
       if (isTaskListUrl(url)) {
         return jsonResponse(200, { tasks: listed });
       }
-      if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyCommentsResponse();
-      }
-      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyActivityResponse();
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -332,6 +381,9 @@ describe("TasksPanel", () => {
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
       expect(init?.method).toBe("GET");
+      if (isLabelsListUrl(url)) {
+        return emptyLabelsResponse();
+      }
       if (url.includes("status=TODO") && url.includes("priority=HIGH")) {
         return jsonResponse(200, { tasks: [] });
       }
@@ -375,6 +427,58 @@ describe("TasksPanel", () => {
     ).toBe(true);
   });
 
+  it("filters the list by labelId query parameter and shows card-face labels", async () => {
+    const labeledTask = {
+      ...task,
+      labels: [{ id: "label-1", name: "Bug", color: "RED" as const }],
+    };
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isLabelsListUrl(url)) {
+        return jsonResponse(200, { labels: [bugLabel] });
+      }
+      if (url.includes("labelId=label-1")) {
+        return jsonResponse(200, { tasks: [labeledTask] });
+      }
+      return jsonResponse(200, { tasks: [labeledTask, otherTask] });
+    });
+    const user = userEvent.setup();
+
+    render(
+      <TasksPanel
+        projectId="proj-1"
+        archived={false}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /write tests/i })).toBeInTheDocument();
+    const cardLabels = within(
+      document.querySelector('[data-kanban-card="task-1"]') as HTMLElement,
+    ).getByRole("list", { name: /task labels/i });
+    expect(within(cardLabels).getByText("Bug")).toHaveAttribute(
+      "data-label-color",
+      "RED",
+    );
+    expect(screen.getByLabelText(/filter by label/i)).toBeInTheDocument();
+    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/filter by label/i), "label-1");
+    expect(
+      await screen.findByRole("button", { name: /write tests/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /review pr/i })).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) =>
+          typeof url === "string" &&
+          url ===
+            "http://localhost:3000/api/projects/proj-1/tasks?labelId=label-1",
+      ),
+    ).toBe(true);
+  });
+
   it("opens nested task detail inside the panel without a task-detail URL", async () => {
     mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
@@ -384,11 +488,9 @@ describe("TasksPanel", () => {
       if (isTaskListUrl(url)) {
         return jsonResponse(200, { tasks: [task] });
       }
-      if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyCommentsResponse();
-      }
-      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyActivityResponse();
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -443,11 +545,9 @@ describe("TasksPanel", () => {
       if (isTaskListUrl(url)) {
         return jsonResponse(200, { tasks: listed });
       }
-      if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyCommentsResponse();
-      }
-      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyActivityResponse();
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -508,11 +608,9 @@ describe("TasksPanel", () => {
       if (isTaskListUrl(url)) {
         return jsonResponse(200, { tasks: listed });
       }
-      if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyCommentsResponse();
-      }
-      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyActivityResponse();
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -740,11 +838,9 @@ describe("TasksPanel", () => {
       if (isTaskListUrl(url)) {
         return jsonResponse(200, { tasks: listed });
       }
-      if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyCommentsResponse();
-      }
-      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyActivityResponse();
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -792,11 +888,9 @@ describe("TasksPanel", () => {
       if (isTaskListUrl(url)) {
         return jsonResponse(200, { tasks: [task] });
       }
-      if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyCommentsResponse();
-      }
-      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyActivityResponse();
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -842,11 +936,9 @@ describe("TasksPanel", () => {
       if (isTaskListUrl(url)) {
         return jsonResponse(200, { tasks: [task] });
       }
-      if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyCommentsResponse();
-      }
-      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyActivityResponse();
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -894,11 +986,9 @@ describe("TasksPanel", () => {
       if (isTaskListUrl(url)) {
         return jsonResponse(200, { tasks: [task] });
       }
-      if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyCommentsResponse();
-      }
-      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyActivityResponse();
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
@@ -990,11 +1080,9 @@ describe("TasksPanel", () => {
       if (isTaskListUrl(url)) {
         return jsonResponse(200, { tasks: listed });
       }
-      if (isTaskCommentsUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyCommentsResponse();
-      }
-      if (isTaskActivityUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-        return emptyActivityResponse();
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
       }
       return jsonResponse(500, {
         error: { code: "INTERNAL_ERROR", message: "Unexpected request" },

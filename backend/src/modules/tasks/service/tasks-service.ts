@@ -6,12 +6,14 @@ import {
   type DashboardSummary,
 } from "../domain/dashboard-summary";
 import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
+import type { LabelColor } from "../domain/project-label";
 import type { Task } from "../domain/task";
 import {
   buildTaskFieldChanges,
   TaskActivityEvent,
 } from "../domain/task-activity";
 import type { ActivityRepository } from "../repository/activity-repository";
+import type { TaskLabelsRepository } from "../repository/task-labels-repository";
 import type {
   ListTasksFilters,
   TasksRepository,
@@ -26,12 +28,32 @@ export type CreateTaskCommand = {
   dueDate: Date | null;
 };
 
+export type TaskLabelSummary = {
+  id: string;
+  name: string;
+  color: LabelColor;
+};
+
+export type TaskView = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  status: Task["status"];
+  priority: Task["priority"];
+  dueDate: Date | null;
+  createdAt: Date;
+  deletedAt: Date | null;
+  labels: TaskLabelSummary[];
+};
+
 export class TasksService {
   constructor(
     private readonly tasks: TasksRepository,
     private readonly projects: ProjectAccessPort,
     private readonly authorization: TaskAuthorizationPort,
     private readonly activity: ActivityRepository,
+    private readonly taskLabels: TaskLabelsRepository,
     private readonly unitOfWork: UnitOfWork,
   ) {}
 
@@ -39,14 +61,14 @@ export class TasksService {
     actorId: string,
     projectId: string,
     input: CreateTaskCommand,
-  ): Promise<Task> {
+  ): Promise<TaskView> {
     const snapshot = await this.authorization.requireTaskWrite(
       actorId,
       projectId,
     );
     this.assertParentWritable(snapshot.archivedAt);
-    return this.unitOfWork.run(async () => {
-      const task = await this.tasks.create({
+    const task = await this.unitOfWork.run(async () => {
+      const created = await this.tasks.create({
         projectId,
         title: input.title,
         description: input.description,
@@ -55,19 +77,21 @@ export class TasksService {
         dueDate: input.dueDate,
       });
       await this.activity.create(
-        TaskActivityEvent.taskCreated(task.id, actorId),
+        TaskActivityEvent.taskCreated(created.id, actorId),
       );
-      return task;
+      return created;
     });
+    return this.toView(task, []);
   }
 
   async listByProject(
     actorId: string,
     projectId: string,
     filters: ListTasksFilters = {},
-  ): Promise<Task[]> {
+  ): Promise<TaskView[]> {
     await this.authorization.requireTaskRead(actorId, projectId);
-    return this.tasks.listByProjectId(projectId, filters);
+    const tasks = await this.tasks.listByProjectId(projectId, filters);
+    return this.toViews(tasks);
   }
 
   async getDashboard(
@@ -81,17 +105,17 @@ export class TasksService {
     return summarizeDashboard(owned, tasks, now);
   }
 
-  async getById(actorId: string, taskId: string): Promise<Task> {
+  async getById(actorId: string, taskId: string): Promise<TaskView> {
     const task = await this.requireLiveTask(taskId);
     await this.authorization.requireTaskRead(actorId, task.projectId);
-    return task;
+    return this.toViewWithLabels(task);
   }
 
   async update(
     actorId: string,
     taskId: string,
     input: UpdateTaskInput,
-  ): Promise<Task> {
+  ): Promise<TaskView> {
     const task = await this.requireLiveTask(taskId);
     const snapshot = await this.authorization.requireTaskWrite(
       actorId,
@@ -101,15 +125,16 @@ export class TasksService {
     const changes = buildTaskFieldChanges(task, input);
     // Validate normalized update even when no-op (preserve prior invariant).
     task.withDetails(input);
-    return this.unitOfWork.run(async () => {
-      const updated = await this.tasks.update(taskId, input);
+    const updated = await this.unitOfWork.run(async () => {
+      const next = await this.tasks.update(taskId, input);
       if (changes.length > 0) {
         await this.activity.create(
           TaskActivityEvent.taskFieldsChanged(taskId, actorId, changes),
         );
       }
-      return updated;
+      return next;
     });
+    return this.toViewWithLabels(updated);
   }
 
   async softDelete(actorId: string, taskId: string): Promise<Task> {
@@ -140,5 +165,41 @@ export class TasksService {
     if (archivedAt !== null) {
       throw new TaskParentArchivedError();
     }
+  }
+
+  private async toViewWithLabels(task: Task): Promise<TaskView> {
+    const byTask = await this.taskLabels.listForTaskIds([task.id]);
+    return this.toView(task, byTask.get(task.id) ?? []);
+  }
+
+  private async toViews(tasks: Task[]): Promise<TaskView[]> {
+    const byTask = await this.taskLabels.listForTaskIds(
+      tasks.map((task) => task.id),
+    );
+    return tasks.map((task) =>
+      this.toView(task, byTask.get(task.id) ?? []),
+    );
+  }
+
+  private toView(
+    task: Task,
+    labels: Array<{ id: string; name: string; color: LabelColor }>,
+  ): TaskView {
+    return {
+      id: task.id,
+      projectId: task.projectId,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      createdAt: task.createdAt,
+      deletedAt: task.deletedAt,
+      labels: labels.map((label) => ({
+        id: label.id,
+        name: label.name,
+        color: label.color,
+      })),
+    };
   }
 }

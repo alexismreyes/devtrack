@@ -17,6 +17,9 @@ import {
   listMembers,
   listProbes,
   listProjects,
+  createLabel,
+  deleteLabel,
+  listLabels,
   listTaskActivity,
   listTaskComments,
   listTasks,
@@ -24,8 +27,10 @@ import {
   logout,
   register,
   removeMember,
+  replaceTaskLabels,
   softDeleteTask,
   unarchiveProject,
+  updateLabel,
   updateMember,
   updateProfile,
   updateProject,
@@ -608,6 +613,7 @@ describe("tasks API client", () => {
     priority: "MEDIUM" as const,
     dueDate: "2026-11-01" as string | null,
     createdAt: "2026-10-29T18:00:00.000Z",
+    labels: [] as Array<{ id: string; name: string; color: string }>,
   };
 
   it("creates a task under the project path with credentials included and no token storage", async () => {
@@ -676,6 +682,42 @@ describe("tasks API client", () => {
       listTasks("proj-1", { status: "TODO", priority: "HIGH" }),
     ).resolves.toEqual({ tasks: [] });
     expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("lists tasks with optional labelId query filter", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/tasks?labelId=label-1",
+      );
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { tasks: [] });
+    });
+
+    await expect(listTasks("proj-1", { labelId: "label-1" })).resolves.toEqual({
+      tasks: [],
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("keeps embedded labels on task responses and strips non-public fields", async () => {
+    const labeled = {
+      ...task,
+      labels: [{ id: "label-1", name: "Bug", color: "RED" as const }],
+    };
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, {
+        ...labeled,
+        deletedAt: "must-not-be-kept",
+        token: "must-not-be-kept",
+      });
+    });
+
+    await expect(getTask("task-1")).resolves.toEqual(labeled);
     expectNoTokenStorage();
   });
 
@@ -802,6 +844,124 @@ describe("tasks API client", () => {
     });
     expect(JSON.stringify(conflict)).not.toMatch(/DATABASE_URL/i);
     expect(JSON.stringify(conflict)).not.toMatch(/postgresql:\/\//i);
+    expectNoTokenStorage();
+  });
+});
+
+describe("task labels API client", () => {
+  const label = {
+    id: "label-1",
+    projectId: "proj-1",
+    name: "Bug",
+    color: "RED" as const,
+    createdAt: "2026-11-05T12:00:00.000Z",
+  };
+
+  it("lists project labels with credentials included and no token storage", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/labels");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        labels: [{ ...label, token: "must-not-be-kept" }],
+      });
+    });
+
+    await expect(listLabels("proj-1")).resolves.toEqual({ labels: [label] });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("creates a label with credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/labels");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(JSON.stringify({ name: "Bug", color: "RED" }));
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(201, label);
+    });
+
+    await expect(
+      createLabel("proj-1", { name: "Bug", color: "RED" }),
+    ).resolves.toEqual(label);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("patches a label name and color with credentials included", async () => {
+    const updated = { ...label, name: "Defect", color: "ORANGE" as const };
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/labels/label-1",
+      );
+      expect(init?.method).toBe("PATCH");
+      expect(init?.body).toBe(
+        JSON.stringify({ name: "Defect", color: "ORANGE" }),
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(200, updated);
+    });
+
+    await expect(
+      updateLabel("proj-1", "label-1", { name: "Defect", color: "ORANGE" }),
+    ).resolves.toEqual(updated);
+    expectNoTokenStorage();
+  });
+
+  it("deletes a label with DELETE, empty body, 204, and credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/labels/label-1",
+      );
+      expect(init?.method).toBe("DELETE");
+      expect(init?.body).toBeUndefined();
+      expectCredentialsInclude(init);
+      return emptyResponse(204);
+    });
+
+    await expect(deleteLabel("proj-1", "label-1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("replaces task labels with PUT and credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/labels");
+      expect(init?.method).toBe("PUT");
+      expect(init?.body).toBe(JSON.stringify({ labelIds: ["label-1"] }));
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, { labels: [label] });
+    });
+
+    await expect(
+      replaceTaskLabels("task-1", { labelIds: ["label-1"] }),
+    ).resolves.toEqual({ labels: [label] });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("maps unauthenticated label access without storing credentials", async () => {
+    mockFetch(() =>
+      jsonResponse(401, {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Authentication is required",
+        },
+      }),
+    );
+
+    const error = await listLabels("proj-1").catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "UNAUTHENTICATED",
+      message: "Authentication is required",
+    });
     expectNoTokenStorage();
   });
 });

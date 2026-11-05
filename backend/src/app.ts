@@ -32,15 +32,20 @@ import { createProjectsRouter } from "./modules/projects/routes/projects-routes"
 import { ProjectsService } from "./modules/projects/service/projects-service";
 import { ActivityController } from "./modules/tasks/controller/activity-controller";
 import { CommentsController } from "./modules/tasks/controller/comments-controller";
+import { LabelsController } from "./modules/tasks/controller/labels-controller";
 import { TasksController } from "./modules/tasks/controller/tasks-controller";
 import type { ActivityRepository } from "./modules/tasks/repository/activity-repository";
 import type { CommentsRepository } from "./modules/tasks/repository/comments-repository";
+import type { LabelsRepository } from "./modules/tasks/repository/labels-repository";
+import type { TaskLabelsRepository } from "./modules/tasks/repository/task-labels-repository";
 import type { TasksRepository } from "./modules/tasks/repository/tasks-repository";
 import { createActivityRouter } from "./modules/tasks/routes/activity-routes";
 import { createCommentsRouter } from "./modules/tasks/routes/comments-routes";
+import { createLabelsRouter } from "./modules/tasks/routes/labels-routes";
 import { createTasksRouter } from "./modules/tasks/routes/tasks-routes";
 import { ActivityService } from "./modules/tasks/service/activity-service";
 import { CommentsService } from "./modules/tasks/service/comments-service";
+import { LabelsService } from "./modules/tasks/service/labels-service";
 import { TasksService } from "./modules/tasks/service/tasks-service";
 import { UsersController } from "./modules/users/controller/users-controller";
 import { UsersIdentityAdapter } from "./modules/users/identity/users-identity-adapter";
@@ -57,6 +62,8 @@ export type AppDependencies = {
   tasksRepository: TasksRepository;
   commentsRepository: CommentsRepository;
   activityRepository: ActivityRepository;
+  labelsRepository: LabelsRepository;
+  taskLabelsRepository: TaskLabelsRepository;
   projectMembersRepository: ProjectMembersRepository;
   unitOfWork?: UnitOfWork;
 };
@@ -98,6 +105,7 @@ export function createApp(deps: AppDependencies): Express {
     projectAccess,
     taskAuthorization,
     deps.activityRepository,
+    deps.taskLabelsRepository,
     unitOfWork,
   );
   const commentsService = new CommentsService(
@@ -114,6 +122,13 @@ export function createApp(deps: AppDependencies): Express {
     taskAuthorization,
     usersIdentity,
   );
+  const labelsService = new LabelsService(
+    deps.labelsRepository,
+    deps.taskLabelsRepository,
+    deps.tasksRepository,
+    taskAuthorization,
+    unitOfWork,
+  );
 
   const authController = new AuthController(authService);
   const usersController = new UsersController(usersService);
@@ -125,6 +140,7 @@ export function createApp(deps: AppDependencies): Express {
   const tasksController = new TasksController(tasksService);
   const commentsController = new CommentsController(commentsService);
   const activityController = new ActivityController(activityService);
+  const labelsController = new LabelsController(labelsService);
   const requireAuth = createRequireAuth(authService);
 
   app.use(
@@ -143,6 +159,7 @@ export function createApp(deps: AppDependencies): Express {
   app.use(createTasksRouter(tasksController, requireAuth));
   app.use(createCommentsRouter(commentsController, requireAuth));
   app.use(createActivityRouter(activityController, requireAuth));
+  app.use(createLabelsRouter(labelsController, requireAuth));
   app.use(errorHandler);
 
   return app;

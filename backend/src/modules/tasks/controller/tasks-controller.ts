@@ -46,6 +46,9 @@ function listFilters(req: Request): ListTasksQueryDto {
   if (query.priority !== undefined) {
     filters.priority = query.priority;
   }
+  if (query.labelId !== undefined) {
+    filters.labelId = query.labelId;
+  }
   return filters;
 }
 

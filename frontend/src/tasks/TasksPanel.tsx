@@ -5,12 +5,14 @@ import {
   isConflict,
   isForbidden,
   isUnauthenticated,
+  listLabels,
   listTasks,
   toUserMessage,
   updateTask,
 } from "../api/client";
 import type {
   ListTasksQueryDto,
+  PublicLabelDto,
   PublicTaskDto,
   TaskPriority,
   TaskStatus,
@@ -35,6 +37,7 @@ type TasksPanelProps = {
   canWriteTasks?: boolean;
   canManageMembers?: boolean;
   currentUserId?: string | null;
+  labelsRevision?: number;
   onUnauthenticated: () => void;
 };
 
@@ -68,6 +71,7 @@ export function TasksPanel({
   canWriteTasks = true,
   canManageMembers = false,
   currentUserId = null,
+  labelsRevision = 0,
   onUnauthenticated,
 }: TasksPanelProps) {
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
@@ -75,11 +79,22 @@ export function TasksPanel({
   const [moveState, setMoveState] = useState<MoveState>({ kind: "idle" });
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "">("");
+  const [labelFilter, setLabelFilter] = useState("");
+  const [catalogLabels, setCatalogLabels] = useState<PublicLabelDto[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createPresetStatus, setCreatePresetStatus] = useState<TaskStatus | null>(
     null,
   );
+
+  const loadCatalog = useCallback(async (): Promise<void> => {
+    try {
+      const result = await listLabels(projectId);
+      setCatalogLabels(result.labels);
+    } catch {
+      setCatalogLabels([]);
+    }
+  }, [projectId]);
 
   const loadTasks = useCallback(async (): Promise<boolean> => {
     setListState({ kind: "loading" });
@@ -90,6 +105,9 @@ export function TasksPanel({
       }
       if (priorityFilter !== "") {
         query.priority = priorityFilter;
+      }
+      if (labelFilter !== "") {
+        query.labelId = labelFilter;
       }
       const result = await listTasks(projectId, query);
       if (result.tasks.length === 0) {
@@ -111,17 +129,22 @@ export function TasksPanel({
       setListState({ kind: "error", message: toUserMessage(err) });
       return false;
     }
-  }, [onUnauthenticated, priorityFilter, projectId, statusFilter]);
+  }, [labelFilter, onUnauthenticated, priorityFilter, projectId, statusFilter]);
 
   useEffect(() => {
     void loadTasks();
   }, [loadTasks]);
 
   useEffect(() => {
+    void loadCatalog();
+  }, [loadCatalog, labelsRevision]);
+
+  useEffect(() => {
     setSelectedTaskId(null);
     setCreateOpen(false);
     setCreatePresetStatus(null);
     setCreateState({ kind: "ready" });
+    setLabelFilter("");
   }, [projectId]);
 
   function openCreate(presetStatus: TaskStatus | null): void {
@@ -204,7 +227,8 @@ export function TasksPanel({
   const listBlocked =
     listState.kind === "unauthenticated" || listState.kind === "forbidden";
   const writesDisabled = creating || archived || moving || !canWriteTasks;
-  const filtered = statusFilter !== "" || priorityFilter !== "";
+  const filtered =
+    statusFilter !== "" || priorityFilter !== "" || labelFilter !== "";
   const listedTasks =
     listState.kind === "success"
       ? listState.tasks
@@ -277,6 +301,22 @@ export function TasksPanel({
               {PRIORITIES.map((value) => (
                 <option key={value} value={value}>
                   {value}
+                </option>
+              ))}
+            </select>
+          </Label>
+          <Label className="grid gap-1">
+            Filter by label
+            <select
+              name="task-label-filter"
+              className={cn(nativeSelectClassName, "h-8 w-40")}
+              value={labelFilter}
+              onChange={(event) => setLabelFilter(event.target.value)}
+            >
+              <option value="">All</option>
+              {catalogLabels.map((label) => (
+                <option key={label.id} value={label.id}>
+                  {label.name}
                 </option>
               ))}
             </select>
@@ -360,7 +400,7 @@ export function TasksPanel({
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] w-full max-w-4xl overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle className="sr-only">Task detail</DialogTitle>
             <DialogDescription className="sr-only">

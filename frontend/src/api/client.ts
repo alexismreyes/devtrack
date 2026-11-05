@@ -4,12 +4,15 @@ import type {
   CommentAddedActivityPayload,
   CommentListResponseDto,
   CreateCommentRequestDto,
+  CreateLabelRequestDto,
   CreateProjectRequestDto,
   CreateTaskRequestDto,
   DashboardProjectSummaryDto,
   DashboardSummaryResponseDto,
   ErrorEnvelope,
   HealthResponseDto,
+  LabelColor,
+  LabelListResponseDto,
   ListTasksQueryDto,
   LoginRequestDto,
   MemberListResponseDto,
@@ -19,20 +22,25 @@ import type {
   ProjectMemberRole,
   PublicActivityDto,
   PublicCommentDto,
+  PublicLabelDto,
   PublicMemberDto,
   PublicProjectDto,
   PublicTaskDto,
   PublicUserDto,
   RegisterRequestDto,
+  ReplaceTaskLabelsRequestDto,
   TaskActivityChangeField,
   TaskActivityFieldChange,
   TaskActivityKind,
   TaskActivityPayload,
+  TaskEmbeddedLabelDto,
   TaskFieldsChangedActivityPayload,
+  TaskLabelsResponseDto,
   TaskListResponseDto,
   TaskPriority,
   TaskStatus,
   UpdateCommentRequestDto,
+  UpdateLabelRequestDto,
   UpdateMemberRequestDto,
   UpdateProfileRequestDto,
   UpdateProjectRequestDto,
@@ -216,6 +224,63 @@ export async function softDeleteTask(id: string): Promise<void> {
   await request("DELETE", `/api/tasks/${id}`);
 }
 
+export async function listLabels(
+  projectId: string,
+): Promise<LabelListResponseDto> {
+  const body = await request("GET", labelsCollectionPath(projectId));
+  if (!isLabelListResponse(body)) {
+    throw new ApiError(500, "INTERNAL_ERROR", "Unexpected label list response");
+  }
+  return {
+    labels: body.labels.map(toPublicLabel),
+  };
+}
+
+export async function createLabel(
+  projectId: string,
+  input: CreateLabelRequestDto,
+): Promise<PublicLabelDto> {
+  const body = await request("POST", labelsCollectionPath(projectId), input);
+  return requirePublicLabel(body, "Unexpected label response");
+}
+
+export async function updateLabel(
+  projectId: string,
+  labelId: string,
+  input: UpdateLabelRequestDto,
+): Promise<PublicLabelDto> {
+  const body = await request(
+    "PATCH",
+    labelItemPath(projectId, labelId),
+    input,
+  );
+  return requirePublicLabel(body, "Unexpected label response");
+}
+
+export async function deleteLabel(
+  projectId: string,
+  labelId: string,
+): Promise<void> {
+  await request("DELETE", labelItemPath(projectId, labelId));
+}
+
+export async function replaceTaskLabels(
+  taskId: string,
+  input: ReplaceTaskLabelsRequestDto,
+): Promise<TaskLabelsResponseDto> {
+  const body = await request("PUT", taskLabelsPath(taskId), input);
+  if (!isTaskLabelsResponse(body)) {
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "Unexpected task labels response",
+    );
+  }
+  return {
+    labels: body.labels.map(toPublicLabel),
+  };
+}
+
 export async function listTaskComments(
   taskId: string,
 ): Promise<CommentListResponseDto> {
@@ -317,7 +382,7 @@ export async function removeMember(
 }
 
 async function request(
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   jsonBody?: object,
 ): Promise<unknown> {
@@ -485,9 +550,24 @@ function taskListPath(projectId: string, query: ListTasksQueryDto): string {
   if (query.priority !== undefined) {
     params.set("priority", query.priority);
   }
+  if (query.labelId !== undefined) {
+    params.set("labelId", query.labelId);
+  }
   const encoded = params.toString();
   const base = `/api/projects/${projectId}/tasks`;
   return encoded === "" ? base : `${base}?${encoded}`;
+}
+
+function labelsCollectionPath(projectId: string): string {
+  return `/api/projects/${projectId}/labels`;
+}
+
+function labelItemPath(projectId: string, labelId: string): string {
+  return `${labelsCollectionPath(projectId)}/${labelId}`;
+}
+
+function taskLabelsPath(taskId: string): string {
+  return `/api/tasks/${taskId}/labels`;
 }
 
 function requirePublicTask(value: unknown, message: string): PublicTaskDto {
@@ -507,6 +587,7 @@ function toPublicTask(value: PublicTaskDto): PublicTaskDto {
     priority: value.priority,
     dueDate: value.dueDate,
     createdAt: value.createdAt,
+    labels: value.labels.map(toTaskEmbeddedLabel),
   };
 }
 
@@ -516,6 +597,95 @@ function isTaskStatus(value: unknown): value is TaskStatus {
 
 function isTaskPriority(value: unknown): value is TaskPriority {
   return value === "LOW" || value === "MEDIUM" || value === "HIGH";
+}
+
+function isLabelColor(value: unknown): value is LabelColor {
+  return (
+    value === "RED" ||
+    value === "ORANGE" ||
+    value === "YELLOW" ||
+    value === "GREEN" ||
+    value === "TEAL" ||
+    value === "BLUE" ||
+    value === "PURPLE" ||
+    value === "PINK" ||
+    value === "GRAY"
+  );
+}
+
+function toTaskEmbeddedLabel(
+  value: TaskEmbeddedLabelDto,
+): TaskEmbeddedLabelDto {
+  return {
+    id: value.id,
+    name: value.name,
+    color: value.color,
+  };
+}
+
+function isTaskEmbeddedLabel(value: unknown): value is TaskEmbeddedLabelDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const label = value as {
+    id?: unknown;
+    name?: unknown;
+    color?: unknown;
+  };
+  return (
+    typeof label.id === "string" &&
+    typeof label.name === "string" &&
+    isLabelColor(label.color)
+  );
+}
+
+function requirePublicLabel(value: unknown, message: string): PublicLabelDto {
+  if (!isPublicLabel(value)) {
+    throw new ApiError(500, "INTERNAL_ERROR", message);
+  }
+  return toPublicLabel(value);
+}
+
+function toPublicLabel(value: PublicLabelDto): PublicLabelDto {
+  return {
+    id: value.id,
+    projectId: value.projectId,
+    name: value.name,
+    color: value.color,
+    createdAt: value.createdAt,
+  };
+}
+
+function isPublicLabel(value: unknown): value is PublicLabelDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const label = value as {
+    id?: unknown;
+    projectId?: unknown;
+    name?: unknown;
+    color?: unknown;
+    createdAt?: unknown;
+  };
+  return (
+    typeof label.id === "string" &&
+    typeof label.projectId === "string" &&
+    typeof label.name === "string" &&
+    isLabelColor(label.color) &&
+    typeof label.createdAt === "string"
+  );
+}
+
+function isLabelListResponse(value: unknown): value is LabelListResponseDto {
+  if (typeof value !== "object" || value === null || !("labels" in value)) {
+    return false;
+  }
+  const labels = (value as { labels: unknown }).labels;
+  return Array.isArray(labels) && labels.every(isPublicLabel);
+}
+
+function isTaskLabelsResponse(value: unknown): value is TaskLabelsResponseDto {
+  return isLabelListResponse(value);
 }
 
 function isPublicTask(value: unknown): value is PublicTaskDto {
@@ -531,6 +701,7 @@ function isPublicTask(value: unknown): value is PublicTaskDto {
     priority?: unknown;
     dueDate?: unknown;
     createdAt?: unknown;
+    labels?: unknown;
   };
   return (
     typeof task.id === "string" &&
@@ -540,7 +711,9 @@ function isPublicTask(value: unknown): value is PublicTaskDto {
     isTaskStatus(task.status) &&
     isTaskPriority(task.priority) &&
     (typeof task.dueDate === "string" || task.dueDate === null) &&
-    typeof task.createdAt === "string"
+    typeof task.createdAt === "string" &&
+    Array.isArray(task.labels) &&
+    task.labels.every(isTaskEmbeddedLabel)
   );
 }
 

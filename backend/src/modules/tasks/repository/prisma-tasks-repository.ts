@@ -158,6 +158,13 @@ export class PrismaTasksRepository implements TasksRepository {
           ...(filters.priority !== undefined
             ? { priority: filters.priority }
             : {}),
+          ...(filters.labelId !== undefined
+            ? {
+                taskLabels: {
+                  some: { labelId: filters.labelId },
+                },
+              }
+            : {}),
         },
         orderBy: { createdAt: "desc" },
         select: TASK_SELECT,

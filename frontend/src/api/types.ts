@@ -59,6 +59,53 @@ export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
 
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
+export type LabelColor =
+  | "RED"
+  | "ORANGE"
+  | "YELLOW"
+  | "GREEN"
+  | "TEAL"
+  | "BLUE"
+  | "PURPLE"
+  | "PINK"
+  | "GRAY";
+
+export type TaskEmbeddedLabelDto = {
+  id: string;
+  name: string;
+  color: LabelColor;
+};
+
+export type PublicLabelDto = {
+  id: string;
+  projectId: string;
+  name: string;
+  color: LabelColor;
+  createdAt: string;
+};
+
+export type LabelListResponseDto = {
+  labels: PublicLabelDto[];
+};
+
+export type CreateLabelRequestDto = {
+  name: string;
+  color: LabelColor;
+};
+
+export type UpdateLabelRequestDto = {
+  name?: string;
+  color?: LabelColor;
+};
+
+export type ReplaceTaskLabelsRequestDto = {
+  labelIds: string[];
+};
+
+export type TaskLabelsResponseDto = {
+  labels: PublicLabelDto[];
+};
+
 export type PublicTaskDto = {
   id: string;
   projectId: string;
@@ -68,6 +115,7 @@ export type PublicTaskDto = {
   priority: TaskPriority;
   dueDate: string | null;
   createdAt: string;
+  labels: TaskEmbeddedLabelDto[];
 };
 
 export type TaskListResponseDto = {
@@ -93,6 +141,7 @@ export type UpdateTaskRequestDto = {
 export type ListTasksQueryDto = {
   status?: TaskStatus;
   priority?: TaskPriority;
+  labelId?: string;
 };
 
 export type DashboardProjectSummaryDto = {

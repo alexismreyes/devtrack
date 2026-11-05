@@ -5,7 +5,7 @@
 - Name: DevTrack
 - Purpose: Project and task management for individuals and small teams
 - Architecture: Modular monolith
-- Stage: Foundation, authentication, projects, tasks, frontend shell, Kanban, workspace UI, dashboard, collaboration, task comments, and task activity Verified
+- Stage: Foundation through task-detail layout and TaskDetail polish Verified
 
 ## Stack decisions
 
@@ -47,19 +47,19 @@ Verified for `001-foundation`, `002-authentication`, `005-frontend-shell`, `006-
 
 ## Domains
 
-Implemented: `system`, `auth`, `users`, `projects`, `tasks`, `project-members`. No new domain in `005-frontend-shell`, `006-kanban`, `007-workspace-ui`, `008-dashboard`, `010-task-comments`, or `011-task-activity` (dashboard aggregations, comments, and activity live in the `tasks` domain). `009-collaboration` added `project-members`.
+Implemented: `system`, `auth`, `users`, `projects`, `tasks`, `project-members`. No new domain in `005-frontend-shell`, `006-kanban`, `007-workspace-ui`, `008-dashboard`, `010-task-comments`, `011-task-activity`, or `012-task-labels` (dashboard aggregations, comments, activity, and labels live in the `tasks` domain). `009-collaboration` added `project-members`.
 
 Later candidates in `proposed-features.md`. App-wide CRUD audit (later feature ID, **not** `005`, **not** `006`, and **not** `007`; do not write `specs/005-audit/`).
 
 ## Proposed backlog
 
-Foundation (Verified) → authentication (Verified) → projects (Verified) → tasks (Verified) → frontend-shell (Verified) → Kanban (Verified) → workspace-ui (Verified, including polish) → dashboard → collaboration → task comments → task activity → audit (later ID, not `005`).
+Foundation (Verified) → authentication (Verified) → projects (Verified) → tasks (Verified) → frontend-shell (Verified) → Kanban (Verified) → workspace-ui (Verified, including polish) → dashboard → collaboration → task comments → task activity → task labels → task-detail layout → TaskDetail polish → audit (later ID, not `005`).
 
-Dashboard (`008-dashboard`), collaboration (`009-collaboration`), task comments (`010-task-comments`), and task activity (`011-task-activity`) are Verified. Extra Trello/Jira/email/AI ideas live in `proposed-features.md` for later choice; do not implement from that file. Do not write `specs/005-audit/`. Deferred next product choice: **E** labels (per-project catalog). Later **C** app-wide audit remains separate from task activity.
+Dashboard (`008-dashboard`), collaboration (`009-collaboration`), task comments (`010-task-comments`), task activity (`011-task-activity`), task labels (`012-task-labels`), task-detail layout (`013-task-detail-layout`), and TaskDetail polish (`014-task-detail-polish`) are Verified. Extra Trello/Jira/email/AI ideas live in `proposed-features.md` for later choice; do not implement from that file. Do not write `specs/005-audit/`. Deferred next product choice: **F** checklists. Later **C** app-wide audit remains separate from task activity.
 
 ## Verified status
 
-`001-foundation` Verified. `002-authentication` Verified. `003-projects` Verified. `004-tasks` Verified. `005-frontend-shell` Verified. `006-kanban` Verified. `007-workspace-ui` Verified (original T001–T013 and polish T014–T026). `008-dashboard` Verified (T001–T014). `009-collaboration` Verified (T001–T017). `010-task-comments` Verified (T001–T016). `011-task-activity` Verified (T001–T016). Reviewer for 008: PASS. Blocking: no. Failed ACs: none. Reviewer for 009: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 010: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 011: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. T001–T013 complete for 005. T001–T011 complete for 006. T001–T013 complete for original 007. T014–T026 complete for 007 polish. Reviewer for 005: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 006: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for original 007: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 007 polish (T025): PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Informational: live contrast not audited in review; AC-018 not re-executed by reviewer. Low: some project-cover slots retint with the theme tokens (still name-derived, no stored coverColor).
+`001-foundation` Verified. `002-authentication` Verified. `003-projects` Verified. `004-tasks` Verified. `005-frontend-shell` Verified. `006-kanban` Verified. `007-workspace-ui` Verified (original T001–T013 and polish T014–T026). `008-dashboard` Verified (T001–T014). `009-collaboration` Verified (T001–T017). `010-task-comments` Verified (T001–T016). `011-task-activity` Verified (T001–T016). `012-task-labels` Verified (T001–T017). `013-task-detail-layout` Verified (T001–T012). `014-task-detail-polish` Verified (T001–T013). Reviewer for 008: PASS. Blocking: no. Failed ACs: none. Reviewer for 009–014: PASS WITH NON-BLOCKING FINDINGS (each). Blocking: no. Failed ACs: none. T001–T013 complete for 005. T001–T011 complete for 006. T001–T013 complete for original 007. T014–T026 complete for 007 polish. Reviewer for 005: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 006: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for original 007: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 007 polish (T025): PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Informational: live contrast not audited in review; AC-018 not re-executed by reviewer. Low: some project-cover slots retint with the theme tokens (still name-derived, no stored coverColor).
 
 Present in the repo:
 
@@ -70,13 +70,33 @@ Present in the repo:
 - Collaboration: domain `project-members`; roles `OWNER`/`EDITOR`/`VIEWER`; Prisma `ProjectMember`; `GET`/`POST /api/projects/:projectId/members`; `PATCH`/`DELETE .../members/:userId`; add by existing email `{ email, role }` with no mail. `GET /api/projects` lists active projects the actor is authorized to see. `ownerUserId` still grants OWNER. Create-project inserts OWNER membership atomically. Members Dialog on the board header. EDITOR: edit project + task writes, no archive/members admin. VIEWER: read/list only. Archived GET remains `ownerUserId` only.
 - Task comments (`010-task-comments`, proposed **D**): owned by `tasks` (no peer comments domain). Prisma `TaskComment` / `task_comments` with nullable `deletedAt`. `POST`/`GET /api/tasks/:taskId/comments`; `PATCH`/`DELETE /api/tasks/:taskId/comments/:commentId`. Create = task write; list = task read via `TaskAuthorizationPort`; author-only PATCH body; soft-delete by author or effective OWNER (`requireProjectOwner`); no restore; plain text only; no mentions. Public DTO omits `deletedAt`. UI lives in existing `TaskDetail` Dialog.
 - Task activity (`011-task-activity`, proposed **L**): owned by `tasks`. Prisma `task_activity_events` with kinds `TASK_CREATED`, `TASK_FIELDS_CHANGED`, `TASK_SOFT_DELETED`, `COMMENT_ADDED`. Emit in same DB transaction as create/update/softDelete/comment-create; fail write if event insert fails; no emit on no-op PATCH or comment edit/delete. Field-change: one event per PATCH with old/new for changed fields. Comment-added stores `commentId` + short body preview. `GET /api/tasks/:taskId/activity` → `{ activity }` newest-first full list via `requireTaskRead`; actor display name resolved at list time. Forward-only (no backfill). Read-only UI in `TaskDetail`. Not app-wide audit **C**.
+- Task labels (`012-task-labels`, proposed **E**): owned by `tasks`. Per-project catalog (`ProjectLabel` with `name`/`nameKey`/fixed color token) + many labels per task (join). Catalog CRUD and assignment via `requireTaskWrite`; reads via `requireTaskRead`. Color tokens: `RED`|`ORANGE`|`YELLOW`|`GREEN`|`TEAL`|`BLUE`|`PURPLE`|`PINK`|`GRAY`. Name 1–40 trim, case-insensitive unique per project. Hard-delete clears assignments. `PUT /api/tasks/:taskId/labels` replace-set; catalog under `/api/projects/:projectId/labels`. `PublicTaskDto.labels` for card face; optional single `labelId` list filter. No label activity events. UI: board Labels Dialog; TaskDetail Labels Popover (013) for assign + catalog CRUD; card chips; board filter.
+- Task detail layout (`013-task-detail-layout`): frontend-only. Two-column TaskDetail (`md+`; stack below). Labels-only action row → Popover (search, checkboxes, edit/create); apply `replaceTaskLabels` on outside-click/Done; Escape discards. Board Labels Dialog kept. Right panel “Comments & activity” interleaved newest-first; omit `COMMENT_ADDED` activity rows. Added `@radix-ui/react-popover` + shadcn `popover`. No schema/API contract changes.
+- TaskDetail polish (`014-task-detail-polish`): opaque `--popover`/`--popover-foreground` on all palettes; reload activity after Save and comment create/edit/delete; clearer timeline spacing; Edit/Delete as link buttons; nine-token `LabelColorSwatchPicker` in LabelsPopover + LabelsDialog (no color `<select>`). Frontend-only.
 - Authenticated chrome: top app bar (DevTrack → `/projects`, Color palette selector, Dashboard → `/dashboard`, profile, logout) and compact left sidebar of listed project names plus a create `+` Dialog; `/projects` main is a constrained card grid of listed (non-archived) projects with name-derived color-initials covers (empty/select-or-create main superseded); project detail has compact header (name, short description, Back to projects next to Edit/Archive) and remaining-height compact `TODO` / `IN_PROGRESS` / `DONE` columns; create-task and task-detail are Dialogs (board stays mounted); compact filters sit above the board; profile keeps the compact sidebar; guest login/register have no product sidebar and inherit stored-or-Forest palette
 - Original FR-006 / Q-037 “remove Back to projects” is **superseded**: Back to projects is restored on the board header action row; DevTrack still links to `/projects`
 - Whole-UI palettes from the Q-041 catalog (solids Forest default, Ocean, Sunset, Violet, Midnight; gradients Aurora, Ember, Lagoon, Twilight, Citrus, Magma, Glacier) applied on the document root; persisted only as catalog id in localStorage `devtrack.uiPalette`; guests use stored-or-Forest; logout does not clear the key
 - `@dnd-kit/core` is present with `DragOverlay`; task cards use a pointer cursor; `@dnd-kit/sortable` is absent; no second DnD library; no task `position`/`rank`; no move endpoint; status moves reuse `PATCH /api/tasks/:id` `{ status }` with `credentials: 'include'`
 - `ProbePage` and probe chrome removed from the React app; backend `system` probe HTTP, Prisma `SystemProbe`, `GET /health`, `GET /ready`, and backend probe tests unchanged
-- Copied shadcn primitives only: `button`, `input`, `label`, `card`, `textarea`, `dialog`; peers `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `@radix-ui/react-slot`, `@radix-ui/react-label`, `@radix-ui/react-dialog`
+- Copied shadcn primitives only: `button`, `input`, `label`, `card`, `textarea`, `dialog`, `popover`; peers `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `@radix-ui/react-slot`, `@radix-ui/react-label`, `@radix-ui/react-dialog`, `@radix-ui/react-popover`
 - No `coverColor`, image storage, rank, audit, or User palette field. Dashboard counts are derived, not stored. Membership is persisted. `specs/005-audit/` is absent. Authenticated shell uses `h-svh overflow-hidden` so Kanban columns scroll inside remaining height.
+
+Coordinator independently re-ran on Node.js `v22.22.3` for `014-task-detail-polish` T012 close-out:
+
+- `frontend` `npm run typecheck` exit 0
+- `frontend` `npm test` 24 files / 215 tests passed
+
+Coordinator independently re-ran on Node.js `v22.22.3` for `013-task-detail-layout` T011 close-out:
+
+- `frontend` `npm run typecheck` exit 0
+- `frontend` `npm test` 22 files / 210 tests passed
+
+Coordinator independently re-ran after `nvm use 22` for `012-task-labels` T016 close-out (host `node -v` may still show 24; suites green):
+
+- `backend` `npm run typecheck` exit 0
+- `backend` `npm test` 41 files / 316 tests passed
+- `frontend` `npm run typecheck` exit 0
+- `frontend` `npm test` 20 files / 205 tests passed
 
 Coordinator independently re-ran on Node.js `v22.22.3` for `011-task-activity` after T015 close-out:
 
@@ -159,6 +179,7 @@ Prior coordinator re-run on Node.js 22.22.3 for `004-tasks`:
 - `009-collaboration`: `backend/prisma/migrations/20261031120000_project_members/` (`ProjectMember`, unique `(projectId, userId)`, FKs Restrict). Applied with `prisma migrate deploy`. No reset or volume delete. `Project.ownerUserId` kept.
 - `010-task-comments`: `backend/prisma/migrations/20261104180000_task_comments/` (`TaskComment` / `task_comments`: `id`, `taskId`, `authorUserId`, `body`, `createdAt`, nullable `deletedAt`; FKs Restrict; `taskId` index). Additive only. Applied with `prisma migrate deploy`. No reset or volume delete.
 - `011-task-activity`: `backend/prisma/migrations/20261104210000_task_activity/` (`task_activity_events`: `id`, `taskId`, `actorUserId`, `kind` enum, `payload` JSON, `createdAt`; FKs Restrict; indexes on `taskId` and `(taskId, createdAt)`). Additive only. Applied with `prisma migrate deploy`. No reset or volume delete.
+- `012-task-labels`: `backend/prisma/migrations/20261105120000_task_labels/` (project label catalog + task↔label join; Cascade on label delete). Additive only. Applied with `prisma migrate deploy`. No reset or volume delete.
 
 ## Known issues
 
@@ -191,10 +212,14 @@ Prior coordinator re-run on Node.js 22.22.3 for `004-tasks`:
 - Archived-project owner comment PATCH is not separately SuperTest-asserted; shares `assertParentWritable` with create/delete (010 independent review, informational)
 - AC-015 same-tx emit failure covered via in-memory `SnapshotUnitOfWork` only; no Prisma insert-failure integration test (011 independent review, non-blocking)
 - TaskDetail activity loads on open; does not auto-refresh after local task/comment mutations in the same dialog session (011 implementer note, informational)
+- Labels list filter 401/403 not reasserted in labels-api suite (relies on existing task-list auth) (012 independent review, non-blocking)
+- Soft-deleted task GET with labels covered in tasks-api; labels suite covers assignment 404 (012 independent review, informational)
+- LabelsPopover catalog edit path lightly tested; Escape discard covered in unit tests not live Dialog host (013 independent review, non-blocking)
+- Failed activity reload after comment mutations not explicitly tested; Save-path failure covered (014 independent review, non-blocking)
 
 ## Next approved work
 
-None queued. Verified through `011-task-activity`. Deferred product follow-up (specify when chosen): **E** per-project label catalog, many labels per task, show on card + filter. Later **C** app-wide audit stays a separate proposed feature (not this activity table). Do not implement from `proposed-features.md` without a new Approved feature folder.
+None queued. Verified through `014-task-detail-polish`. Deferred product follow-up (specify when chosen): **F** checklists / sub-items (keep out of Kanban columns at first; fits under `tasks`). Later **C** app-wide audit stays a separate proposed feature. Do not implement from `proposed-features.md` without a new Approved feature folder.
 
 ## Open decisions
 
@@ -279,6 +304,39 @@ Recorded as Decided and implemented in Verified `011-task-activity`:
 - Q-077: Same DB transaction; fail write if event insert fails.
 - Q-078: Full list; no pagination.
 - Q-079: `GET /api/tasks/:taskId/activity` → `{ activity: [...] }`.
+
+Recorded as Decided and implemented in Verified `012-task-labels`:
+
+- Q-080: Labels owned under `tasks` (catalog + assignment).
+- Q-081 / Q-082: Catalog CRUD and task assign = OWNER+EDITOR (`requireTaskWrite`); reads = task read.
+- Q-083: Required color from fixed named tokens (no freeform hex).
+- Q-084: Name unique after trim, case-insensitive within project.
+- Q-085: Hard-delete label + clear assignments; no restore.
+- Q-086: `PUT /api/tasks/:taskId/labels` replace-set `{ labelIds }`.
+- Q-087: Embed `labels: [{ id, name, color }]` on `PublicTaskDto`.
+- Q-088: Optional single `labelId` filter AND with status/priority.
+- Q-089: No activity events for label changes.
+- Q-090: Board Labels Dialog + TaskDetail assign + card face + filter.
+- Q-091: Allow PATCH name and/or color.
+- Q-092: Name 1–40 after trim; no hard count caps.
+- Q-093: Archived mutate same as task writes (409/403); reads allowed.
+
+Recorded as Decided and implemented in Verified `013-task-detail-layout`:
+
+- Q-094: Label checkbox selection persists on popover close (batch), not each toggle.
+- Q-095: Catalog create/edit in TaskDetail Labels Popover and board Labels Dialog.
+- Q-096: One right panel “Comments & activity”; compose on top; interleaved newest-first.
+- Q-097: Action row Labels only (no Dates/Checklist/Attachment placeholders).
+- Q-098: Two columns from `md+`; stack below.
+- Q-099: Outside-click/Done apply; Escape discards uncommitted toggles.
+- Q-100: Omit `COMMENT_ADDED` activity rows in the interleaved panel (avoid duplicate with live comments).
+- Q-101: shadcn Popover + `@radix-ui/react-popover`.
+
+Recorded as Decided and implemented in Verified `014-task-detail-polish`:
+
+- Q-102: Reload activity after task Save and comment create/edit/delete (live right timeline).
+- Q-103: Color picker is a swatch grid of the existing nine tokens only (no freeform expansion).
+- Q-104: New folder `014-task-detail-polish` (do not reopen Verified 013 as Draft).
 
 Do not silently turn an open question into an architectural decision.
 

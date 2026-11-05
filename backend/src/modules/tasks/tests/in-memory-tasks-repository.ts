@@ -1,5 +1,6 @@
 import { TaskNotFoundError } from "../domain/errors";
 import { Task } from "../domain/task";
+import type { TaskLabelJoinStore } from "../repository/task-labels-repository";
 import type {
   CreateTaskInput,
   ListTasksFilters,
@@ -9,6 +10,8 @@ import type {
 
 export class InMemoryTasksRepository implements TasksRepository {
   readonly tasksById = new Map<string, Task>();
+
+  constructor(private readonly labelJoins: TaskLabelJoinStore | null = null) {}
 
   async create(input: CreateTaskInput): Promise<Task> {
     const task = Task.create(
@@ -44,6 +47,12 @@ export class InMemoryTasksRepository implements TasksRepository {
           task.priority !== filters.priority
         ) {
           return false;
+        }
+        if (filters.labelId !== undefined) {
+          const labeled = this.labelJoins?.byLabelId.get(filters.labelId);
+          if (labeled === undefined || !labeled.has(task.id)) {
+            return false;
+          }
         }
         return true;
       })

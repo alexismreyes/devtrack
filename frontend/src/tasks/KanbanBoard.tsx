@@ -21,6 +21,7 @@ import type { PublicTaskDto, TaskStatus } from "../api/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { LabelChips } from "./LabelChips";
 
 const COLUMN_STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 
@@ -255,6 +256,7 @@ function KanbanCardFace({
         {task.dueDate === null ? null : (
           <p className="px-2 text-xs text-muted-foreground">Due {task.dueDate}</p>
         )}
+        <LabelChips labels={task.labels} />
       </CardContent>
     </Card>
   );

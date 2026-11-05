@@ -7,6 +7,7 @@ import {
   isConflict,
   isForbidden,
   isUnauthenticated,
+  listLabels,
   listTaskActivity,
   listTaskComments,
   softDeleteTask,
@@ -17,17 +18,20 @@ import {
 import type {
   PublicActivityDto,
   PublicCommentDto,
+  PublicLabelDto,
   PublicTaskDto,
-  TaskActivityFieldChange,
+  TaskEmbeddedLabelDto,
   TaskPriority,
   TaskStatus,
 } from "../api/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, nativeSelectClassName } from "@/lib/utils";
+import { CommentsActivityPanel } from "./CommentsActivityPanel";
+import { LabelChips } from "./LabelChips";
+import { LabelsPopover } from "./LabelsPopover";
 
 type TaskDetailProps = {
   taskId: string;
@@ -86,47 +90,6 @@ type ActivityLoadState =
 const STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 
-function formatActivityFieldValue(value: string | null): string {
-  return value === null ? "(empty)" : value;
-}
-
-function describeFieldChange(change: TaskActivityFieldChange): string {
-  return `${change.field}: ${formatActivityFieldValue(change.oldValue)} → ${formatActivityFieldValue(change.newValue)}`;
-}
-
-function activityKindLabel(kind: PublicActivityDto["kind"]): string {
-  switch (kind) {
-    case "TASK_CREATED":
-      return "Task created";
-    case "TASK_FIELDS_CHANGED":
-      return "Fields changed";
-    case "TASK_SOFT_DELETED":
-      return "Task deleted";
-    case "COMMENT_ADDED":
-      return "Comment added";
-  }
-}
-
-function activityPayloadSummary(event: PublicActivityDto): string | null {
-  switch (event.kind) {
-    case "TASK_CREATED":
-    case "TASK_SOFT_DELETED":
-      return null;
-    case "TASK_FIELDS_CHANGED": {
-      if (!("changes" in event.payload)) {
-        return null;
-      }
-      return event.payload.changes.map(describeFieldChange).join("; ");
-    }
-    case "COMMENT_ADDED": {
-      if (!("bodyPreview" in event.payload)) {
-        return null;
-      }
-      return event.payload.bodyPreview;
-    }
-  }
-}
-
 export function TaskDetail({
   taskId,
   archived,
@@ -160,6 +123,7 @@ export function TaskDetail({
   const [activityLoadState, setActivityLoadState] = useState<ActivityLoadState>({
     kind: "loading",
   });
+  const [catalogLabels, setCatalogLabels] = useState<PublicLabelDto[]>([]);
 
   const applyTask = useCallback((next: PublicTaskDto) => {
     setTask(next);
@@ -168,6 +132,10 @@ export function TaskDetail({
     setDueDate(next.dueDate ?? "");
     setStatus(next.status);
     setPriority(next.priority);
+  }, []);
+
+  const applyAssignedLabels = useCallback((labels: TaskEmbeddedLabelDto[]) => {
+    setTask((current) => (current === null ? current : { ...current, labels }));
   }, []);
 
   const loadComments = useCallback(async () => {
@@ -244,6 +212,15 @@ export function TaskDetail({
     }
   }, [onUnauthenticated, taskId]);
 
+  const loadCatalog = useCallback(async (projectId: string) => {
+    try {
+      const result = await listLabels(projectId);
+      setCatalogLabels(result.labels);
+    } catch {
+      setCatalogLabels([]);
+    }
+  }, []);
+
   const loadTask = useCallback(async () => {
     setLoadState({ kind: "loading" });
     setActionState({ kind: "idle" });
@@ -255,7 +232,11 @@ export function TaskDetail({
       const result = await getTask(taskId);
       applyTask(result);
       setLoadState({ kind: "success" });
-      await Promise.all([loadComments(), loadActivity()]);
+      await Promise.all([
+        loadComments(),
+        loadActivity(),
+        loadCatalog(result.projectId),
+      ]);
     } catch (err) {
       if (isUnauthenticated(err)) {
         setLoadState({ kind: "unauthenticated", message: toUserMessage(err) });
@@ -268,7 +249,14 @@ export function TaskDetail({
       }
       setLoadState({ kind: "error", message: toUserMessage(err) });
     }
-  }, [applyTask, loadActivity, loadComments, onUnauthenticated, taskId]);
+  }, [
+    applyTask,
+    loadActivity,
+    loadCatalog,
+    loadComments,
+    onUnauthenticated,
+    taskId,
+  ]);
 
   useEffect(() => {
     void loadTask();
@@ -320,6 +308,7 @@ export function TaskDetail({
       applyTask(updated);
       setActionState({ kind: "success", message: "Task updated." });
       onUpdated();
+      await loadActivity();
     } catch (err) {
       if (handleAuthzError(err)) {
         return;
@@ -366,6 +355,7 @@ export function TaskDetail({
       );
       setNewCommentBody("");
       setCommentActionState({ kind: "success", message: "Comment added." });
+      await loadActivity();
     } catch (err) {
       if (handleCommentAuthzError(err)) {
         return;
@@ -394,6 +384,7 @@ export function TaskDetail({
       setEditingCommentId(null);
       setEditCommentBody("");
       setCommentActionState({ kind: "success", message: "Comment updated." });
+      await loadActivity();
     } catch (err) {
       if (handleCommentAuthzError(err)) {
         return;
@@ -423,6 +414,7 @@ export function TaskDetail({
         setEditCommentBody("");
       }
       setCommentActionState({ kind: "success", message: "Comment deleted." });
+      await loadActivity();
     } catch (err) {
       if (handleCommentAuthzError(err)) {
         return;
@@ -456,50 +448,84 @@ export function TaskDetail({
   }
 
   return (
-    <section aria-labelledby="task-detail-heading">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 p-4">
-          <h4 id="task-detail-heading" className="text-base font-semibold tracking-tight">
-            {task === null ? "Task" : task.title}
-          </h4>
-          <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Close task
-          </Button>
-        </CardHeader>
-        <CardContent className="grid gap-4 p-4 pt-0">
-          {loadState.kind === "loading" ? (
-            <p className="text-sm text-muted-foreground" role="status">
-              Loading task…
+    <section aria-labelledby="task-detail-heading" className="grid gap-4">
+      <div className="flex flex-row items-start justify-between gap-3">
+        <h4
+          id="task-detail-heading"
+          className="text-base font-semibold tracking-tight"
+        >
+          {task === null ? "Task" : task.title}
+        </h4>
+        <Button type="button" variant="outline" size="sm" onClick={onClose}>
+          Close task
+        </Button>
+      </div>
+
+      {loadState.kind === "loading" ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          Loading task…
+        </p>
+      ) : null}
+      {loadState.kind === "unauthenticated" ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          {loadState.message}
+        </p>
+      ) : null}
+      {loadState.kind === "forbidden" ? (
+        <p className="text-sm text-destructive" role="alert">
+          {loadState.message}
+        </p>
+      ) : null}
+      {loadState.kind === "error" ? (
+        <p className="text-sm text-destructive" role="alert">
+          {loadState.message}
+        </p>
+      ) : null}
+
+      {loadState.kind === "success" && task !== null ? (
+        <div
+          data-testid="task-detail-layout"
+          className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]"
+        >
+          <div
+            data-testid="task-detail-main"
+            className="grid min-w-0 gap-4 content-start"
+          >
+            <p className="text-sm text-muted-foreground">
+              Status {task.status}, priority {task.priority}
+              {task.dueDate === null ? "" : `, due ${task.dueDate}`}
             </p>
-          ) : null}
-          {loadState.kind === "unauthenticated" ? (
-            <p className="text-sm text-muted-foreground" role="status">
-              {loadState.message}
-            </p>
-          ) : null}
-          {loadState.kind === "forbidden" ? (
-            <p className="text-sm text-destructive" role="alert">
-              {loadState.message}
-            </p>
-          ) : null}
-          {loadState.kind === "error" ? (
-            <p className="text-sm text-destructive" role="alert">
-              {loadState.message}
-            </p>
-          ) : null}
-          {loadState.kind === "success" && task !== null ? (
-            <>
-              <p className="text-sm text-muted-foreground">
-                Status {task.status}, priority {task.priority}
-                {task.dueDate === null ? "" : `, due ${task.dueDate}`}
-              </p>
-              {task.description === null ? (
-                <p className="text-sm text-muted-foreground">No task description.</p>
-              ) : (
-                <p className="text-sm">{task.description}</p>
-              )}
-              {canWrite ? (
-              <form onSubmit={(event) => void onSave(event)} className="grid gap-3">
+
+            <div
+              className="flex flex-wrap items-center gap-2"
+              data-testid="task-detail-actions"
+              aria-label="Task actions"
+            >
+              <LabelsPopover
+                projectId={task.projectId}
+                taskId={taskId}
+                catalogLabels={catalogLabels}
+                assignedLabels={task.labels}
+                canWrite={canWrite}
+                disabled={archived}
+                onAssignedChange={applyAssignedLabels}
+                onCatalogChange={setCatalogLabels}
+                onUpdated={onUpdated}
+                onUnauthenticated={onUnauthenticated}
+              />
+            </div>
+
+            {task.labels.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No labels assigned.</p>
+            ) : (
+              <LabelChips labels={task.labels} className="px-0" />
+            )}
+
+            {canWrite ? (
+              <form
+                onSubmit={(event) => void onSave(event)}
+                className="grid gap-3"
+              >
                 <Label className="grid gap-2">
                   Task title
                   <Input
@@ -535,7 +561,9 @@ export function TaskDetail({
                     name="task-status"
                     className={cn(nativeSelectClassName)}
                     value={status}
-                    onChange={(event) => setStatus(event.target.value as TaskStatus)}
+                    onChange={(event) =>
+                      setStatus(event.target.value as TaskStatus)
+                    }
                     disabled={writesDisabled}
                   >
                     {STATUSES.map((value) => (
@@ -573,282 +601,75 @@ export function TaskDetail({
                     onClick={() => void onDelete()}
                     disabled={writesDisabled}
                   >
-                    {actionState.kind === "deleting" ? "Deleting…" : "Delete task"}
+                    {actionState.kind === "deleting"
+                      ? "Deleting…"
+                      : "Delete task"}
                   </Button>
                 </div>
               </form>
-              ) : null}
+            ) : task.description === null ? (
+              <p className="text-sm text-muted-foreground">No task description.</p>
+            ) : (
+              <p className="text-sm">{task.description}</p>
+            )}
+          </div>
 
-              <section
-                aria-labelledby="task-comments-heading"
-                className="grid gap-3 border-t border-border pt-4"
-              >
-                <h5
-                  id="task-comments-heading"
-                  className="text-sm font-semibold tracking-tight"
-                >
-                  Comments
-                </h5>
-                {commentsLoadState.kind === "loading" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    Loading comments…
-                  </p>
-                ) : null}
-                {commentsLoadState.kind === "unauthenticated" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    {commentsLoadState.message}
-                  </p>
-                ) : null}
-                {commentsLoadState.kind === "forbidden" ||
-                commentsLoadState.kind === "not_found" ||
-                commentsLoadState.kind === "error" ? (
-                  <p className="text-sm text-destructive" role="alert">
-                    {commentsLoadState.message}
-                  </p>
-                ) : null}
-                {commentsLoadState.kind === "empty" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    No comments yet.
-                  </p>
-                ) : null}
-                {commentsLoadState.kind === "success" ? (
-                  <ul className="grid gap-3" aria-label="Task comments">
-                    {comments.map((comment) => {
-                      const isEditing = editingCommentId === comment.id;
-                      const isAuthor = canEditComment(comment);
-                      const canDelete = canSoftDeleteComment(comment);
-                      return (
-                        <li key={comment.id} className="grid gap-2">
-                          <p className="text-xs text-muted-foreground">
-                            {comment.authorDisplayName}
-                            {" · "}
-                            <time dateTime={comment.createdAt}>
-                              {comment.createdAt}
-                            </time>
-                          </p>
-                          {isEditing ? (
-                            <div className="grid gap-2">
-                              <Label className="grid gap-2">
-                                Edit comment
-                                <Textarea
-                                  name={`edit-comment-${comment.id}`}
-                                  value={editCommentBody}
-                                  onChange={(event) =>
-                                    setEditCommentBody(event.target.value)
-                                  }
-                                  disabled={commentMutationsDisabled}
-                                />
-                              </Label>
-                              <div className="flex flex-wrap gap-2">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  onClick={() => void onSaveComment(comment.id)}
-                                  disabled={commentMutationsDisabled}
-                                >
-                                  {commentActionState.kind === "saving" &&
-                                  commentActionState.commentId === comment.id
-                                    ? "Saving…"
-                                    : "Save comment"}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setEditingCommentId(null);
-                                    setEditCommentBody("");
-                                  }}
-                                  disabled={commentMutationsDisabled}
-                                >
-                                  Cancel edit
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="whitespace-pre-wrap text-sm">
-                              {comment.body}
-                            </p>
-                          )}
-                          {!isEditing && (isAuthor || canDelete) ? (
-                            <div className="flex flex-wrap gap-2">
-                              {isAuthor ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setEditingCommentId(comment.id);
-                                    setEditCommentBody(comment.body);
-                                    setCommentActionState({ kind: "idle" });
-                                  }}
-                                  disabled={commentMutationsDisabled}
-                                >
-                                  Edit comment
-                                </Button>
-                              ) : null}
-                              {canDelete ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => void onDeleteComment(comment.id)}
-                                  disabled={commentMutationsDisabled}
-                                >
-                                  {commentActionState.kind === "deleting" &&
-                                  commentActionState.commentId === comment.id
-                                    ? "Deleting…"
-                                    : "Delete comment"}
-                                </Button>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : null}
-                {canWrite ? (
-                  <form
-                    onSubmit={(event) => void onCreateComment(event)}
-                    className="grid gap-2"
-                  >
-                    <Label className="grid gap-2">
-                      New comment
-                      <Textarea
-                        name="new-comment"
-                        value={newCommentBody}
-                        onChange={(event) => setNewCommentBody(event.target.value)}
-                        disabled={commentMutationsDisabled}
-                      />
-                    </Label>
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={commentMutationsDisabled}
-                    >
-                      {commentActionState.kind === "creating"
-                        ? "Adding…"
-                        : "Add comment"}
-                    </Button>
-                  </form>
-                ) : null}
-                {commentActionState.kind === "creating" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    Adding comment…
-                  </p>
-                ) : null}
-                {commentActionState.kind === "saving" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    Saving comment…
-                  </p>
-                ) : null}
-                {commentActionState.kind === "deleting" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    Deleting comment…
-                  </p>
-                ) : null}
-                {commentActionState.kind === "success" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    {commentActionState.message}
-                  </p>
-                ) : null}
-                {commentActionState.kind === "conflict" ||
-                commentActionState.kind === "error" ? (
-                  <p className="text-sm text-destructive" role="alert">
-                    {commentActionState.message}
-                  </p>
-                ) : null}
-              </section>
+          <CommentsActivityPanel
+            canWrite={canWrite}
+            commentMutationsDisabled={commentMutationsDisabled}
+            comments={comments}
+            commentsLoadState={commentsLoadState}
+            activity={activity}
+            activityLoadState={activityLoadState}
+            commentActionState={commentActionState}
+            newCommentBody={newCommentBody}
+            editingCommentId={editingCommentId}
+            editCommentBody={editCommentBody}
+            onNewCommentBodyChange={setNewCommentBody}
+            onEditCommentBodyChange={setEditCommentBody}
+            onCreateComment={(event) => void onCreateComment(event)}
+            onStartEditComment={(comment) => {
+              setEditingCommentId(comment.id);
+              setEditCommentBody(comment.body);
+              setCommentActionState({ kind: "idle" });
+            }}
+            onCancelEditComment={() => {
+              setEditingCommentId(null);
+              setEditCommentBody("");
+            }}
+            onSaveComment={(commentId) => void onSaveComment(commentId)}
+            onDeleteComment={(commentId) => void onDeleteComment(commentId)}
+            canEditComment={canEditComment}
+            canSoftDeleteComment={canSoftDeleteComment}
+          />
+        </div>
+      ) : null}
 
-              <section
-                aria-labelledby="task-activity-heading"
-                className="grid gap-3 border-t border-border pt-4"
-              >
-                <h5
-                  id="task-activity-heading"
-                  className="text-sm font-semibold tracking-tight"
-                >
-                  Activity
-                </h5>
-                {activityLoadState.kind === "loading" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    Loading activity…
-                  </p>
-                ) : null}
-                {activityLoadState.kind === "unauthenticated" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    {activityLoadState.message}
-                  </p>
-                ) : null}
-                {activityLoadState.kind === "forbidden" ||
-                activityLoadState.kind === "not_found" ||
-                activityLoadState.kind === "error" ? (
-                  <p className="text-sm text-destructive" role="alert">
-                    {activityLoadState.message}
-                  </p>
-                ) : null}
-                {activityLoadState.kind === "empty" ? (
-                  <p className="text-sm text-muted-foreground" role="status">
-                    No activity yet.
-                  </p>
-                ) : null}
-                {activityLoadState.kind === "success" ? (
-                  <ul className="grid gap-3" aria-label="Task activity">
-                    {activity.map((event) => {
-                      const summary = activityPayloadSummary(event);
-                      return (
-                        <li key={event.id} className="grid gap-1">
-                          <p className="text-xs text-muted-foreground">
-                            {event.actorDisplayName}
-                            {" · "}
-                            <time dateTime={event.createdAt}>
-                              {event.createdAt}
-                            </time>
-                          </p>
-                          <p className="text-sm font-medium">
-                            {activityKindLabel(event.kind)}
-                          </p>
-                          {summary === null ? null : (
-                            <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                              {summary}
-                            </p>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : null}
-              </section>
-            </>
-          ) : null}
-          {actionState.kind === "saving" ? (
-            <p className="text-sm text-muted-foreground" role="status">
-              Saving task…
-            </p>
-          ) : null}
-          {actionState.kind === "deleting" ? (
-            <p className="text-sm text-muted-foreground" role="status">
-              Deleting task…
-            </p>
-          ) : null}
-          {actionState.kind === "success" ? (
-            <p className="text-sm text-muted-foreground" role="status">
-              {actionState.message}
-            </p>
-          ) : null}
-          {actionState.kind === "conflict" ? (
-            <p className="text-sm text-destructive" role="alert">
-              {actionState.message}
-            </p>
-          ) : null}
-          {actionState.kind === "error" ? (
-            <p className="text-sm text-destructive" role="alert">
-              {actionState.message}
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
+      {actionState.kind === "saving" ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          Saving task…
+        </p>
+      ) : null}
+      {actionState.kind === "deleting" ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          Deleting task…
+        </p>
+      ) : null}
+      {actionState.kind === "success" ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          {actionState.message}
+        </p>
+      ) : null}
+      {actionState.kind === "conflict" ? (
+        <p className="text-sm text-destructive" role="alert">
+          {actionState.message}
+        </p>
+      ) : null}
+      {actionState.kind === "error" ? (
+        <p className="text-sm text-destructive" role="alert">
+          {actionState.message}
+        </p>
+      ) : null}
     </section>
   );
 }

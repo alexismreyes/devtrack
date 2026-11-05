@@ -83,13 +83,31 @@ Last confirmed: 2026-10-31 (features `001`–`009`).
 
 - **Spec:** `specs/010-task-comments/`
 - **What:** Persisted plain-text discussion on a task; author edit; author or OWNER soft-delete.
-- **Approach:** Owned by `tasks` (no peer comments domain). Prisma `TaskComment` with `deletedAt`. Create/list via `TaskAuthorizationPort` task write/read; author-only PATCH; soft-delete author or effective OWNER; no restore; no mentions/rich text. UI in existing `TaskDetail` Dialog. Deferred: **E** labels (**L** shipped as `011-task-activity`).
+- **Approach:** Owned by `tasks` (no peer comments domain). Prisma `TaskComment` with `deletedAt`. Create/list via `TaskAuthorizationPort` task write/read; author-only PATCH; soft-delete author or effective OWNER; no restore; no mentions/rich text. UI in existing `TaskDetail` Dialog. Deferred: **F** checklists (**E** shipped as `012-task-labels`; **L** as `011-task-activity`).
 
 ### 011 — Task Activity
 
 - **Spec:** `specs/011-task-activity/`
 - **What:** Task-scoped activity feed for created, field changes, soft-delete, and comments added.
-- **Approach:** Owned by `tasks`. Prisma `task_activity_events`. Emit in the same transaction as the write. `GET /api/tasks/:taskId/activity` → `{ activity }` (newest first, task read). Comment-added stores `commentId` + body preview. Read-only in `TaskDetail`. Not app-wide audit **C**. Deferred: **E** labels.
+- **Approach:** Owned by `tasks`. Prisma `task_activity_events`. Emit in the same transaction as the write. `GET /api/tasks/:taskId/activity` → `{ activity }` (newest first, task read). Comment-added stores `commentId` + body preview. Shown in TaskDetail “Comments & activity” (omit `COMMENT_ADDED` rows to avoid duplicates). Not app-wide audit **C**. Deferred: **F** checklists.
+
+### 012 — Task Labels
+
+- **Spec:** `specs/012-task-labels/`
+- **What:** Per-project label catalog; many labels per task; card face; filter by label.
+- **Approach:** Owned by `tasks`. Fixed color tokens; case-insensitive unique names; hard-delete clears assignments. Catalog CRUD + `PUT /api/tasks/:taskId/labels`; labels embedded on task DTO. Board Labels Dialog, TaskDetail Labels Popover, card chips, filter. No label activity events. Deferred: **F** checklists.
+
+### 013 — Task Detail Layout
+
+- **Spec:** `specs/013-task-detail-layout/`
+- **What:** Trello-like TaskDetail: two-column layout; Labels popover; Comments & activity aside.
+- **Approach:** Frontend-only. Labels Popover (apply-on-close / Escape discard); interleaved feed omits `COMMENT_ADDED`; board Labels Dialog kept; added `@radix-ui/react-popover`. Deferred: **F** checklists.
+
+### 014 — Task Detail Polish
+
+- **Spec:** `specs/014-task-detail-polish/`
+- **What:** Opaque Labels popover; live activity reload; timeline/link polish; color swatch picker.
+- **Approach:** Frontend-only. `--popover` tokens on all palettes; reload activity after Save and comment mutations; Edit/Delete as links; nine-token `LabelColorSwatchPicker` in Popover + board Dialog. Deferred: **F** checklists.
 
 ---
 

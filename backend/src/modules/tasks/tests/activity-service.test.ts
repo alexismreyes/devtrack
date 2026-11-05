@@ -15,6 +15,8 @@ import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { FakeUsersIdentityPort } from "./fake-users-identity-port";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
+import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
@@ -127,11 +129,14 @@ function createHarness(activity: ActivityRepository = new InMemoryActivityReposi
         )
       : new ImmediateUnitOfWork();
 
+  const labels = new InMemoryLabelsRepository();
+  const taskLabels = new InMemoryTaskLabelsRepository(labels);
   const tasksService = new TasksService(
     tasks,
     projects,
     authorization,
     activity,
+    taskLabels,
     unitOfWork,
   );
   const commentsService = new CommentsService(

@@ -26,6 +26,7 @@ describe("Q-028/Q-029 frontend dependencies and copied UI", () => {
     expect(all["@radix-ui/react-slot"]).toBeDefined();
     expect(all["@radix-ui/react-label"]).toBeDefined();
     expect(all["@radix-ui/react-dialog"]).toBeDefined();
+    expect(all["@radix-ui/react-popover"]).toBeDefined();
     expect(all["@radix-ui/react-dropdown-menu"]).toBeUndefined();
     expect(all["next-themes"]).toBeUndefined();
   });
@@ -65,6 +66,7 @@ describe("Q-028/Q-029 frontend dependencies and copied UI", () => {
       "./components/ui/dialog.tsx",
       "./components/ui/input.tsx",
       "./components/ui/label.tsx",
+      "./components/ui/popover.tsx",
       "./components/ui/textarea.tsx",
     ]);
     expect(Object.keys(import.meta.glob("./components/ui/dropdown-menu*"))).toEqual(

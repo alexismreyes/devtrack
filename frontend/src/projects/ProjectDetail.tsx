@@ -13,6 +13,7 @@ import {
 } from "../api/client";
 import type { ProjectMemberRole, PublicProjectDto } from "../api/types";
 import { Button } from "@/components/ui/button";
+import { LabelsDialog } from "../tasks/LabelsDialog";
 import { TasksPanel } from "../tasks/TasksPanel";
 import { EditProjectDialog } from "./EditProjectDialog";
 import { MembersDialog } from "./MembersDialog";
@@ -55,6 +56,8 @@ export function ProjectDetail({
   const [actorUserId, setActorUserId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const [labelsRevision, setLabelsRevision] = useState(0);
 
   const applyProject = useCallback((next: PublicProjectDto) => {
     setProject(next);
@@ -65,6 +68,7 @@ export function ProjectDetail({
     setActionState({ kind: "idle" });
     setEditOpen(false);
     setMembersOpen(false);
+    setLabelsOpen(false);
     setActorRole(null);
     setActorUserId(null);
     try {
@@ -150,6 +154,7 @@ export function ProjectDetail({
       applyProject(archived);
       setEditOpen(false);
       setMembersOpen(false);
+      setLabelsOpen(false);
       setActionState({ kind: "success", message: "Project archived." });
     } catch (err) {
       if (handleAuthzError(err)) {
@@ -272,6 +277,18 @@ export function ProjectDetail({
                 Members
               </Button>
             ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setActionState({ kind: "idle" });
+                setLabelsOpen(true);
+              }}
+              disabled={busy}
+            >
+              Labels
+            </Button>
           </div>
         ) : null}
       </div>
@@ -318,12 +335,23 @@ export function ProjectDetail({
             ownerUserId={project.ownerUserId}
             onUnauthenticated={onUnauthenticated}
           />
+          <LabelsDialog
+            open={labelsOpen}
+            onOpenChange={setLabelsOpen}
+            projectId={projectId}
+            canWrite={writeTasks}
+            onUnauthenticated={onUnauthenticated}
+            onCatalogChanged={() => {
+              setLabelsRevision((value) => value + 1);
+            }}
+          />
           <TasksPanel
             projectId={projectId}
             archived={archived}
             canWriteTasks={writeTasks}
             canManageMembers={showMembers}
             currentUserId={actorUserId}
+            labelsRevision={labelsRevision}
             onUnauthenticated={onUnauthenticated}
           />
         </>

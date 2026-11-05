@@ -49,6 +49,7 @@ export function errorHandler(
     switch (err.name) {
       case "DuplicateEmailError":
       case "DuplicateMembershipError":
+      case "DuplicateLabelNameError":
       case "OwnerMembershipConflictError": {
         const mapped = conflict(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
@@ -78,7 +79,8 @@ export function errorHandler(
       case "MembershipProjectNotFoundError":
       case "MemberUserNotFoundError":
       case "MembershipNotFoundError":
-      case "CommentNotFoundError": {
+      case "CommentNotFoundError":
+      case "LabelNotFoundError": {
         const mapped = notFound(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
@@ -107,6 +109,8 @@ export function errorHandler(
       case "InvalidTaskPriorityError":
       case "InvalidTaskDueDateError":
       case "InvalidCommentBodyError":
+      case "InvalidLabelNameError":
+      case "InvalidLabelColorError":
       case "InvalidProjectMemberRoleError":
         sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
         return;

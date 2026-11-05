@@ -7,6 +7,7 @@ export const listTasksQuerySchema = z
   .object({
     status: z.enum(TASK_STATUSES).optional(),
     priority: z.enum(TASK_PRIORITIES).optional(),
+    labelId: z.uuid().optional(),
   })
   .strict();
 

@@ -91,6 +91,7 @@ model Project {
   owner       User      @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
   tasks       Task[]
   members     ProjectMember[]
+  labels      ProjectLabel[]
 
   @@index([ownerUserId])
   @@map("projects")
@@ -123,9 +124,38 @@ model Task {
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
   comments    TaskComment[]
   activityEvents TaskActivityEvent[]
+  taskLabels  TaskLabel[]
 
   @@index([projectId])
   @@map("tasks")
+}
+
+model ProjectLabel {
+  id        String   @id @db.Uuid
+  projectId String   @db.Uuid
+  name      String
+  nameKey   String
+  color     String
+  createdAt DateTime
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  taskLabels TaskLabel[]
+
+  @@unique([projectId, nameKey])
+  @@index([projectId])
+  @@map("project_labels")
+}
+
+model TaskLabel {
+  taskId    String       @db.Uuid
+  labelId   String       @db.Uuid
+  createdAt DateTime
+  task      Task         @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  label     ProjectLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  @@index([taskId])
+  @@index([labelId])
+  @@map("task_labels")
 }
 
 model TaskComment {

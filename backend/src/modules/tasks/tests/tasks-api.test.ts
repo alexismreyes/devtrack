@@ -23,7 +23,11 @@ import { PrismaCommentsRepository } from "../repository/prisma-comments-reposito
 import { PrismaTasksRepository } from "../repository/prisma-tasks-repository";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
+import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
+import { PrismaLabelsRepository } from "../repository/prisma-labels-repository";
+import { PrismaTaskLabelsRepository } from "../repository/prisma-task-labels-repository";
 
 class FakeSystemRepository implements SystemRepository {
   probes: SystemProbe[] = [];
@@ -55,7 +59,9 @@ function createTasksApp() {
   const authRepository = new InMemoryAuthRepository(usersRepository);
   const systemRepository = new FakeSystemRepository();
   const projectsRepository = new InMemoryProjectsRepository();
-  const tasksRepository = new InMemoryTasksRepository();
+  const labelsRepository = new InMemoryLabelsRepository();
+  const taskLabelsRepository = new InMemoryTaskLabelsRepository(labelsRepository);
+  const tasksRepository = new InMemoryTasksRepository(taskLabelsRepository.joins);
   const commentsRepository = new InMemoryCommentsRepository();
   const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
@@ -68,6 +74,8 @@ function createTasksApp() {
     tasksRepository,
     commentsRepository,
     activityRepository,
+    labelsRepository,
+    taskLabelsRepository,
     projectMembersRepository,
   });
   return { app, tasksRepository };
@@ -151,6 +159,7 @@ function assertPublicTask(
     priority: expected.priority,
     dueDate: expected.dueDate,
     createdAt: expect.any(String),
+    labels: [],
   });
   const task = body as {
     id: string;
@@ -1150,6 +1159,8 @@ describe("tasks HTTP API persistence", () => {
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),
+      labelsRepository: new PrismaLabelsRepository(prisma),
+      taskLabelsRepository: new PrismaTaskLabelsRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),
       unitOfWork: new PrismaUnitOfWork(prisma),
     });
