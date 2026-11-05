@@ -81,12 +81,17 @@ function isLabelsListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/projects/proj-1/labels";
 }
 
+function isChecklistsListUrl(url: string): boolean {
+  return url === "http://localhost:3000/api/tasks/task-1/checklists";
+}
+
 function defaultTaskHandler(
   url: string,
   init?: RequestInit,
   comments: unknown[] = [],
   activityEvents: unknown[] = [],
   labels: unknown[] = [],
+  checklists: unknown[] = [],
 ): Response {
   if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { comments });
@@ -97,6 +102,9 @@ function defaultTaskHandler(
   if (isLabelsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { labels });
   }
+  if (isChecklistsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+    return jsonResponse(200, { checklists });
+  }
   if (url.endsWith("/api/tasks/task-1") && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, task);
   }
@@ -104,6 +112,29 @@ function defaultTaskHandler(
     error: { code: "INTERNAL_ERROR", message: `Unexpected ${init?.method ?? "GET"} ${url}` },
   });
 }
+
+const sampleChecklist = {
+  id: "checklist-1",
+  taskId: "task-1",
+  name: "QA",
+  createdAt: "2026-11-05T11:00:00.000Z",
+  items: [
+    {
+      id: "item-1",
+      checklistId: "checklist-1",
+      text: "Write tests",
+      checked: true,
+      createdAt: "2026-11-05T12:00:00.000Z",
+    },
+    {
+      id: "item-2",
+      checklistId: "checklist-1",
+      text: "Review PR",
+      checked: false,
+      createdAt: "2026-11-05T12:30:00.000Z",
+    },
+  ],
+};
 
 const createdActivity = {
   id: "activity-1",
@@ -190,13 +221,32 @@ describe("TaskDetail", () => {
     expect(screen.getByTestId("task-detail-side")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /comments & activity/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^labels$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^checklist$/i })).toBeInTheDocument();
     expect(screen.getByText(/no labels assigned/i)).toBeInTheDocument();
+    expect(screen.getByTestId("task-checklists")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/new checklist name/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add checklist/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /save labels/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^dates$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /checklist/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /attachment/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/hide checked/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ocultar los elementos/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /assign/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/fecha de vencimiento/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/custom status/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /manage statuses/i })).not.toBeInTheDocument();
+    const fieldLabels = screen.getAllByTestId("task-field-label");
+    expect(fieldLabels.length).toBeGreaterThanOrEqual(5);
+    for (const label of fieldLabels) {
+      expect(label).toHaveClass("text-xs", "font-normal", "text-muted-foreground");
+    }
+    const statusSelect = screen.getByLabelText(/task status/i);
+    expect(within(statusSelect).getByRole("option", { name: "To do" })).toHaveValue("TODO");
+    expect(within(statusSelect).getByRole("option", { name: "In progress" })).toHaveValue(
+      "IN_PROGRESS",
+    );
+    expect(within(statusSelect).getByRole("option", { name: "Done" })).toHaveValue("DONE");
   });
 
   it("assigns labels for writers with PUT replace-set on Done and credentials included", async () => {
@@ -596,7 +646,6 @@ describe("TaskDetail", () => {
     expect(within(list).getByText(/ada/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/new comment/i)).toBeInTheDocument();
     expect(screen.queryByText(/markdown/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/@user/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
     expect(
@@ -887,7 +936,6 @@ describe("TaskDetail", () => {
     expect(within(items[2] as HTMLElement).getByText("First note")).toBeInTheDocument();
     expect(screen.queryByText(/comment added/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(
         ([url, init]) =>
@@ -898,6 +946,194 @@ describe("TaskDetail", () => {
       ),
     ).toBe(true);
     expectNoSessionTokenStorage();
+  });
+
+  it("shows checklist progress, strikethrough, and VIEWER read-only chrome (AC-008)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (
+        url ===
+          "http://localhost:3000/api/tasks/task-1/checklists/checklist-1/items/item-2" &&
+        init?.method === "PATCH"
+      ) {
+        expect(init.body).toBe(JSON.stringify({ checked: true }));
+        return jsonResponse(200, {
+          ...sampleChecklist.items[1],
+          checked: true,
+        });
+      }
+      return defaultTaskHandler(url, init, [], [], [], [sampleChecklist]);
+    });
+
+    const { rerender } = render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: /^qa$/i })).toBeInTheDocument();
+    const checklists = screen.getByTestId("task-checklists");
+    expect(
+      within(checklists).getByText((content) => content.startsWith("50%")),
+    ).toBeInTheDocument();
+    expect(
+      within(checklists).getByRole("progressbar", { name: /qa progress/i }),
+    ).toHaveAttribute("aria-valuenow", "50");
+    const checkedItem = within(checklists).getByText("Write tests");
+    expect(checkedItem).toHaveClass("line-through");
+    expect(checkedItem).toBeVisible();
+    expect(within(checklists).getByText("Review PR")).toBeVisible();
+    expect(screen.queryByText(/hide checked/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^dates$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /attachment/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /assign/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^labels$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /comments & activity/i })).toBeInTheDocument();
+
+    const activityGetsBefore = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+    await user.click(
+      within(checklists).getByRole("checkbox", {
+        name: /mark review pr complete/i,
+      }),
+    );
+    expect(
+      await screen.findByText(/checklist item completed/i),
+    ).toBeInTheDocument();
+    const activityGetsAfter = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+    expect(activityGetsAfter).toBeGreaterThan(activityGetsBefore);
+
+    rerender(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /^checklist$/i }),
+    ).toBeDisabled();
+    const viewerChecklists = await screen.findByTestId("task-checklists");
+    expect(
+      within(viewerChecklists).queryByRole("button", { name: /add checklist/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(viewerChecklists).queryByRole("button", { name: /delete checklist/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(viewerChecklists).getByRole("checkbox", {
+        name: /mark write tests incomplete/i,
+      }),
+    ).toBeDisabled();
+    expect(await screen.findByTestId("checklist-block-checklist-1")).toHaveClass(
+      "bg-card",
+      "border",
+    );
+    expectNoSessionTokenStorage();
+  });
+
+  it("creates a checklist from the Checklist Dialog and reloads activity", async () => {
+    const createdChecklist = {
+      id: "checklist-2",
+      taskId: "task-1",
+      name: "Checklist",
+      createdAt: "2026-11-05T13:00:00.000Z",
+      items: [],
+    };
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isChecklistsListUrl(url) && init?.method === "POST") {
+        expect(init.body).toBe(JSON.stringify({ name: "Checklist" }));
+        return jsonResponse(201, createdChecklist);
+      }
+      return defaultTaskHandler(url, init);
+    });
+    const user = userEvent.setup();
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(/no checklists yet/i)).toBeInTheDocument();
+    const activityGetsBefore = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+    await user.click(screen.getByRole("button", { name: /^checklist$/i }));
+    expect(
+      await screen.findByRole("heading", { name: /add checklist/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("create-checklist-dialog-form")).toBeInTheDocument();
+    expect(screen.getByLabelText(/checklist name/i)).toHaveValue("Checklist");
+    await user.click(screen.getByRole("button", { name: /^create checklist$/i }));
+    expect(await screen.findByText(/checklist added\./i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: /checklist progress/i }),
+    ).toHaveAttribute("aria-valuenow", "0");
+    expect(
+      screen.getByText((content) => content.startsWith("0%")),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("checklist-block-checklist-2")).toHaveClass(
+      "bg-card",
+      "border",
+    );
+    expect(screen.queryByLabelText(/new checklist name/i)).not.toBeInTheDocument();
+    const activityGetsAfter = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isActivityListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+    expect(activityGetsAfter).toBeGreaterThan(activityGetsBefore);
+    expectNoSessionTokenStorage();
+  });
+
+  it("disables Checklist create for archived tasks", async () => {
+    mockFetch((url, init) => defaultTaskHandler(url, init));
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={true}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+    expect(await screen.findByRole("button", { name: /^checklist$/i })).toBeDisabled();
+    expect(screen.queryByRole("heading", { name: /add checklist/i })).not.toBeInTheDocument();
   });
 
   it("shows a unified empty timeline when both sources are empty", async () => {

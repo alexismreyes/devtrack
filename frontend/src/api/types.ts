@@ -207,11 +207,52 @@ export type UpdateCommentRequestDto = {
   body: string;
 };
 
+export type PublicChecklistItemDto = {
+  id: string;
+  checklistId: string;
+  text: string;
+  checked: boolean;
+  createdAt: string;
+};
+
+export type PublicChecklistDto = {
+  id: string;
+  taskId: string;
+  name: string;
+  createdAt: string;
+  items: PublicChecklistItemDto[];
+};
+
+export type ChecklistListResponseDto = {
+  checklists: PublicChecklistDto[];
+};
+
+export type CreateChecklistRequestDto = {
+  name: string;
+};
+
+export type UpdateChecklistRequestDto = {
+  name: string;
+};
+
+export type CreateChecklistItemRequestDto = {
+  text: string;
+};
+
+export type UpdateChecklistItemRequestDto = {
+  text?: string;
+  checked?: boolean;
+};
+
 export type TaskActivityKind =
   | "TASK_CREATED"
   | "TASK_FIELDS_CHANGED"
   | "TASK_SOFT_DELETED"
-  | "COMMENT_ADDED";
+  | "COMMENT_ADDED"
+  | "CHECKLIST_ADDED"
+  | "CHECKLIST_REMOVED"
+  | "CHECKLIST_ITEM_COMPLETED"
+  | "CHECKLIST_ITEM_UNCOMPLETED";
 
 export type TaskActivityChangeField =
   | "title"
@@ -239,11 +280,37 @@ export type CommentAddedActivityPayload = {
   bodyPreview: string;
 };
 
+export type ChecklistAddedActivityPayload = {
+  checklistId: string;
+  namePreview: string;
+};
+
+export type ChecklistRemovedActivityPayload = {
+  checklistId: string;
+  namePreview: string;
+};
+
+export type ChecklistItemCompletedActivityPayload = {
+  checklistId: string;
+  itemId: string;
+  textPreview: string;
+};
+
+export type ChecklistItemUncompletedActivityPayload = {
+  checklistId: string;
+  itemId: string;
+  textPreview: string;
+};
+
 export type TaskActivityPayload =
   | TaskCreatedActivityPayload
   | TaskFieldsChangedActivityPayload
   | TaskSoftDeletedActivityPayload
-  | CommentAddedActivityPayload;
+  | CommentAddedActivityPayload
+  | ChecklistAddedActivityPayload
+  | ChecklistRemovedActivityPayload
+  | ChecklistItemCompletedActivityPayload
+  | ChecklistItemUncompletedActivityPayload;
 
 export type PublicActivityDto = {
   id: string;

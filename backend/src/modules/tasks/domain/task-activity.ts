@@ -13,6 +13,10 @@ export const TASK_ACTIVITY_KINDS = [
   "TASK_FIELDS_CHANGED",
   "TASK_SOFT_DELETED",
   "COMMENT_ADDED",
+  "CHECKLIST_ADDED",
+  "CHECKLIST_REMOVED",
+  "CHECKLIST_ITEM_COMPLETED",
+  "CHECKLIST_ITEM_UNCOMPLETED",
 ] as const;
 
 export type TaskActivityKind = (typeof TASK_ACTIVITY_KINDS)[number];
@@ -45,14 +49,36 @@ export type CommentAddedPayload = {
   commentId: string;
   bodyPreview: string;
 };
+export type ChecklistAddedPayload = {
+  checklistId: string;
+  namePreview: string;
+};
+export type ChecklistRemovedPayload = {
+  checklistId: string;
+  namePreview: string;
+};
+export type ChecklistItemCompletedPayload = {
+  checklistId: string;
+  itemId: string;
+  textPreview: string;
+};
+export type ChecklistItemUncompletedPayload = {
+  checklistId: string;
+  itemId: string;
+  textPreview: string;
+};
 
 export type TaskActivityPayload =
   | TaskCreatedPayload
   | TaskFieldsChangedPayload
   | TaskSoftDeletedPayload
-  | CommentAddedPayload;
+  | CommentAddedPayload
+  | ChecklistAddedPayload
+  | ChecklistRemovedPayload
+  | ChecklistItemCompletedPayload
+  | ChecklistItemUncompletedPayload;
 
-/** Short plain-text preview length for COMMENT_ADDED (Q-075). */
+/** Short plain-text preview length for COMMENT_ADDED and checklist previews (Q-075 / Q-124). */
 export const COMMENT_BODY_PREVIEW_MAX_LENGTH = 120;
 
 export function parseTaskActivityKind(value: string): TaskActivityKind {
@@ -223,6 +249,108 @@ export class TaskActivityEvent {
     );
   }
 
+  static checklistAdded(
+    taskId: string,
+    actorUserId: string,
+    checklistId: string,
+    name: string,
+    now: Date = new Date(),
+  ): TaskActivityEvent {
+    if (!UUID_PATTERN.test(checklistId)) {
+      throw new Error("Checklist id must be a UUID");
+    }
+    return new TaskActivityEvent(
+      randomUUID(),
+      taskId,
+      actorUserId,
+      "CHECKLIST_ADDED",
+      {
+        checklistId,
+        namePreview: truncateCommentBodyPreview(name),
+      },
+      now,
+    );
+  }
+
+  static checklistRemoved(
+    taskId: string,
+    actorUserId: string,
+    checklistId: string,
+    name: string,
+    now: Date = new Date(),
+  ): TaskActivityEvent {
+    if (!UUID_PATTERN.test(checklistId)) {
+      throw new Error("Checklist id must be a UUID");
+    }
+    return new TaskActivityEvent(
+      randomUUID(),
+      taskId,
+      actorUserId,
+      "CHECKLIST_REMOVED",
+      {
+        checklistId,
+        namePreview: truncateCommentBodyPreview(name),
+      },
+      now,
+    );
+  }
+
+  static checklistItemCompleted(
+    taskId: string,
+    actorUserId: string,
+    checklistId: string,
+    itemId: string,
+    text: string,
+    now: Date = new Date(),
+  ): TaskActivityEvent {
+    if (!UUID_PATTERN.test(checklistId)) {
+      throw new Error("Checklist id must be a UUID");
+    }
+    if (!UUID_PATTERN.test(itemId)) {
+      throw new Error("Checklist item id must be a UUID");
+    }
+    return new TaskActivityEvent(
+      randomUUID(),
+      taskId,
+      actorUserId,
+      "CHECKLIST_ITEM_COMPLETED",
+      {
+        checklistId,
+        itemId,
+        textPreview: truncateCommentBodyPreview(text),
+      },
+      now,
+    );
+  }
+
+  static checklistItemUncompleted(
+    taskId: string,
+    actorUserId: string,
+    checklistId: string,
+    itemId: string,
+    text: string,
+    now: Date = new Date(),
+  ): TaskActivityEvent {
+    if (!UUID_PATTERN.test(checklistId)) {
+      throw new Error("Checklist id must be a UUID");
+    }
+    if (!UUID_PATTERN.test(itemId)) {
+      throw new Error("Checklist item id must be a UUID");
+    }
+    return new TaskActivityEvent(
+      randomUUID(),
+      taskId,
+      actorUserId,
+      "CHECKLIST_ITEM_UNCOMPLETED",
+      {
+        checklistId,
+        itemId,
+        textPreview: truncateCommentBodyPreview(text),
+      },
+      now,
+    );
+  }
+
   static rehydrate(
     id: string,
     taskId: string,
@@ -328,6 +456,45 @@ function normalizePayload(
       return {
         commentId: record.commentId,
         bodyPreview: record.bodyPreview,
+      };
+    }
+    case "CHECKLIST_ADDED":
+    case "CHECKLIST_REMOVED": {
+      if (typeof record.checklistId !== "string") {
+        throw new Error("Checklist activity payload requires checklistId");
+      }
+      if (typeof record.namePreview !== "string") {
+        throw new Error("Checklist activity payload requires namePreview");
+      }
+      if (!UUID_PATTERN.test(record.checklistId)) {
+        throw new Error("Checklist id must be a UUID");
+      }
+      return {
+        checklistId: record.checklistId,
+        namePreview: record.namePreview,
+      };
+    }
+    case "CHECKLIST_ITEM_COMPLETED":
+    case "CHECKLIST_ITEM_UNCOMPLETED": {
+      if (typeof record.checklistId !== "string") {
+        throw new Error("Checklist item activity requires checklistId");
+      }
+      if (typeof record.itemId !== "string") {
+        throw new Error("Checklist item activity requires itemId");
+      }
+      if (typeof record.textPreview !== "string") {
+        throw new Error("Checklist item activity requires textPreview");
+      }
+      if (!UUID_PATTERN.test(record.checklistId)) {
+        throw new Error("Checklist id must be a UUID");
+      }
+      if (!UUID_PATTERN.test(record.itemId)) {
+        throw new Error("Checklist item id must be a UUID");
+      }
+      return {
+        checklistId: record.checklistId,
+        itemId: record.itemId,
+        textPreview: record.textPreview,
       };
     }
   }

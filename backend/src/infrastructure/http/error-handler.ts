@@ -80,7 +80,9 @@ export function errorHandler(
       case "MemberUserNotFoundError":
       case "MembershipNotFoundError":
       case "CommentNotFoundError":
-      case "LabelNotFoundError": {
+      case "LabelNotFoundError":
+      case "ChecklistNotFoundError":
+      case "ChecklistItemNotFoundError": {
         const mapped = notFound(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
@@ -111,6 +113,8 @@ export function errorHandler(
       case "InvalidCommentBodyError":
       case "InvalidLabelNameError":
       case "InvalidLabelColorError":
+      case "InvalidChecklistNameError":
+      case "InvalidChecklistItemTextError":
       case "InvalidProjectMemberRoleError":
         sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
         return;

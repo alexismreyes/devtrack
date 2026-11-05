@@ -18,9 +18,14 @@ import {
   listProbes,
   listProjects,
   createLabel,
+  createTaskChecklist,
+  createTaskChecklistItem,
   deleteLabel,
+  deleteTaskChecklist,
+  deleteTaskChecklistItem,
   listLabels,
   listTaskActivity,
+  listTaskChecklists,
   listTaskComments,
   listTasks,
   login,
@@ -35,6 +40,8 @@ import {
   updateProfile,
   updateProject,
   updateTask,
+  updateTaskChecklist,
+  updateTaskChecklistItem,
   updateTaskComment,
 } from "./client";
 
@@ -1128,6 +1135,60 @@ describe("task activity API client", () => {
     },
   };
 
+  const checklistAddedEvent = {
+    id: "activity-4",
+    taskId: "task-1",
+    kind: "CHECKLIST_ADDED" as const,
+    actorUserId: "user-1",
+    actorDisplayName: "Ada",
+    createdAt: "2026-11-04T15:00:00.000Z",
+    payload: {
+      checklistId: "checklist-1",
+      namePreview: "QA",
+    },
+  };
+
+  const checklistRemovedEvent = {
+    id: "activity-5",
+    taskId: "task-1",
+    kind: "CHECKLIST_REMOVED" as const,
+    actorUserId: "user-1",
+    actorDisplayName: "Ada",
+    createdAt: "2026-11-04T16:00:00.000Z",
+    payload: {
+      checklistId: "checklist-1",
+      namePreview: "QA",
+    },
+  };
+
+  const checklistItemCompletedEvent = {
+    id: "activity-6",
+    taskId: "task-1",
+    kind: "CHECKLIST_ITEM_COMPLETED" as const,
+    actorUserId: "user-1",
+    actorDisplayName: "Ada",
+    createdAt: "2026-11-04T17:00:00.000Z",
+    payload: {
+      checklistId: "checklist-1",
+      itemId: "item-1",
+      textPreview: "Write tests",
+    },
+  };
+
+  const checklistItemUncompletedEvent = {
+    id: "activity-7",
+    taskId: "task-1",
+    kind: "CHECKLIST_ITEM_UNCOMPLETED" as const,
+    actorUserId: "user-1",
+    actorDisplayName: "Ada",
+    createdAt: "2026-11-04T18:00:00.000Z",
+    payload: {
+      checklistId: "checklist-1",
+      itemId: "item-1",
+      textPreview: "Write tests",
+    },
+  };
+
   it("lists activity with credentials included and strips non-public fields", async () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     const fetchMock = mockFetch((url, init) => {
@@ -1151,12 +1212,36 @@ describe("task activity API client", () => {
             ...createdEvent,
             stack: "must-not-be-kept",
           },
+          {
+            ...checklistAddedEvent,
+            secret: "must-not-be-kept",
+          },
+          {
+            ...checklistRemovedEvent,
+            token: "must-not-be-kept",
+          },
+          {
+            ...checklistItemCompletedEvent,
+            passwordHash: "must-not-be-kept",
+          },
+          {
+            ...checklistItemUncompletedEvent,
+            sessionId: "must-not-be-kept",
+          },
         ],
       });
     });
 
     await expect(listTaskActivity("task-1")).resolves.toEqual({
-      activity: [commentAddedEvent, fieldsChangedEvent, createdEvent],
+      activity: [
+        commentAddedEvent,
+        fieldsChangedEvent,
+        createdEvent,
+        checklistAddedEvent,
+        checklistRemovedEvent,
+        checklistItemCompletedEvent,
+        checklistItemUncompletedEvent,
+      ],
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(setItem).not.toHaveBeenCalled();
@@ -1216,6 +1301,179 @@ describe("task activity API client", () => {
     expect(missing).toMatchObject({
       status: 404,
       code: "NOT_FOUND",
+    });
+    expectNoTokenStorage();
+  });
+});
+
+describe("task checklists API client", () => {
+  const checklistItem = {
+    id: "item-1",
+    checklistId: "checklist-1",
+    text: "Write tests",
+    checked: false,
+    createdAt: "2026-11-05T12:00:00.000Z",
+  };
+
+  const checklist = {
+    id: "checklist-1",
+    taskId: "task-1",
+    name: "QA",
+    createdAt: "2026-11-05T11:00:00.000Z",
+    items: [checklistItem],
+  };
+
+  it("lists checklists with credentials included and strips non-public fields", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/checklists");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        checklists: [
+          {
+            ...checklist,
+            secret: "must-not-be-kept",
+            items: [
+              {
+                ...checklistItem,
+                token: "must-not-be-kept",
+              },
+            ],
+          },
+        ],
+      });
+    });
+
+    await expect(listTaskChecklists("task-1")).resolves.toEqual({
+      checklists: [checklist],
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("creates a checklist with credentials included", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/checklists");
+      expect(init?.method).toBe("POST");
+      expectCredentialsInclude(init);
+      expect(init?.body).toBe(JSON.stringify({ name: "QA" }));
+      return jsonResponse(201, { ...checklist, items: [] });
+    });
+
+    await expect(
+      createTaskChecklist("task-1", { name: "QA" }),
+    ).resolves.toEqual({ ...checklist, items: [] });
+    expectNoTokenStorage();
+  });
+
+  it("patches a checklist name with credentials included", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/checklists/checklist-1",
+      );
+      expect(init?.method).toBe("PATCH");
+      expectCredentialsInclude(init);
+      expect(init?.body).toBe(JSON.stringify({ name: "Renamed" }));
+      return jsonResponse(200, { ...checklist, name: "Renamed" });
+    });
+
+    await expect(
+      updateTaskChecklist("task-1", "checklist-1", { name: "Renamed" }),
+    ).resolves.toEqual({ ...checklist, name: "Renamed" });
+    expectNoTokenStorage();
+  });
+
+  it("deletes a checklist with DELETE, empty body, 204, and credentials included", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/checklists/checklist-1",
+      );
+      expect(init?.method).toBe("DELETE");
+      expectCredentialsInclude(init);
+      expect(init?.body).toBeUndefined();
+      return emptyResponse(204);
+    });
+
+    await expect(
+      deleteTaskChecklist("task-1", "checklist-1"),
+    ).resolves.toBeUndefined();
+    expectNoTokenStorage();
+  });
+
+  it("creates a checklist item with credentials included and no checked on create", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/checklists/checklist-1/items",
+      );
+      expect(init?.method).toBe("POST");
+      expectCredentialsInclude(init);
+      expect(init?.body).toBe(JSON.stringify({ text: "Write tests" }));
+      return jsonResponse(201, checklistItem);
+    });
+
+    await expect(
+      createTaskChecklistItem("task-1", "checklist-1", { text: "Write tests" }),
+    ).resolves.toEqual(checklistItem);
+    expectNoTokenStorage();
+  });
+
+  it("patches a checklist item checked state with credentials included", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/checklists/checklist-1/items/item-1",
+      );
+      expect(init?.method).toBe("PATCH");
+      expectCredentialsInclude(init);
+      expect(init?.body).toBe(JSON.stringify({ checked: true }));
+      return jsonResponse(200, { ...checklistItem, checked: true });
+    });
+
+    await expect(
+      updateTaskChecklistItem("task-1", "checklist-1", "item-1", {
+        checked: true,
+      }),
+    ).resolves.toEqual({ ...checklistItem, checked: true });
+    expectNoTokenStorage();
+  });
+
+  it("deletes a checklist item with DELETE, empty body, 204, and credentials included", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/checklists/checklist-1/items/item-1",
+      );
+      expect(init?.method).toBe("DELETE");
+      expectCredentialsInclude(init);
+      expect(init?.body).toBeUndefined();
+      return emptyResponse(204);
+    });
+
+    await expect(
+      deleteTaskChecklistItem("task-1", "checklist-1", "item-1"),
+    ).resolves.toBeUndefined();
+    expectNoTokenStorage();
+  });
+
+  it("maps unauthenticated checklist access without storing credentials", async () => {
+    mockFetch(() =>
+      jsonResponse(401, {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Authentication is required",
+        },
+      }),
+    );
+
+    const error = await listTaskChecklists("task-1").catch(
+      (err: unknown) => err,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "UNAUTHENTICATED",
+      message: "Authentication is required",
     });
     expectNoTokenStorage();
   });

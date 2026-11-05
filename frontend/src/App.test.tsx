@@ -504,9 +504,9 @@ describe("App frontend shell", () => {
     await user.click(await screen.findByRole("button", { name: /^alpha$/i }));
     expect(await screen.findByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /^tasks$/i })).toBeInTheDocument();
-    expect(await screen.findByRole("columnheader", { name: "TODO" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "IN_PROGRESS" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "DONE" })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "To do" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "In progress" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Done" })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: /^tasks$/i })).not.toBeInTheDocument();
     expect(expectProductSidebar()).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^alpha$/i })).toHaveAttribute(
@@ -740,6 +740,7 @@ describe("App frontend shell", () => {
   });
 
   it("uses DevTrack chrome with status columns on project detail and without Trello branding", async () => {
+    const user = userEvent.setup();
     mockFetch((url) => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
@@ -796,9 +797,9 @@ describe("App frontend shell", () => {
     expect(screen.getByRole("button", { name: /^add task$/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/new task title/i)).not.toBeInTheDocument();
     expect(expectProductSidebar()).toBeInTheDocument();
-    expect(await screen.findByRole("columnheader", { name: "TODO" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "IN_PROGRESS" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "DONE" })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "To do" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "In progress" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Done" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /write tests/i })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: /^tasks$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^list$/i })).not.toBeInTheDocument();
@@ -817,10 +818,15 @@ describe("App frontend shell", () => {
     expect(screen.queryByRole("link", { name: /probe/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /probe/i })).not.toBeInTheDocument();
     expectNoProbeUi();
-    const paletteSelector = screen.getByRole("combobox", { name: /color palette/i });
+    const paletteSelector = screen.getByRole("button", { name: /color palette/i });
     expect(paletteSelector).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /color palette/i })).not.toBeInTheDocument();
+    await user.click(paletteSelector);
+    const palettePicker = screen.getByTestId("ui-palette-picker");
     for (const id of UI_PALETTE_IDS) {
-      expect(screen.getByRole("option", { name: id })).toBeInTheDocument();
+      expect(
+        within(palettePicker).getByRole("radio", { name: new RegExp(`^${id}`) }),
+      ).toBeInTheDocument();
     }
   });
 
@@ -844,15 +850,22 @@ describe("App frontend shell", () => {
     const first = renderApp("/projects");
 
     expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
-    const selector = screen.getByRole("combobox", { name: /color palette/i });
+    const selector = screen.getByRole("button", { name: /color palette/i });
     expect(document.documentElement.dataset.palette).toBe("Forest");
-    await user.selectOptions(selector, "Ocean");
+    await user.click(selector);
+    await user.click(
+      within(screen.getByTestId("ui-palette-picker")).getByRole("radio", {
+        name: /^Ocean$/i,
+      }),
+    );
     expect(document.documentElement.dataset.palette).toBe("Ocean");
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Ocean");
     first.unmount();
 
     renderApp("/projects");
-    expect(await screen.findByRole("combobox", { name: /color palette/i })).toHaveValue("Ocean");
+    expect(await screen.findByRole("button", { name: /color palette/i })).toHaveTextContent(
+      "Ocean",
+    );
     expect(document.documentElement.dataset.palette).toBe("Ocean");
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Ocean");
     expectNoSessionTokenStorage();
@@ -882,11 +895,14 @@ describe("App frontend shell", () => {
 
     expect(await screen.findByText(/signed in as ada@example.com/i)).toBeInTheDocument();
     expect(document.documentElement.dataset.palette).toBe("Aurora");
-    expect(screen.getByRole("combobox", { name: /color palette/i })).toHaveValue("Aurora");
+    expect(screen.getByRole("button", { name: /color palette/i })).toHaveTextContent(
+      "Aurora",
+    );
 
     await user.click(screen.getByRole("button", { name: /log out/i }));
     expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
     expectNoProductSidebar();
+    expect(screen.queryByRole("button", { name: /color palette/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /color palette/i })).not.toBeInTheDocument();
     expect(document.documentElement.dataset.palette).toBe("Aurora");
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Aurora");
@@ -978,7 +994,7 @@ describe("App frontend shell", () => {
 
     await user.click(screen.getByRole("button", { name: /^shared alpha$/i }));
     expect(await screen.findByRole("heading", { name: /^shared alpha$/i })).toBeInTheDocument();
-    expect(await screen.findByRole("columnheader", { name: "TODO" })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "To do" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /edit project/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^add task$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /archive project/i })).not.toBeInTheDocument();

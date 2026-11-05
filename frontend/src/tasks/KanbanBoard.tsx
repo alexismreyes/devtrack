@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LabelChips } from "./LabelChips";
+import { taskStatusLabel } from "./statusDisplay";
 
 const COLUMN_STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 
@@ -195,9 +196,10 @@ function KanbanColumn({
       <h4
         id={`task-column-${status}`}
         role="columnheader"
-        className="mb-3 shrink-0 text-sm font-semibold tracking-tight"
+        className="mb-3 shrink-0 inline-flex items-center rounded-md bg-muted px-2 py-1 text-sm font-semibold tracking-tight text-foreground"
+        data-testid={`kanban-column-header-${status}`}
       >
-        {status}
+        {taskStatusLabel(status)}
       </h4>
       <ul
         aria-label={`${status} tasks`}

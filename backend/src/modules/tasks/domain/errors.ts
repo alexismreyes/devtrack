@@ -95,3 +95,31 @@ export class DuplicateLabelNameError extends Error {
     this.name = "DuplicateLabelNameError";
   }
 }
+
+export class ChecklistNotFoundError extends Error {
+  constructor() {
+    super("Checklist was not found");
+    this.name = "ChecklistNotFoundError";
+  }
+}
+
+export class ChecklistItemNotFoundError extends Error {
+  constructor() {
+    super("Checklist item was not found");
+    this.name = "ChecklistItemNotFoundError";
+  }
+}
+
+export class InvalidChecklistNameError extends Error {
+  constructor() {
+    super("Checklist name must be 1–80 characters after trim");
+    this.name = "InvalidChecklistNameError";
+  }
+}
+
+export class InvalidChecklistItemTextError extends Error {
+  constructor() {
+    super("Checklist item text must be 1–200 characters after trim");
+    this.name = "InvalidChecklistItemTextError";
+  }
+}

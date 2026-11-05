@@ -17,6 +17,7 @@ import {
 } from "../api/client";
 import type {
   PublicActivityDto,
+  PublicChecklistDto,
   PublicCommentDto,
   PublicLabelDto,
   PublicTaskDto,
@@ -30,8 +31,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, nativeSelectClassName } from "@/lib/utils";
 import { CommentsActivityPanel } from "./CommentsActivityPanel";
+import { CreateChecklistDialog } from "./CreateChecklistDialog";
 import { LabelChips } from "./LabelChips";
 import { LabelsPopover } from "./LabelsPopover";
+import { taskStatusLabel } from "./statusDisplay";
+import { TaskChecklistsPanel } from "./TaskChecklistsPanel";
+
+const TASK_FIELD_LABEL_CLASS =
+  "text-xs font-normal text-muted-foreground";
 
 type TaskDetailProps = {
   taskId: string;
@@ -124,6 +131,9 @@ export function TaskDetail({
     kind: "loading",
   });
   const [catalogLabels, setCatalogLabels] = useState<PublicLabelDto[]>([]);
+  const [createChecklistOpen, setCreateChecklistOpen] = useState(false);
+  const [ingestedChecklist, setIngestedChecklist] =
+    useState<PublicChecklistDto | null>(null);
 
   const applyTask = useCallback((next: PublicTaskDto) => {
     setTask(next);
@@ -513,6 +523,15 @@ export function TaskDetail({
                 onUpdated={onUpdated}
                 onUnauthenticated={onUnauthenticated}
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={archived || !canWrite}
+                onClick={() => setCreateChecklistOpen(true)}
+              >
+                Checklist
+              </Button>
             </div>
 
             {task.labels.length === 0 ? (
@@ -527,7 +546,12 @@ export function TaskDetail({
                 className="grid gap-3"
               >
                 <Label className="grid gap-2">
-                  Task title
+                  <span
+                    className={TASK_FIELD_LABEL_CLASS}
+                    data-testid="task-field-label"
+                  >
+                    Task title
+                  </span>
                   <Input
                     type="text"
                     name="task-title"
@@ -537,7 +561,12 @@ export function TaskDetail({
                   />
                 </Label>
                 <Label className="grid gap-2">
-                  Task description
+                  <span
+                    className={TASK_FIELD_LABEL_CLASS}
+                    data-testid="task-field-label"
+                  >
+                    Task description
+                  </span>
                   <Textarea
                     name="task-description"
                     value={description}
@@ -546,7 +575,12 @@ export function TaskDetail({
                   />
                 </Label>
                 <Label className="grid gap-2">
-                  Task due date
+                  <span
+                    className={TASK_FIELD_LABEL_CLASS}
+                    data-testid="task-field-label"
+                  >
+                    Task due date
+                  </span>
                   <Input
                     type="date"
                     name="task-due-date"
@@ -556,7 +590,12 @@ export function TaskDetail({
                   />
                 </Label>
                 <Label className="grid gap-2">
-                  Task status
+                  <span
+                    className={TASK_FIELD_LABEL_CLASS}
+                    data-testid="task-field-label"
+                  >
+                    Task status
+                  </span>
                   <select
                     name="task-status"
                     className={cn(nativeSelectClassName)}
@@ -568,13 +607,18 @@ export function TaskDetail({
                   >
                     {STATUSES.map((value) => (
                       <option key={value} value={value}>
-                        {value}
+                        {taskStatusLabel(value)}
                       </option>
                     ))}
                   </select>
                 </Label>
                 <Label className="grid gap-2">
-                  Task priority
+                  <span
+                    className={TASK_FIELD_LABEL_CLASS}
+                    data-testid="task-field-label"
+                  >
+                    Task priority
+                  </span>
                   <select
                     name="task-priority"
                     className={cn(nativeSelectClassName)}
@@ -612,6 +656,15 @@ export function TaskDetail({
             ) : (
               <p className="text-sm">{task.description}</p>
             )}
+
+            <TaskChecklistsPanel
+              taskId={taskId}
+              canWrite={canWrite}
+              disabled={archived}
+              onUnauthenticated={onUnauthenticated}
+              onActivityMaybeChanged={loadActivity}
+              ingestCreatedChecklist={ingestedChecklist}
+            />
           </div>
 
           <CommentsActivityPanel
@@ -670,6 +723,16 @@ export function TaskDetail({
           {actionState.message}
         </p>
       ) : null}
+
+      <CreateChecklistDialog
+        open={createChecklistOpen}
+        onOpenChange={setCreateChecklistOpen}
+        taskId={taskId}
+        disabled={archived || !canWrite}
+        onCreated={setIngestedChecklist}
+        onUnauthenticated={onUnauthenticated}
+        onActivityMaybeChanged={loadActivity}
+      />
     </section>
   );
 }

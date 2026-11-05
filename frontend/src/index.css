@@ -466,3 +466,41 @@
     background-repeat: no-repeat;
   }
 }
+
+/* Safe CSS-only circular previews for UiPaletteSelector (Q-041 catalog). */
+.ui-palette-preview[data-preview-palette="Forest"] {
+  background: oklch(0.38 0.07 155);
+}
+.ui-palette-preview[data-preview-palette="Ocean"] {
+  background: oklch(0.42 0.12 245);
+}
+.ui-palette-preview[data-preview-palette="Sunset"] {
+  background: oklch(0.52 0.16 40);
+}
+.ui-palette-preview[data-preview-palette="Violet"] {
+  background: oklch(0.45 0.16 300);
+}
+.ui-palette-preview[data-preview-palette="Midnight"] {
+  background: oklch(0.28 0.06 270);
+}
+.ui-palette-preview[data-preview-palette="Aurora"] {
+  background-image: linear-gradient(160deg, oklch(0.82 0.08 180), oklch(0.78 0.1 300));
+}
+.ui-palette-preview[data-preview-palette="Ember"] {
+  background-image: linear-gradient(160deg, oklch(0.86 0.1 75), oklch(0.78 0.12 20));
+}
+.ui-palette-preview[data-preview-palette="Lagoon"] {
+  background-image: linear-gradient(160deg, oklch(0.88 0.07 210), oklch(0.84 0.09 155));
+}
+.ui-palette-preview[data-preview-palette="Twilight"] {
+  background-image: linear-gradient(160deg, oklch(0.28 0.1 280), oklch(0.32 0.14 330));
+}
+.ui-palette-preview[data-preview-palette="Citrus"] {
+  background-image: linear-gradient(160deg, oklch(0.92 0.12 120), oklch(0.9 0.14 85));
+}
+.ui-palette-preview[data-preview-palette="Magma"] {
+  background-image: linear-gradient(160deg, oklch(0.24 0.1 25), oklch(0.38 0.16 45));
+}
+.ui-palette-preview[data-preview-palette="Glacier"] {
+  background-image: linear-gradient(160deg, oklch(0.94 0.03 230), oklch(0.9 0.05 200));
+}

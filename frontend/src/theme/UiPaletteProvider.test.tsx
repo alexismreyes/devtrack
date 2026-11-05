@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { expectNoSessionTokenStorage } from "../test/storage";
@@ -24,7 +24,10 @@ describe("UiPaletteProvider", () => {
   it("defaults to Forest when storage is empty", () => {
     renderSelector();
     expect(document.documentElement.dataset.palette).toBe("Forest");
-    expect(screen.getByRole("combobox", { name: /color palette/i })).toHaveValue("Forest");
+    expect(screen.getByRole("button", { name: /color palette/i })).toHaveTextContent(
+      "Forest",
+    );
+    expect(screen.queryByRole("combobox", { name: /color palette/i })).not.toBeInTheDocument();
     expectNoSessionTokenStorage();
   });
 
@@ -32,7 +35,9 @@ describe("UiPaletteProvider", () => {
     window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "not-a-palette");
     renderSelector();
     expect(document.documentElement.dataset.palette).toBe("Forest");
-    expect(screen.getByRole("combobox", { name: /color palette/i })).toHaveValue("Forest");
+    expect(screen.getByRole("button", { name: /color palette/i })).toHaveTextContent(
+      "Forest",
+    );
   });
 
   it("applies a valid stored palette without a guest-only rewrite", () => {
@@ -42,15 +47,21 @@ describe("UiPaletteProvider", () => {
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Glacier");
   });
 
-  it("writes the selected catalog id and lists the full Q-041 catalog", async () => {
+  it("writes the selected catalog id via circular previews and lists the full Q-041 catalog", async () => {
     const user = userEvent.setup();
     renderSelector();
-    const selector = screen.getByRole("combobox", { name: /color palette/i });
-    expect(selector).toHaveAccessibleName(/color palette/i);
+    const trigger = screen.getByRole("button", { name: /color palette/i });
+    expect(trigger).toHaveAccessibleName(/color palette/i);
+    await user.click(trigger);
+    const picker = screen.getByTestId("ui-palette-picker");
     for (const id of UI_PALETTE_IDS) {
-      expect(screen.getByRole("option", { name: id })).toBeInTheDocument();
+      const option = within(picker).getByRole("radio", { name: new RegExp(`^${id}`) });
+      expect(option).toBeInTheDocument();
+      expect(
+        option.querySelector(`.ui-palette-preview[data-preview-palette="${id}"]`),
+      ).not.toBeNull();
     }
-    await user.selectOptions(selector, "Ocean");
+    await user.click(within(picker).getByRole("radio", { name: /^Ocean$/i }));
     expect(document.documentElement.dataset.palette).toBe("Ocean");
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Ocean");
     expect(window.sessionStorage.length).toBe(0);
