@@ -14,6 +14,7 @@ import { FakeProjectAccessPort } from "./fake-project-access-port";
 import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { FakeUsersIdentityPort } from "./fake-users-identity-port";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
+import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
@@ -137,6 +138,7 @@ function createHarness(activity: ActivityRepository = new InMemoryActivityReposi
     authorization,
     activity,
     taskLabels,
+    new InMemoryAttachmentsRepository(tasks),
     unitOfWork,
   );
   const commentsService = new CommentsService(

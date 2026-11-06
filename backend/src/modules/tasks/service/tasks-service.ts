@@ -13,12 +13,17 @@ import {
   TaskActivityEvent,
 } from "../domain/task-activity";
 import type { ActivityRepository } from "../repository/activity-repository";
+import type { AttachmentsRepository } from "../repository/attachments-repository";
 import type { TaskLabelsRepository } from "../repository/task-labels-repository";
 import type {
   ListTasksFilters,
   TasksRepository,
   UpdateTaskInput,
 } from "../repository/tasks-repository";
+import {
+  isCoverImageContentType,
+  type TaskCoverSummary,
+} from "../domain/task-attachment";
 
 export type CreateTaskCommand = {
   title: string;
@@ -45,6 +50,7 @@ export type TaskView = {
   createdAt: Date;
   deletedAt: Date | null;
   labels: TaskLabelSummary[];
+  cover: TaskCoverSummary | null;
 };
 
 export class TasksService {
@@ -54,6 +60,7 @@ export class TasksService {
     private readonly authorization: TaskAuthorizationPort,
     private readonly activity: ActivityRepository,
     private readonly taskLabels: TaskLabelsRepository,
+    private readonly attachments: AttachmentsRepository,
     private readonly unitOfWork: UnitOfWork,
   ) {}
 
@@ -81,7 +88,7 @@ export class TasksService {
       );
       return created;
     });
-    return this.toView(task, []);
+    return this.toView(task, [], null);
   }
 
   async listByProject(
@@ -169,21 +176,51 @@ export class TasksService {
 
   private async toViewWithLabels(task: Task): Promise<TaskView> {
     const byTask = await this.taskLabels.listForTaskIds([task.id]);
-    return this.toView(task, byTask.get(task.id) ?? []);
+    const covers = await this.coverMapForTasks([task]);
+    return this.toView(
+      task,
+      byTask.get(task.id) ?? [],
+      covers.get(task.id) ?? null,
+    );
   }
 
   private async toViews(tasks: Task[]): Promise<TaskView[]> {
     const byTask = await this.taskLabels.listForTaskIds(
       tasks.map((task) => task.id),
     );
+    const covers = await this.coverMapForTasks(tasks);
     return tasks.map((task) =>
-      this.toView(task, byTask.get(task.id) ?? []),
+      this.toView(
+        task,
+        byTask.get(task.id) ?? [],
+        covers.get(task.id) ?? null,
+      ),
     );
+  }
+
+  private async coverMapForTasks(
+    tasks: Task[],
+  ): Promise<Map<string, TaskCoverSummary>> {
+    const rows = await this.attachments.listCoverSummariesForTaskIds(
+      tasks.map((task) => task.id),
+    );
+    const map = new Map<string, TaskCoverSummary>();
+    for (const row of rows) {
+      if (!isCoverImageContentType(row.contentType)) {
+        continue;
+      }
+      map.set(row.taskId, {
+        attachmentId: row.attachmentId,
+        contentType: row.contentType,
+      });
+    }
+    return map;
   }
 
   private toView(
     task: Task,
     labels: Array<{ id: string; name: string; color: LabelColor }>,
+    cover: TaskCoverSummary | null,
   ): TaskView {
     return {
       id: task.id,
@@ -200,6 +237,7 @@ export class TasksService {
         name: label.name,
         color: label.color,
       })),
+      cover,
     };
   }
 }

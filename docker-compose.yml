@@ -24,6 +24,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       CORS_ORIGIN: ${CORS_ORIGIN}
       PORT: ${PORT:-3000}
+      ATTACHMENTS_ROOT: /data/attachments
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
@@ -32,6 +33,7 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
+      - attachments_data:/data/attachments
 
   frontend:
     build:
@@ -47,3 +49,4 @@ services:
 
 volumes:
   pgdata:
+  attachments_data:

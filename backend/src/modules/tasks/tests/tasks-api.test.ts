@@ -23,7 +23,10 @@ import { PrismaChecklistsRepository } from "../repository/prisma-checklists-repo
 import { PrismaCommentsRepository } from "../repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../repository/prisma-tasks-repository";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
+import { InMemoryAttachmentStorage } from "./in-memory-attachment-storage";
+import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
 import { InMemoryChecklistsRepository } from "./in-memory-checklists-repository";
+import { PrismaAttachmentsRepository } from "../repository/prisma-attachments-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
@@ -77,6 +80,8 @@ function createTasksApp() {
     commentsRepository,
     activityRepository,
     checklistsRepository: new InMemoryChecklistsRepository(),
+    attachmentsRepository: new InMemoryAttachmentsRepository(tasksRepository),
+    attachmentStorage: new InMemoryAttachmentStorage(),
     labelsRepository,
     taskLabelsRepository,
     projectMembersRepository,
@@ -163,6 +168,7 @@ function assertPublicTask(
     dueDate: expected.dueDate,
     createdAt: expect.any(String),
     labels: [],
+    cover: null,
   });
   const task = body as {
     id: string;
@@ -1152,17 +1158,21 @@ describe("tasks HTTP API persistence", () => {
   let app: ReturnType<typeof createApp> | null = null;
 
   if (hasDatabaseUrl) {
+    process.env.ATTACHMENTS_ROOT ??= "./data/attachments-test";
     prisma = createPrismaClient(loadConfig().databaseUrl);
+    const tasksRepository = new PrismaTasksRepository(prisma);
     app = createApp({
       corsOrigin: process.env.CORS_ORIGIN,
       systemRepository: new PrismaSystemRepository(prisma),
       usersRepository: new PrismaUsersRepository(prisma),
       authRepository: new PrismaAuthRepository(prisma),
       projectsRepository: new PrismaProjectsRepository(prisma),
-      tasksRepository: new PrismaTasksRepository(prisma),
+      tasksRepository,
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),
       checklistsRepository: new PrismaChecklistsRepository(prisma),
+      attachmentsRepository: new PrismaAttachmentsRepository(prisma),
+      attachmentStorage: new InMemoryAttachmentStorage(),
       labelsRepository: new PrismaLabelsRepository(prisma),
       taskLabelsRepository: new PrismaTaskLabelsRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),

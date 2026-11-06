@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -17,7 +17,12 @@ import {
   type UniqueIdentifier,
 } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
-import type { PublicTaskDto, TaskStatus } from "../api/types";
+import { fetchAttachmentContent } from "../api/client";
+import type {
+  PublicCoverSummaryDto,
+  PublicTaskDto,
+  TaskStatus,
+} from "../api/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -232,6 +237,63 @@ function KanbanColumn({
   );
 }
 
+function KanbanCardCoverImage({
+  taskId,
+  cover,
+}: {
+  taskId: string;
+  cover: PublicCoverSummaryDto;
+}) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
+
+    async function load(): Promise<void> {
+      try {
+        const { blob } = await fetchAttachmentContent(
+          taskId,
+          cover.attachmentId,
+        );
+        createdUrl = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(createdUrl);
+          createdUrl = null;
+          return;
+        }
+        setObjectUrl(createdUrl);
+      } catch {
+        if (!cancelled) {
+          setObjectUrl(null);
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+      if (createdUrl !== null) {
+        URL.revokeObjectURL(createdUrl);
+      }
+    };
+  }, [cover.attachmentId, taskId]);
+
+  if (objectUrl === null) {
+    return null;
+  }
+
+  return (
+    <img
+      src={objectUrl}
+      alt=""
+      data-testid="kanban-card-cover"
+      data-cover-attachment-id={cover.attachmentId}
+      className="mb-1 h-24 w-full rounded-md object-cover"
+    />
+  );
+}
+
 function KanbanCardFace({
   task,
   onSelectTask,
@@ -242,6 +304,9 @@ function KanbanCardFace({
   return (
     <Card>
       <CardContent className="grid gap-1 p-3">
+        {task.cover === null ? null : (
+          <KanbanCardCoverImage taskId={task.id} cover={task.cover} />
+        )}
         {onSelectTask === undefined ? (
           <p className="px-2 py-1 text-sm font-medium">{task.title}</p>
         ) : (

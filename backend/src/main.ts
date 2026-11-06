@@ -8,11 +8,13 @@ import { PrismaProjectMembersRepository } from "./modules/project-members/reposi
 import { PrismaProjectsRepository } from "./modules/projects/repository/prisma-projects-repository";
 import { PrismaSystemRepository } from "./modules/system/repository/prisma-system-repository";
 import { PrismaActivityRepository } from "./modules/tasks/repository/prisma-activity-repository";
+import { PrismaAttachmentsRepository } from "./modules/tasks/repository/prisma-attachments-repository";
 import { PrismaChecklistsRepository } from "./modules/tasks/repository/prisma-checklists-repository";
 import { PrismaCommentsRepository } from "./modules/tasks/repository/prisma-comments-repository";
 import { PrismaLabelsRepository } from "./modules/tasks/repository/prisma-labels-repository";
 import { PrismaTaskLabelsRepository } from "./modules/tasks/repository/prisma-task-labels-repository";
 import { PrismaTasksRepository } from "./modules/tasks/repository/prisma-tasks-repository";
+import { FilesystemAttachmentStorage } from "./modules/tasks/storage/filesystem-attachment-storage";
 import { PrismaUsersRepository } from "./modules/users/repository/prisma-users-repository";
 
 loadEnvFiles();
@@ -27,6 +29,10 @@ const tasksRepository = new PrismaTasksRepository(prisma);
 const commentsRepository = new PrismaCommentsRepository(prisma);
 const activityRepository = new PrismaActivityRepository(prisma);
 const checklistsRepository = new PrismaChecklistsRepository(prisma);
+const attachmentsRepository = new PrismaAttachmentsRepository(prisma);
+const attachmentStorage = new FilesystemAttachmentStorage(
+  config.attachmentsRoot,
+);
 const labelsRepository = new PrismaLabelsRepository(prisma);
 const taskLabelsRepository = new PrismaTaskLabelsRepository(prisma);
 const projectMembersRepository = new PrismaProjectMembersRepository(prisma);
@@ -40,6 +46,8 @@ const app = createApp({
   commentsRepository,
   activityRepository,
   checklistsRepository,
+  attachmentsRepository,
+  attachmentStorage,
   labelsRepository,
   taskLabelsRepository,
   projectMembersRepository,

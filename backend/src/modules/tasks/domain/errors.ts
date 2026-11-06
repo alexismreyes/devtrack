@@ -123,3 +123,52 @@ export class InvalidChecklistItemTextError extends Error {
     this.name = "InvalidChecklistItemTextError";
   }
 }
+
+export class AttachmentNotFoundError extends Error {
+  constructor() {
+    super("Attachment was not found");
+    this.name = "AttachmentNotFoundError";
+  }
+}
+
+export class InvalidAttachmentFilenameError extends Error {
+  constructor() {
+    super("Attachment filename is invalid");
+    this.name = "InvalidAttachmentFilenameError";
+  }
+}
+
+export class InvalidAttachmentContentTypeError extends Error {
+  constructor() {
+    super("Attachment content type is not allowed");
+    this.name = "InvalidAttachmentContentTypeError";
+  }
+}
+
+export class AttachmentSizeExceededError extends Error {
+  constructor() {
+    super("Attachment exceeds the maximum allowed size");
+    this.name = "AttachmentSizeExceededError";
+  }
+}
+
+export class AttachmentCountExceededError extends Error {
+  constructor() {
+    super("Task already has the maximum number of attachments");
+    this.name = "AttachmentCountExceededError";
+  }
+}
+
+export class InvalidCoverAttachmentError extends Error {
+  constructor() {
+    super("Cover must be an image attachment on the same task");
+    this.name = "InvalidCoverAttachmentError";
+  }
+}
+
+export class AttachmentStorageError extends Error {
+  constructor(message = "Attachment storage operation failed") {
+    super(message);
+    this.name = "AttachmentStorageError";
+  }
+}

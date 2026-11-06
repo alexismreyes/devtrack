@@ -113,13 +113,19 @@ Last confirmed: 2026-10-31 (features `001`–`009`).
 
 - **Spec:** `specs/015-task-checklists/`
 - **What:** Named checklists + items on TaskDetail; progress bar; checklist activity kinds.
-- **Approach:** Owned by `tasks`. Nested REST; hard-delete cascade; `createdAt` order; no Kanban embed. Emit `CHECKLIST_ADDED` / `CHECKLIST_REMOVED` / `CHECKLIST_ITEM_COMPLETED` / `CHECKLIST_ITEM_UNCOMPLETED` same-tx. UI: action-row Checklist + main-column lists (strikethrough, no hide). Deferred: **G** attachments.
+- **Approach:** Owned by `tasks`. Nested REST; hard-delete cascade; `createdAt` order; no Kanban embed. Emit `CHECKLIST_ADDED` / `CHECKLIST_REMOVED` / `CHECKLIST_ITEM_COMPLETED` / `CHECKLIST_ITEM_UNCOMPLETED` same-tx. UI: action-row Checklist + main-column lists (strikethrough, no hide). Later shipped: **G** attachments (`017`).
 
 ### 016 — UI Refinements
 
 - **Spec:** `specs/016-ui-refinements/`
 - **What:** Checklist create Dialog; checklist contrast; thinner field labels; palette preview picker; friendly fixed statuses.
-- **Approach:** Frontend-only. Create Dialog from Checklist button; checklist blocks `bg-card`+border; thinner TaskDetail labels; Color palette circle + scheme preview (`devtrack.uiPalette` only); `To do` / `In progress` / `Done` on TaskDetail status + Kanban headers (API values unchanged). Custom statuses deferred separately. Deferred: **G** attachments.
+- **Approach:** Frontend-only. Create Dialog from Checklist button; checklist blocks `bg-card`+border; thinner TaskDetail labels; Color palette circle + scheme preview (`devtrack.uiPalette` only); `To do` / `In progress` / `Done` on TaskDetail status + Kanban headers (API values unchanged). Custom statuses deferred separately. Later shipped: **G** attachments (`017`).
+
+### 017 — Task Attachments
+
+- **Spec:** `specs/017-task-attachments/`
+- **What:** Task file attachments + image cover; Kanban cover face.
+- **Approach:** Owned by `tasks`. Compose volume (`attachments_data` / `ATTACHMENTS_ROOT`); nested multipart + authenticated `/content`; cover summary on `PublicTaskDto` only; activity `ATTACHMENT_ADDED` / `ATTACHMENT_REMOVED` / `COVER_CHANGED`. UI: action-row Attachment Popover for upload; attachment list stacked in main column. Max 20 MiB/file. Deferred: custom statuses; **C** audit.
 
 ---
 

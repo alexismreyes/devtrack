@@ -1,6 +1,9 @@
 import type {
   ActivityListResponseDto,
   AddMemberRequestDto,
+  AttachmentAddedActivityPayload,
+  AttachmentListResponseDto,
+  AttachmentRemovedActivityPayload,
   ChecklistAddedActivityPayload,
   ChecklistItemCompletedActivityPayload,
   ChecklistItemUncompletedActivityPayload,
@@ -8,6 +11,8 @@ import type {
   ChecklistRemovedActivityPayload,
   CommentAddedActivityPayload,
   CommentListResponseDto,
+  CoverChangedActivityPayload,
+  CoverResponseDto,
   CreateChecklistItemRequestDto,
   CreateChecklistRequestDto,
   CreateCommentRequestDto,
@@ -28,9 +33,11 @@ import type {
   ProjectListResponseDto,
   ProjectMemberRole,
   PublicActivityDto,
+  PublicAttachmentDto,
   PublicChecklistDto,
   PublicChecklistItemDto,
   PublicCommentDto,
+  PublicCoverSummaryDto,
   PublicLabelDto,
   PublicMemberDto,
   PublicProjectDto,
@@ -38,6 +45,7 @@ import type {
   PublicUserDto,
   RegisterRequestDto,
   ReplaceTaskLabelsRequestDto,
+  SetCoverRequestDto,
   TaskActivityChangeField,
   TaskActivityFieldChange,
   TaskActivityKind,
@@ -430,6 +438,110 @@ export async function deleteTaskChecklistItem(
   );
 }
 
+export async function listTaskAttachments(
+  taskId: string,
+): Promise<AttachmentListResponseDto> {
+  const body = await request("GET", attachmentsCollectionPath(taskId));
+  if (!isAttachmentListResponse(body)) {
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "Unexpected attachment list response",
+    );
+  }
+  return {
+    attachments: body.attachments.map(toPublicAttachment),
+  };
+}
+
+export async function uploadTaskAttachment(
+  taskId: string,
+  file: File,
+): Promise<PublicAttachmentDto> {
+  const form = new FormData();
+  form.append("file", file);
+  const body = await requestMultipart(
+    "POST",
+    attachmentsCollectionPath(taskId),
+    form,
+  );
+  return requirePublicAttachment(body, "Unexpected attachment response");
+}
+
+export async function deleteTaskAttachment(
+  taskId: string,
+  attachmentId: string,
+): Promise<void> {
+  await request("DELETE", attachmentItemPath(taskId, attachmentId));
+}
+
+export function attachmentContentUrl(
+  taskId: string,
+  attachmentId: string,
+): string {
+  return `${getApiBaseUrl()}${attachmentContentPath(taskId, attachmentId)}`;
+}
+
+export async function fetchAttachmentContent(
+  taskId: string,
+  attachmentId: string,
+): Promise<{ blob: Blob; contentType: string }> {
+  const url = attachmentContentUrl(taskId, attachmentId);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "*/*" },
+    });
+  } catch (err) {
+    throw new ApiError(0, "INTERNAL_ERROR", toUserMessage(err));
+  }
+
+  if (!response.ok) {
+    const parsed = await parseJson(response);
+    if (isErrorEnvelope(parsed)) {
+      throw new ApiError(
+        response.status,
+        parsed.error.code,
+        parsed.error.message,
+      );
+    }
+    throw new ApiError(response.status, "INTERNAL_ERROR", "Request failed");
+  }
+
+  const contentTypeHeader = response.headers.get("Content-Type");
+  const contentType =
+    contentTypeHeader === null || contentTypeHeader.trim() === ""
+      ? "application/octet-stream"
+      : contentTypeHeader.split(";")[0]!.trim();
+  const blob = await response.blob();
+  return { blob, contentType };
+}
+
+export async function setTaskCover(
+  taskId: string,
+  input: SetCoverRequestDto,
+): Promise<CoverResponseDto> {
+  const body = await request("PUT", taskCoverPath(taskId), input);
+  if (!isCoverResponse(body)) {
+    throw new ApiError(500, "INTERNAL_ERROR", "Unexpected cover response");
+  }
+  return {
+    cover: body.cover === null ? null : toPublicCoverSummary(body.cover),
+  };
+}
+
+export async function clearTaskCover(taskId: string): Promise<CoverResponseDto> {
+  const body = await request("DELETE", taskCoverPath(taskId));
+  if (!isCoverResponse(body)) {
+    throw new ApiError(500, "INTERNAL_ERROR", "Unexpected cover response");
+  }
+  return {
+    cover: body.cover === null ? null : toPublicCoverSummary(body.cover),
+  };
+}
+
 export async function getDashboard(): Promise<DashboardSummaryResponseDto> {
   const body = await request("GET", "/api/dashboard");
   if (!isDashboardSummaryResponse(body)) {
@@ -512,6 +624,38 @@ async function request(
       "INTERNAL_ERROR",
       "Request failed",
     );
+  }
+  return parsed;
+}
+
+async function requestMultipart(
+  method: "POST",
+  path: string,
+  form: FormData,
+): Promise<unknown> {
+  const url = `${getApiBaseUrl()}${path}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      body: form,
+    });
+  } catch (err) {
+    throw new ApiError(0, "INTERNAL_ERROR", toUserMessage(err));
+  }
+
+  const parsed = await parseJson(response);
+  if (!response.ok) {
+    if (isErrorEnvelope(parsed)) {
+      throw new ApiError(
+        response.status,
+        parsed.error.code,
+        parsed.error.message,
+      );
+    }
+    throw new ApiError(response.status, "INTERNAL_ERROR", "Request failed");
   }
   return parsed;
 }
@@ -681,7 +825,34 @@ function toPublicTask(value: PublicTaskDto): PublicTaskDto {
     dueDate: value.dueDate,
     createdAt: value.createdAt,
     labels: value.labels.map(toTaskEmbeddedLabel),
+    cover:
+      value.cover === null ? null : toPublicCoverSummary(value.cover),
   };
+}
+
+function toPublicCoverSummary(
+  value: PublicCoverSummaryDto,
+): PublicCoverSummaryDto {
+  return {
+    attachmentId: value.attachmentId,
+    contentType: value.contentType,
+  };
+}
+
+function isPublicCoverSummary(
+  value: unknown,
+): value is PublicCoverSummaryDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const cover = value as {
+    attachmentId?: unknown;
+    contentType?: unknown;
+  };
+  return (
+    typeof cover.attachmentId === "string" &&
+    typeof cover.contentType === "string"
+  );
 }
 
 function isTaskStatus(value: unknown): value is TaskStatus {
@@ -795,6 +966,7 @@ function isPublicTask(value: unknown): value is PublicTaskDto {
     dueDate?: unknown;
     createdAt?: unknown;
     labels?: unknown;
+    cover?: unknown;
   };
   return (
     typeof task.id === "string" &&
@@ -806,7 +978,8 @@ function isPublicTask(value: unknown): value is PublicTaskDto {
     (typeof task.dueDate === "string" || task.dueDate === null) &&
     typeof task.createdAt === "string" &&
     Array.isArray(task.labels) &&
-    task.labels.every(isTaskEmbeddedLabel)
+    task.labels.every(isTaskEmbeddedLabel) &&
+    (task.cover === null || isPublicCoverSummary(task.cover))
   );
 }
 
@@ -1001,7 +1174,95 @@ const TASK_ACTIVITY_KINDS: readonly TaskActivityKind[] = [
   "CHECKLIST_REMOVED",
   "CHECKLIST_ITEM_COMPLETED",
   "CHECKLIST_ITEM_UNCOMPLETED",
+  "ATTACHMENT_ADDED",
+  "ATTACHMENT_REMOVED",
+  "COVER_CHANGED",
 ];
+
+function attachmentsCollectionPath(taskId: string): string {
+  return `/api/tasks/${taskId}/attachments`;
+}
+
+function attachmentItemPath(taskId: string, attachmentId: string): string {
+  return `${attachmentsCollectionPath(taskId)}/${attachmentId}`;
+}
+
+function attachmentContentPath(taskId: string, attachmentId: string): string {
+  return `${attachmentItemPath(taskId, attachmentId)}/content`;
+}
+
+function taskCoverPath(taskId: string): string {
+  return `/api/tasks/${taskId}/cover`;
+}
+
+function requirePublicAttachment(
+  value: unknown,
+  message: string,
+): PublicAttachmentDto {
+  if (!isPublicAttachment(value)) {
+    throw new ApiError(500, "INTERNAL_ERROR", message);
+  }
+  return toPublicAttachment(value);
+}
+
+function toPublicAttachment(value: PublicAttachmentDto): PublicAttachmentDto {
+  return {
+    id: value.id,
+    taskId: value.taskId,
+    originalFilename: value.originalFilename,
+    contentType: value.contentType,
+    sizeBytes: value.sizeBytes,
+    createdAt: value.createdAt,
+    uploadedByUserId: value.uploadedByUserId,
+    isCover: value.isCover,
+  };
+}
+
+function isPublicAttachment(value: unknown): value is PublicAttachmentDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const attachment = value as {
+    id?: unknown;
+    taskId?: unknown;
+    originalFilename?: unknown;
+    contentType?: unknown;
+    sizeBytes?: unknown;
+    createdAt?: unknown;
+    uploadedByUserId?: unknown;
+    isCover?: unknown;
+  };
+  return (
+    typeof attachment.id === "string" &&
+    typeof attachment.taskId === "string" &&
+    typeof attachment.originalFilename === "string" &&
+    typeof attachment.contentType === "string" &&
+    typeof attachment.sizeBytes === "number" &&
+    Number.isInteger(attachment.sizeBytes) &&
+    attachment.sizeBytes >= 0 &&
+    typeof attachment.createdAt === "string" &&
+    typeof attachment.uploadedByUserId === "string" &&
+    typeof attachment.isCover === "boolean"
+  );
+}
+
+function isAttachmentListResponse(
+  value: unknown,
+): value is AttachmentListResponseDto {
+  if (typeof value !== "object" || value === null || !("attachments" in value)) {
+    return false;
+  }
+  const attachments = (value as { attachments: unknown }).attachments;
+  return Array.isArray(attachments) && attachments.every(isPublicAttachment);
+}
+
+function isCoverResponse(value: unknown): value is CoverResponseDto {
+  if (typeof value !== "object" || value === null || !("cover" in value)) {
+    return false;
+  }
+  const cover = (value as { cover: unknown }).cover;
+  return cover === null || isPublicCoverSummary(cover);
+}
 
 const TASK_ACTIVITY_CHANGE_FIELDS: readonly TaskActivityChangeField[] = [
   "title",
@@ -1067,6 +1328,23 @@ function toPublicActivityPayload(
         checklistId: itemPayload.checklistId,
         itemId: itemPayload.itemId,
         textPreview: itemPayload.textPreview,
+      };
+    }
+    case "ATTACHMENT_ADDED":
+    case "ATTACHMENT_REMOVED": {
+      const attachmentPayload = payload as
+        | AttachmentAddedActivityPayload
+        | AttachmentRemovedActivityPayload;
+      return {
+        attachmentId: attachmentPayload.attachmentId,
+        filenamePreview: attachmentPayload.filenamePreview,
+      };
+    }
+    case "COVER_CHANGED": {
+      const coverPayload = payload as CoverChangedActivityPayload;
+      return {
+        attachmentId: coverPayload.attachmentId,
+        filenamePreview: coverPayload.filenamePreview,
       };
     }
   }
@@ -1140,6 +1418,20 @@ function isActivityPayloadForKind(
         typeof record.checklistId === "string" &&
         typeof record.itemId === "string" &&
         typeof record.textPreview === "string"
+      );
+    case "ATTACHMENT_ADDED":
+    case "ATTACHMENT_REMOVED":
+      return (
+        typeof record.attachmentId === "string" &&
+        typeof record.filenamePreview === "string"
+      );
+    case "COVER_CHANGED":
+      return (
+        (record.attachmentId === null ||
+          typeof record.attachmentId === "string") &&
+        (record.filenamePreview === null ||
+          typeof record.filenamePreview === "string") &&
+        (record.attachmentId === null) === (record.filenamePreview === null)
       );
   }
 }

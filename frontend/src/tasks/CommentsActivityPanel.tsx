@@ -97,6 +97,12 @@ function activityKindLabel(kind: PublicActivityDto["kind"]): string {
       return "Checklist item completed";
     case "CHECKLIST_ITEM_UNCOMPLETED":
       return "Checklist item uncompleted";
+    case "ATTACHMENT_ADDED":
+      return "Attachment added";
+    case "ATTACHMENT_REMOVED":
+      return "Attachment removed";
+    case "COVER_CHANGED":
+      return "Cover changed";
   }
 }
 
@@ -130,6 +136,21 @@ function activityPayloadSummary(event: PublicActivityDto): string | null {
         return null;
       }
       return event.payload.textPreview;
+    }
+    case "ATTACHMENT_ADDED":
+    case "ATTACHMENT_REMOVED": {
+      if (!("filenamePreview" in event.payload)) {
+        return null;
+      }
+      return event.payload.filenamePreview;
+    }
+    case "COVER_CHANGED": {
+      if (!("filenamePreview" in event.payload)) {
+        return null;
+      }
+      return event.payload.filenamePreview === null
+        ? "Cover cleared"
+        : event.payload.filenamePreview;
     }
   }
 }

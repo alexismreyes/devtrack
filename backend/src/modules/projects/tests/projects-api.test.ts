@@ -23,6 +23,9 @@ import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repos
 import { PrismaLabelsRepository } from "../../tasks/repository/prisma-labels-repository";
 import { PrismaTaskLabelsRepository } from "../../tasks/repository/prisma-task-labels-repository";
 import { InMemoryActivityRepository } from "../../tasks/tests/in-memory-activity-repository";
+import { PrismaAttachmentsRepository } from "../../tasks/repository/prisma-attachments-repository";
+import { InMemoryAttachmentStorage } from "../../tasks/tests/in-memory-attachment-storage";
+import { InMemoryAttachmentsRepository } from "../../tasks/tests/in-memory-attachments-repository";
 import { InMemoryChecklistsRepository } from "../../tasks/tests/in-memory-checklists-repository";
 import { InMemoryCommentsRepository } from "../../tasks/tests/in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "../../tasks/tests/in-memory-labels-repository";
@@ -77,6 +80,8 @@ function createProjectsApp() {
     commentsRepository,
     activityRepository,
     checklistsRepository: new InMemoryChecklistsRepository(),
+    attachmentsRepository: new InMemoryAttachmentsRepository(tasksRepository),
+    attachmentStorage: new InMemoryAttachmentStorage(),
     labelsRepository,
     taskLabelsRepository,
     projectMembersRepository,
@@ -665,6 +670,7 @@ describe("projects HTTP API persistence", () => {
   let app: ReturnType<typeof createApp> | null = null;
 
   if (hasDatabaseUrl) {
+    process.env.ATTACHMENTS_ROOT ??= "./data/attachments-test";
     prisma = createPrismaClient(loadConfig().databaseUrl);
     app = createApp({
       corsOrigin: process.env.CORS_ORIGIN,
@@ -676,6 +682,8 @@ describe("projects HTTP API persistence", () => {
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),
       checklistsRepository: new PrismaChecklistsRepository(prisma),
+      attachmentsRepository: new PrismaAttachmentsRepository(prisma),
+      attachmentStorage: new InMemoryAttachmentStorage(),
       labelsRepository: new PrismaLabelsRepository(prisma),
       taskLabelsRepository: new PrismaTaskLabelsRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),

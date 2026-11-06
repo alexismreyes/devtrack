@@ -758,6 +758,7 @@ describe("App frontend shell", () => {
               dueDate: null,
               createdAt: "2026-10-29T18:00:00.000Z",
               labels: [],
+              cover: null,
             },
           ],
         });

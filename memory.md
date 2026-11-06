@@ -5,7 +5,7 @@
 - Name: DevTrack
 - Purpose: Project and task management for individuals and small teams
 - Architecture: Modular monolith
-- Stage: Foundation through UI refinements Verified
+- Stage: Foundation through task attachments Verified
 
 ## Stack decisions
 
@@ -47,7 +47,7 @@ Verified for `001-foundation`, `002-authentication`, `005-frontend-shell`, `006-
 
 ## Domains
 
-Implemented: `system`, `auth`, `users`, `projects`, `tasks`, `project-members`. No new domain in `005-frontend-shell`, `006-kanban`, `007-workspace-ui`, `008-dashboard`, `010-task-comments`, `011-task-activity`, `012-task-labels`, or `015-task-checklists` (dashboard aggregations, comments, activity, labels, and checklists live in the `tasks` domain). `009-collaboration` added `project-members`.
+Implemented: `system`, `auth`, `users`, `projects`, `tasks`, `project-members`. No new domain in `005-frontend-shell`, `006-kanban`, `007-workspace-ui`, `008-dashboard`, `010-task-comments`, `011-task-activity`, `012-task-labels`, `015-task-checklists`, or `017-task-attachments` (dashboard aggregations, comments, activity, labels, checklists, and attachments live in the `tasks` domain). `009-collaboration` added `project-members`.
 
 Later candidates in `proposed-features.md`. App-wide CRUD audit (later feature ID, **not** `005`, **not** `006`, and **not** `007`; do not write `specs/005-audit/`).
 
@@ -55,11 +55,11 @@ Later candidates in `proposed-features.md`. App-wide CRUD audit (later feature I
 
 Foundation (Verified) → authentication (Verified) → projects (Verified) → tasks (Verified) → frontend-shell (Verified) → Kanban (Verified) → workspace-ui (Verified, including polish) → dashboard → collaboration → task comments → task activity → task labels → task-detail layout → TaskDetail polish → task checklists → audit (later ID, not `005`).
 
-Dashboard (`008-dashboard`), collaboration (`009-collaboration`), task comments (`010-task-comments`), task activity (`011-task-activity`), task labels (`012-task-labels`), task-detail layout (`013-task-detail-layout`), TaskDetail polish (`014-task-detail-polish`), task checklists (`015-task-checklists`), and UI refinements (`016-ui-refinements`) are Verified. Extra Trello/Jira/email/AI ideas live in `proposed-features.md` for later choice; do not implement from that file. Do not write `specs/005-audit/`. Deferred next product choices: **G** attachments / card covers (local Compose storage); custom user-defined task statuses (separate future feature — not in 016). Later **C** app-wide audit remains separate from task activity.
+Dashboard (`008-dashboard`), collaboration (`009-collaboration`), task comments (`010-task-comments`), task activity (`011-task-activity`), task labels (`012-task-labels`), task-detail layout (`013-task-detail-layout`), TaskDetail polish (`014-task-detail-polish`), task checklists (`015-task-checklists`), UI refinements (`016-ui-refinements`), and task attachments (`017-task-attachments`) are Verified. Extra Trello/Jira/email/AI ideas live in `proposed-features.md` for later choice; do not implement from that file. Do not write `specs/005-audit/`. Deferred next product choices: custom user-defined task statuses; later **C** app-wide audit.
 
 ## Verified status
 
-`001-foundation` Verified. `002-authentication` Verified. `003-projects` Verified. `004-tasks` Verified. `005-frontend-shell` Verified. `006-kanban` Verified. `007-workspace-ui` Verified (original T001–T013 and polish T014–T026). `008-dashboard` Verified (T001–T014). `009-collaboration` Verified (T001–T017). `010-task-comments` Verified (T001–T016). `011-task-activity` Verified (T001–T016). `012-task-labels` Verified (T001–T017). `013-task-detail-layout` Verified (T001–T012). `014-task-detail-polish` Verified (T001–T013). `015-task-checklists` Verified (T001–T017). `016-ui-refinements` Verified (T001–T014). Reviewer for 008: PASS. Blocking: no. Failed ACs: none. Reviewer for 009–016: PASS WITH NON-BLOCKING FINDINGS (each). Blocking: no. Failed ACs: none. T001–T013 complete for 005. T001–T011 complete for 006. T001–T013 complete for original 007. T014–T026 complete for 007 polish. Reviewer for 005: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 006: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for original 007: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 007 polish (T025): PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Informational: live contrast not audited in review; AC-018 not re-executed by reviewer. Low: some project-cover slots retint with the theme tokens (still name-derived, no stored coverColor).
+`001-foundation` Verified. `002-authentication` Verified. `003-projects` Verified. `004-tasks` Verified. `005-frontend-shell` Verified. `006-kanban` Verified. `007-workspace-ui` Verified (original T001–T013 and polish T014–T026). `008-dashboard` Verified (T001–T014). `009-collaboration` Verified (T001–T017). `010-task-comments` Verified (T001–T016). `011-task-activity` Verified (T001–T016). `012-task-labels` Verified (T001–T017). `013-task-detail-layout` Verified (T001–T012). `014-task-detail-polish` Verified (T001–T013). `015-task-checklists` Verified (T001–T017). `016-ui-refinements` Verified (T001–T014). `017-task-attachments` Verified (T001–T019). Reviewer for 008: PASS. Blocking: no. Failed ACs: none. Reviewer for 009–017: PASS WITH NON-BLOCKING FINDINGS (each). Blocking: no. Failed ACs: none. T001–T013 complete for 005. T001–T011 complete for 006. T001–T013 complete for original 007. T014–T026 complete for 007 polish. Reviewer for 005: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 006: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for original 007: PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Reviewer for 007 polish (T025): PASS WITH NON-BLOCKING FINDINGS. Blocking: no. Failed ACs: none. Informational: live contrast not audited in review; AC-018 not re-executed by reviewer. Low: some project-cover slots retint with the theme tokens (still name-derived, no stored coverColor).
 
 Present in the repo:
 
@@ -73,15 +73,23 @@ Present in the repo:
 - Task labels (`012-task-labels`, proposed **E**): owned by `tasks`. Per-project catalog (`ProjectLabel` with `name`/`nameKey`/fixed color token) + many labels per task (join). Catalog CRUD and assignment via `requireTaskWrite`; reads via `requireTaskRead`. Color tokens: `RED`|`ORANGE`|`YELLOW`|`GREEN`|`TEAL`|`BLUE`|`PURPLE`|`PINK`|`GRAY`. Name 1–40 trim, case-insensitive unique per project. Hard-delete clears assignments. `PUT /api/tasks/:taskId/labels` replace-set; catalog under `/api/projects/:projectId/labels`. `PublicTaskDto.labels` for card face; optional single `labelId` list filter. No label activity events. UI: board Labels Dialog; TaskDetail Labels Popover (013) for assign + catalog CRUD; card chips; board filter.
 - Task detail layout (`013-task-detail-layout`): frontend-only. Two-column TaskDetail (`md+`; stack below). Labels-only action row → Popover (search, checkboxes, edit/create); apply `replaceTaskLabels` on outside-click/Done; Escape discards. Board Labels Dialog kept. Right panel “Comments & activity” interleaved newest-first; omit `COMMENT_ADDED` activity rows. Added `@radix-ui/react-popover` + shadcn `popover`. No schema/API contract changes.
 - TaskDetail polish (`014-task-detail-polish`): opaque `--popover`/`--popover-foreground` on all palettes; reload activity after Save and comment create/edit/delete; clearer timeline spacing; Edit/Delete as link buttons; nine-token `LabelColorSwatchPicker` in LabelsPopover + LabelsDialog (no color `<select>`). Frontend-only.
-- Task checklists (`015-task-checklists`, proposed **F**): owned by `tasks`. Prisma checklists + items (`20261105140000_task_checklists`); nested REST under `/api/tasks/:taskId/checklists` (+ items). Name 1–80; item text 1–200; checked default false; hard-delete cascade; `createdAt` asc; empty allowed; no PublicTaskDto/Kanban embed. Authz: mutate = `requireTaskWrite`, list = `requireTaskRead`; archived like task writes. Additive activity kinds `CHECKLIST_ADDED` / `CHECKLIST_REMOVED` / `CHECKLIST_ITEM_COMPLETED` / `CHECKLIST_ITEM_UNCOMPLETED` same-tx (fail write if insert fails); no emit on item add/delete, rename, text-only PATCH, or no-op checked. UI: TaskDetail action-row Checklist + main-column lists with progress bar and strikethrough (no hide-checked); Comments & activity renders the four kinds; still omits `COMMENT_ADDED`. No attachments **G**, assign, due, or Markdown redesign.
+- Task checklists (`015-task-checklists`, proposed **F**): owned by `tasks`. Prisma checklists + items (`20261105140000_task_checklists`); nested REST under `/api/tasks/:taskId/checklists` (+ items). Name 1–80; item text 1–200; checked default false; hard-delete cascade; `createdAt` asc; empty allowed; no PublicTaskDto/Kanban embed. Authz: mutate = `requireTaskWrite`, list = `requireTaskRead`; archived like task writes. Additive activity kinds `CHECKLIST_ADDED` / `CHECKLIST_REMOVED` / `CHECKLIST_ITEM_COMPLETED` / `CHECKLIST_ITEM_UNCOMPLETED` same-tx (fail write if insert fails); no emit on item add/delete, rename, text-only PATCH, or no-op checked. UI: TaskDetail action-row Checklist + main-column lists with progress bar and strikethrough (no hide-checked); Comments & activity renders the four kinds; still omits `COMMENT_ADDED`. Later shipped: attachments **G** (`017`).
 - UI refinements (`016-ui-refinements`): frontend-only. Create-checklist Dialog from action-row Checklist (inline primary create removed); checklist blocks `bg-card`+border; thinner TaskDetail field labels; Color palette circle + scheme-preview picker (still `devtrack.uiPalette` localStorage only); friendly fixed-enum status labels `To do` / `In progress` / `Done` on TaskDetail status control + Kanban headers only (API/DnD values unchanged). Custom user-defined statuses deferred to a separate future feature.
+- Task attachments (`017-task-attachments`, proposed **G**): owned by `tasks`. Prisma `TaskAttachment` + nullable `Task.coverAttachmentId`; Compose named volume `attachments_data` (`ATTACHMENTS_ROOT`); path `{root}/{projectId}/{taskId}/{attachmentId}`. Nested multipart upload/list/delete + authenticated `/content` (`Cache-Control: private`); cover PUT/DELETE. Allowlist jpeg/png/webp/gif/pdf/text; **20 MiB**/file; 20/task; magic sniff; no AV. Authz write mutate / read list+download; archived like checklists. Hard-delete row+blob; soft-deleted task → 404 (keep rows/blobs; no GC). Activity `ATTACHMENT_ADDED` / `ATTACHMENT_REMOVED` / `COVER_CHANGED` same-tx. `PublicTaskDto.cover` summary only. UI: action-row Attachment Popover for upload (Labels-like); attachment list stacked in main column; Kanban cover via authenticated fetch.
 - Authenticated chrome: top app bar (DevTrack → `/projects`, Color palette selector, Dashboard → `/dashboard`, profile, logout) and compact left sidebar of listed project names plus a create `+` Dialog; `/projects` main is a constrained card grid of listed (non-archived) projects with name-derived color-initials covers (empty/select-or-create main superseded); project detail has compact header (name, short description, Back to projects next to Edit/Archive) and remaining-height compact `TODO` / `IN_PROGRESS` / `DONE` columns; create-task and task-detail are Dialogs (board stays mounted); compact filters sit above the board; profile keeps the compact sidebar; guest login/register have no product sidebar and inherit stored-or-Forest palette
 - Original FR-006 / Q-037 “remove Back to projects” is **superseded**: Back to projects is restored on the board header action row; DevTrack still links to `/projects`
 - Whole-UI palettes from the Q-041 catalog (solids Forest default, Ocean, Sunset, Violet, Midnight; gradients Aurora, Ember, Lagoon, Twilight, Citrus, Magma, Glacier) applied on the document root; persisted only as catalog id in localStorage `devtrack.uiPalette`; guests use stored-or-Forest; logout does not clear the key
 - `@dnd-kit/core` is present with `DragOverlay`; task cards use a pointer cursor; `@dnd-kit/sortable` is absent; no second DnD library; no task `position`/`rank`; no move endpoint; status moves reuse `PATCH /api/tasks/:id` `{ status }` with `credentials: 'include'`
 - `ProbePage` and probe chrome removed from the React app; backend `system` probe HTTP, Prisma `SystemProbe`, `GET /health`, `GET /ready`, and backend probe tests unchanged
 - Copied shadcn primitives only: `button`, `input`, `label`, `card`, `textarea`, `dialog`, `popover`; peers `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `@radix-ui/react-slot`, `@radix-ui/react-label`, `@radix-ui/react-dialog`, `@radix-ui/react-popover`
-- No `coverColor`, image storage, rank, audit, or User palette field. Dashboard counts are derived, not stored. Membership is persisted. `specs/005-audit/` is absent. Authenticated shell uses `h-svh overflow-hidden` so Kanban columns scroll inside remaining height.
+- No project `coverColor` or User palette field. Task attachment blobs live on the Compose `attachments_data` volume (not Postgres). No task `position`/`rank`. No app-wide audit. Dashboard counts are derived, not stored. Membership is persisted. `specs/005-audit/` is absent. Authenticated shell uses `h-svh overflow-hidden` so Kanban columns scroll inside remaining height.
+
+Coordinator close-out evidence for `017-task-attachments` T017 (Node.js `v22.22.3`; implementer-recorded):
+
+- `backend` targeted vitest 11 files / 93 passed; `npm run typecheck` + `npm run build` exit 0
+- `frontend` targeted vitest 5 files / 113 passed; `npm run typecheck` + `npm run build` exit 0
+- Migration `20261106160000_task_attachments` applied via `prisma migrate deploy`
+- Reviewer T018: PASS WITH NON-BLOCKING FINDINGS; AC-001–AC-014 PASS; blocking no
 
 Coordinator close-out evidence for `016-ui-refinements` T012 (Node.js `v22.22.3`; implementer-recorded):
 
@@ -194,6 +202,7 @@ Prior coordinator re-run on Node.js 22.22.3 for `004-tasks`:
 - `011-task-activity`: `backend/prisma/migrations/20261104210000_task_activity/` (`task_activity_events`: `id`, `taskId`, `actorUserId`, `kind` enum, `payload` JSON, `createdAt`; FKs Restrict; indexes on `taskId` and `(taskId, createdAt)`). Additive only. Applied with `prisma migrate deploy`. No reset or volume delete.
 - `012-task-labels`: `backend/prisma/migrations/20261105120000_task_labels/` (project label catalog + task↔label join; Cascade on label delete). Additive only. Applied with `prisma migrate deploy`. No reset or volume delete.
 - `015-task-checklists`: `backend/prisma/migrations/20261105140000_task_checklists/` (checklist + item tables; Cascade checklist→items; additive `TaskActivityKind` values). Additive only. Applied with `prisma migrate deploy`. No reset or volume delete.
+- `017-task-attachments`: `backend/prisma/migrations/20261106160000_task_attachments/` (`TaskAttachment`; nullable `Task.coverAttachmentId` SetNull; additive activity kinds). Additive only. Applied with `prisma migrate deploy`. Compose named volume `attachments_data`. No reset or volume delete.
 
 ## Known issues
 
@@ -234,10 +243,13 @@ Prior coordinator re-run on Node.js 22.22.3 for `004-tasks`:
 - `CHECKLIST_ITEM_UNCOMPLETED` emission asserted in service tests, not separately in checklists-api SuperTest (015 independent review, non-blocking)
 - Nested TaskDetail + create-checklist Dialog focus/dismiss beyond unit tests (016 independent review, non-blocking)
 - Checklist contrast asserts live in TaskDetail tests, not TaskChecklistsPanel suite (016 independent review, non-blocking)
+- Attachments SuperTest: VIEWER `/content` success and cover PUT/DELETE 403 lightly covered (017 independent review, non-blocking)
+- `coverAttachmentId` same-task rule enforced in service/repo only (no DB check constraint) (017 independent review, non-blocking)
+- No dedicated Prisma attachments-repository persistence suite (017 independent review, non-blocking)
 
 ## Next approved work
 
-None queued. Verified through `016-ui-refinements`. Deferred product follow-ups (specify when chosen): **G** attachments / card covers (local Compose storage); custom user-defined task statuses (separate feature). Later **C** app-wide audit stays a separate proposed feature. Do not implement from `proposed-features.md` without a new Approved feature folder.
+None queued. Verified through `017-task-attachments`. Deferred product follow-ups (specify when chosen): custom user-defined task statuses; later **C** app-wide audit. Do not implement from `proposed-features.md` without a new Approved feature folder.
 
 ## Open decisions
 
@@ -386,6 +398,20 @@ Recorded as Decided and implemented in Verified `016-ui-refinements`:
 - Q-127: Friendly copy `To do` / `In progress` / `Done`.
 - Q-128: Friendly chrome on TaskDetail status control + Kanban column headers only.
 - Q-129: Checklist blocks use `bg-card` + border.
+
+Recorded as Decided and implemented in Verified `017-task-attachments`:
+
+- Q-130: Attachments + cover-from-image-attachment in this folder.
+- Q-131: Local Compose named volume; path `{root}/{projectId}/{taskId}/{attachmentId}`.
+- Q-132: Hard-delete row+blob; soft-deleted task → 404 keep rows/blobs; no GC; no attachment soft-delete.
+- Q-133: jpeg/png/webp/gif + pdf + text/plain; **20 MiB**/file; 20/task; magic sniff; no AV (amended from 5 MiB).
+- Q-134: Write mutate / read list+download; archived like checklists.
+- Q-135: `ATTACHMENT_ADDED` / `ATTACHMENT_REMOVED` / `COVER_CHANGED` same-tx.
+- Q-136: Nested multipart under tasks + authenticated `/content`.
+- Q-137: Amended — action-row Attachment **Popover** (Labels-like) for upload; attachment list stacked in main column (no inline upload form).
+- Q-138: Nullable pointer to image attachment; Kanban face; clear ≠ delete; delete cover attachment clears cover.
+- Q-139: Session + `requireTaskRead`; no public/unsigned URLs.
+- Q-140: `PublicTaskDto.cover` summary only; not full attachments array.
 
 Do not silently turn an open question into an architectural decision.
 

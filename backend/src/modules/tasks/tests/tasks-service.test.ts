@@ -10,6 +10,7 @@ import { TasksService } from "../service/tasks-service";
 import { FakeProjectAccessPort } from "./fake-project-access-port";
 import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
+import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
@@ -63,6 +64,7 @@ function createService(archivedAt: Date | null = null) {
       authorization,
       activity,
       taskLabels,
+      new InMemoryAttachmentsRepository(tasks),
       new ImmediateUnitOfWork(),
     ),
     tasks,

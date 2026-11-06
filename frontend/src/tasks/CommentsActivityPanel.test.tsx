@@ -114,6 +114,58 @@ const checklistItemUncompletedActivity = {
   },
 };
 
+const attachmentAddedActivity = {
+  id: "activity-8",
+  taskId: "task-1",
+  kind: "ATTACHMENT_ADDED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T19:00:00.000Z",
+  payload: {
+    attachmentId: "att-1",
+    filenamePreview: "cover.png",
+  },
+};
+
+const attachmentRemovedActivity = {
+  id: "activity-9",
+  taskId: "task-1",
+  kind: "ATTACHMENT_REMOVED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T20:00:00.000Z",
+  payload: {
+    attachmentId: "att-1",
+    filenamePreview: "cover.png",
+  },
+};
+
+const coverChangedActivity = {
+  id: "activity-10",
+  taskId: "task-1",
+  kind: "COVER_CHANGED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T21:00:00.000Z",
+  payload: {
+    attachmentId: "att-1",
+    filenamePreview: "cover.png",
+  },
+};
+
+const coverClearedActivity = {
+  id: "activity-11",
+  taskId: "task-1",
+  kind: "COVER_CHANGED" as const,
+  actorUserId: "user-1",
+  actorDisplayName: "Ada",
+  createdAt: "2026-11-04T22:00:00.000Z",
+  payload: {
+    attachmentId: null,
+    filenamePreview: null,
+  },
+};
+
 describe("buildCommentsActivityTimeline", () => {
   it("interleaves newest-first and omits COMMENT_ADDED", () => {
     const timeline = buildCommentsActivityTimeline(
@@ -156,6 +208,36 @@ describe("buildCommentsActivityTimeline", () => {
       "CHECKLIST_ITEM_COMPLETED",
       "CHECKLIST_REMOVED",
       "CHECKLIST_ADDED",
+    ]);
+    expect(
+      timeline.some(
+        (item) =>
+          item.type === "activity" && item.event.kind === "COMMENT_ADDED",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps ATTACHMENT_ADDED / ATTACHMENT_REMOVED / COVER_CHANGED (Q-135)", () => {
+    const timeline = buildCommentsActivityTimeline(
+      [],
+      [
+        coverClearedActivity,
+        coverChangedActivity,
+        attachmentRemovedActivity,
+        attachmentAddedActivity,
+        commentAddedActivity,
+      ],
+    );
+
+    expect(
+      timeline.map((item) =>
+        item.type === "activity" ? item.event.kind : item.type,
+      ),
+    ).toEqual([
+      "COVER_CHANGED",
+      "COVER_CHANGED",
+      "ATTACHMENT_REMOVED",
+      "ATTACHMENT_ADDED",
     ]);
     expect(
       timeline.some(
@@ -256,6 +338,67 @@ describe("CommentsActivityPanel", () => {
     ).toBeInTheDocument();
     expect(within(list).getAllByText("QA")).toHaveLength(2);
     expect(within(list).getAllByText("Write tests")).toHaveLength(2);
+    expect(within(list).queryByText(/comment added/i)).not.toBeInTheDocument();
+  });
+
+  it("renders attachment and cover activity kinds and still omits COMMENT_ADDED", () => {
+    const timeline = buildCommentsActivityTimeline(
+      [],
+      [
+        coverClearedActivity,
+        coverChangedActivity,
+        attachmentRemovedActivity,
+        attachmentAddedActivity,
+        commentAddedActivity,
+      ],
+    );
+    expect(
+      timeline.map((item) =>
+        item.type === "activity" ? item.event.kind : item.type,
+      ),
+    ).toEqual([
+      "COVER_CHANGED",
+      "COVER_CHANGED",
+      "ATTACHMENT_REMOVED",
+      "ATTACHMENT_ADDED",
+    ]);
+
+    render(
+      <CommentsActivityPanel
+        canWrite={true}
+        commentMutationsDisabled={false}
+        comments={[]}
+        commentsLoadState={{ kind: "empty" }}
+        activity={[
+          coverClearedActivity,
+          coverChangedActivity,
+          attachmentRemovedActivity,
+          attachmentAddedActivity,
+          commentAddedActivity,
+        ]}
+        activityLoadState={{ kind: "success" }}
+        commentActionState={{ kind: "idle" }}
+        newCommentBody=""
+        editingCommentId={null}
+        editCommentBody=""
+        onNewCommentBodyChange={vi.fn()}
+        onEditCommentBodyChange={vi.fn()}
+        onCreateComment={vi.fn()}
+        onStartEditComment={vi.fn()}
+        onCancelEditComment={vi.fn()}
+        onSaveComment={vi.fn()}
+        onDeleteComment={vi.fn()}
+        canEditComment={() => false}
+        canSoftDeleteComment={() => false}
+      />,
+    );
+
+    const list = screen.getByRole("list", { name: /comments and activity/i });
+    expect(within(list).getByText(/attachment added/i)).toBeInTheDocument();
+    expect(within(list).getByText(/attachment removed/i)).toBeInTheDocument();
+    expect(within(list).getAllByText(/cover changed/i)).toHaveLength(2);
+    expect(within(list).getAllByText("cover.png")).toHaveLength(3);
+    expect(within(list).getByText(/cover cleared/i)).toBeInTheDocument();
     expect(within(list).queryByText(/comment added/i)).not.toBeInTheDocument();
   });
 });

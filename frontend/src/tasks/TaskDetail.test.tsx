@@ -14,6 +14,7 @@ const task = {
   dueDate: "2026-11-01" as string | null,
   createdAt: "2026-10-29T18:00:00.000Z",
   labels: [] as Array<{ id: string; name: string; color: "RED" | "BLUE" }>,
+  cover: null as { attachmentId: string; contentType: string } | null,
 };
 
 const bugLabel = {
@@ -85,6 +86,10 @@ function isChecklistsListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/tasks/task-1/checklists";
 }
 
+function isAttachmentsListUrl(url: string): boolean {
+  return url === "http://localhost:3000/api/tasks/task-1/attachments";
+}
+
 function defaultTaskHandler(
   url: string,
   init?: RequestInit,
@@ -92,6 +97,7 @@ function defaultTaskHandler(
   activityEvents: unknown[] = [],
   labels: unknown[] = [],
   checklists: unknown[] = [],
+  attachments: unknown[] = [],
 ): Response {
   if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { comments });
@@ -104,6 +110,9 @@ function defaultTaskHandler(
   }
   if (isChecklistsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { checklists });
+  }
+  if (isAttachmentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+    return jsonResponse(200, { attachments });
   }
   if (url.endsWith("/api/tasks/task-1") && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, task);
@@ -224,11 +233,24 @@ describe("TaskDetail", () => {
     expect(screen.getByRole("button", { name: /^checklist$/i })).toBeInTheDocument();
     expect(screen.getByText(/no labels assigned/i)).toBeInTheDocument();
     expect(screen.getByTestId("task-checklists")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("task-detail-main")).getByTestId("task-attachments"),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/no attachments yet/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/new checklist name/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add checklist/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /save labels/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^dates$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /attachment/i })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("task-detail-actions")).getByRole("button", {
+        name: /^attachment$/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("task-attachments")).queryByTestId(
+        "task-attachment-upload",
+      ),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/hide checked/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ocultar los elementos/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /assign/i })).not.toBeInTheDocument();
@@ -992,7 +1014,7 @@ describe("TaskDetail", () => {
     expect(within(checklists).getByText("Review PR")).toBeVisible();
     expect(screen.queryByText(/hide checked/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^dates$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /attachment/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^attachment$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /assign/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^labels$/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /comments & activity/i })).toBeInTheDocument();
@@ -1268,5 +1290,331 @@ describe("TaskDetail", () => {
       await screen.findByText(/authentication is required/i),
     ).toBeInTheDocument();
     expect(onUnauthenticated).toHaveBeenCalledOnce();
+  });
+
+  const sampleAttachment = {
+    id: "att-1",
+    taskId: "task-1",
+    originalFilename: "notes.txt",
+    contentType: "text/plain",
+    sizeBytes: 12,
+    createdAt: "2026-11-06T12:00:00.000Z",
+    uploadedByUserId: "user-1",
+    isCover: false,
+  };
+
+  const sampleImageAttachment = {
+    id: "att-2",
+    taskId: "task-1",
+    originalFilename: "cover.png",
+    contentType: "image/png",
+    sizeBytes: 64,
+    createdAt: "2026-11-06T12:05:00.000Z",
+    uploadedByUserId: "user-1",
+    isCover: true,
+  };
+
+  it("opens Attachment Popover for upload and keeps list stacked in main column (AC-010/Q-137)", async () => {
+    const user = userEvent.setup();
+    const created = {
+      ...sampleAttachment,
+      id: "att-new",
+      originalFilename: "spec.txt",
+    };
+    let activityReload = 0;
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isAttachmentsListUrl(url) && init?.method === "POST") {
+        expect(init.body).toBeInstanceOf(FormData);
+        return jsonResponse(201, created);
+      }
+      if (isActivityListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        activityReload += 1;
+        if (activityReload > 1) {
+          return jsonResponse(200, {
+            activity: [
+              {
+                id: "activity-att",
+                taskId: "task-1",
+                kind: "ATTACHMENT_ADDED",
+                actorUserId: "user-1",
+                actorDisplayName: "Ada",
+                createdAt: "2026-11-06T13:00:00.000Z",
+                payload: {
+                  attachmentId: created.id,
+                  filenamePreview: created.originalFilename,
+                },
+              },
+            ],
+          });
+        }
+      }
+      return defaultTaskHandler(
+        url,
+        init,
+        [],
+        [],
+        [],
+        [],
+        [sampleAttachment, sampleImageAttachment],
+      );
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const main = await screen.findByTestId("task-detail-main");
+    const attachments = within(main).getByTestId("task-attachments");
+    expect(await within(attachments).findByText("notes.txt")).toBeInTheDocument();
+    expect(within(attachments).getByText("cover.png")).toBeInTheDocument();
+    expect(
+      within(attachments).queryByTestId("task-attachment-upload"),
+    ).not.toBeInTheDocument();
+
+    const actions = screen.getByTestId("task-detail-actions");
+    await user.click(
+      within(actions).getByRole("button", { name: /^attachment$/i }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: /add attachment/i }),
+    ).toBeInTheDocument();
+
+    const file = new File(["hello"], "spec.txt", { type: "text/plain" });
+    await user.upload(screen.getByTestId("task-attachment-upload"), file);
+    expect(await within(attachments).findByText("spec.txt")).toBeInTheDocument();
+    expect(await screen.findByText(/attachment added/i)).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          isAttachmentsListUrl(url) &&
+          init?.method === "POST" &&
+          init.credentials === "include",
+      ),
+    ).toBe(true);
+    expectNoSessionTokenStorage();
+  });
+
+  it("keeps VIEWER attachment UI read-only (AC-010)", async () => {
+    mockFetch((url, init) =>
+      defaultTaskHandler(
+        url,
+        init,
+        [],
+        [],
+        [],
+        [],
+        [sampleAttachment, sampleImageAttachment],
+      ),
+    );
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const viewerPanel = await screen.findByTestId("task-attachments");
+    expect(await within(viewerPanel).findByText("notes.txt")).toBeInTheDocument();
+    expect(
+      within(viewerPanel).queryByTestId("task-attachment-upload"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^attachment$/i }),
+    ).toBeDisabled();
+    expect(
+      within(viewerPanel).queryByRole("button", { name: /^delete$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(viewerPanel).queryByRole("button", { name: /set as cover/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(viewerPanel).queryByRole("button", { name: /clear cover/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(viewerPanel).getByRole("button", { name: /^download$/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(viewerPanel).getByRole("button", { name: /^view$/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("disables attachment upload and mutations when archived (AC-010)", async () => {
+    mockFetch((url, init) =>
+      defaultTaskHandler(
+        url,
+        init,
+        [],
+        [],
+        [],
+        [],
+        [sampleAttachment, sampleImageAttachment],
+      ),
+    );
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={true}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const archivedPanel = await screen.findByTestId("task-attachments");
+    expect(await within(archivedPanel).findByText("notes.txt")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^attachment$/i })).toBeDisabled();
+    for (const button of within(archivedPanel).getAllByRole("button", {
+      name: /^delete$/i,
+    })) {
+      expect(button).toBeDisabled();
+    }
+    expect(
+      within(archivedPanel).getByRole("button", { name: /clear cover/i }),
+    ).toBeDisabled();
+  });
+
+  it("clears cover without deleting the attachment and reloads activity", async () => {
+    const user = userEvent.setup();
+    const onUpdated = vi.fn();
+    let coverCleared = false;
+    mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (url === "http://localhost:3000/api/tasks/task-1/cover" && init?.method === "DELETE") {
+        coverCleared = true;
+        return jsonResponse(200, { cover: null });
+      }
+      if (isAttachmentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return jsonResponse(200, {
+          attachments: [
+            {
+              ...sampleImageAttachment,
+              isCover: !coverCleared,
+            },
+          ],
+        });
+      }
+      if (isActivityListUrl(url) && coverCleared) {
+        return jsonResponse(200, {
+          activity: [
+            {
+              id: "activity-cover",
+              taskId: "task-1",
+              kind: "COVER_CHANGED",
+              actorUserId: "user-1",
+              actorDisplayName: "Ada",
+              createdAt: "2026-11-06T14:00:00.000Z",
+              payload: {
+                attachmentId: null,
+                filenamePreview: null,
+              },
+            },
+          ],
+        });
+      }
+      return defaultTaskHandler(url, init, [], [], [], [], [sampleImageAttachment]);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={onUpdated}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const panel = await screen.findByTestId("task-attachments");
+    expect(await within(panel).findByText(/cover\.png/i)).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: /clear cover/i }));
+    expect(await screen.findByText(/cover cleared\./i)).toBeInTheDocument();
+    expect(await screen.findByText(/^cover changed$/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/cover\.png/i)).toBeInTheDocument();
+    expect(
+      within(panel).queryByRole("button", { name: /clear cover/i }),
+    ).not.toBeInTheDocument();
+    expect(onUpdated).toHaveBeenCalled();
+    expectNoSessionTokenStorage();
+  });
+
+  it("deleting the cover attachment clears cover without a separate cover DELETE", async () => {
+    const user = userEvent.setup();
+    const onUpdated = vi.fn();
+    let deleted = false;
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      expect(String(url)).not.toMatch(/\/uploads\b/);
+      if (
+        url ===
+          "http://localhost:3000/api/tasks/task-1/attachments/att-2" &&
+        init?.method === "DELETE"
+      ) {
+        deleted = true;
+        return emptyResponse(204);
+      }
+      if (isAttachmentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return jsonResponse(200, {
+          attachments: deleted ? [] : [sampleImageAttachment],
+        });
+      }
+      return defaultTaskHandler(
+        url,
+        init,
+        [],
+        [],
+        [],
+        [],
+        deleted ? [] : [sampleImageAttachment],
+      );
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={onUpdated}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const panel = await screen.findByTestId("task-attachments");
+    expect(await within(panel).findByText(/cover\.png/i)).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: /^delete$/i }));
+    expect(await screen.findByText(/attachment deleted/i)).toBeInTheDocument();
+    expect(within(panel).queryByText(/cover\.png/i)).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.endsWith("/api/tasks/task-1/cover") &&
+          init?.method === "DELETE",
+      ),
+    ).toBe(false);
+    expect(onUpdated).toHaveBeenCalled();
+    expectNoSessionTokenStorage();
   });
 });

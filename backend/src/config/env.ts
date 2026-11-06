@@ -13,4 +13,12 @@ export function loadEnvFiles(): void {
       dotenv.config({ path: file, override: false });
     }
   }
+
+  // Host/tests fallback when Compose env is not injected (Q-131).
+  if (
+    process.env.ATTACHMENTS_ROOT === undefined ||
+    process.env.ATTACHMENTS_ROOT.trim() === ""
+  ) {
+    process.env.ATTACHMENTS_ROOT = "./data/attachments";
+  }
 }

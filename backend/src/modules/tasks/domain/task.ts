@@ -101,6 +101,8 @@ export class Task {
   readonly dueDate: Date | null;
   readonly createdAt: Date;
   readonly deletedAt: Date | null;
+  /** Nullable pointer to an image attachment on this task (Q-138). */
+  readonly coverAttachmentId: string | null;
 
   private constructor(
     id: string,
@@ -112,12 +114,19 @@ export class Task {
     dueDate: Date | null,
     createdAt: Date,
     deletedAt: Date | null,
+    coverAttachmentId: string | null,
   ) {
     if (!UUID_PATTERN.test(id)) {
       throw new Error("Task id must be a UUID");
     }
     if (!UUID_PATTERN.test(projectId)) {
       throw new Error("Task project id must be a UUID");
+    }
+    if (
+      coverAttachmentId !== null &&
+      !UUID_PATTERN.test(coverAttachmentId)
+    ) {
+      throw new Error("Task cover attachment id must be a UUID");
     }
     if (Number.isNaN(createdAt.getTime())) {
       throw new Error("Task created time must be a valid date");
@@ -136,6 +145,7 @@ export class Task {
     this.createdAt = new Date(createdAt.getTime());
     this.deletedAt =
       deletedAt === null ? null : new Date(deletedAt.getTime());
+    this.coverAttachmentId = coverAttachmentId;
     Object.freeze(this);
   }
 
@@ -160,6 +170,7 @@ export class Task {
       normalizeDueDate(dueDate),
       now,
       null,
+      null,
     );
   }
 
@@ -173,6 +184,7 @@ export class Task {
     dueDate: Date | null,
     createdAt: Date,
     deletedAt: Date | null,
+    coverAttachmentId: string | null = null,
   ): Task {
     return new Task(
       id,
@@ -184,6 +196,7 @@ export class Task {
       normalizeDueDate(dueDate),
       createdAt,
       deletedAt,
+      coverAttachmentId,
     );
   }
 
@@ -210,6 +223,22 @@ export class Task {
         : this.dueDate,
       this.createdAt,
       this.deletedAt,
+      this.coverAttachmentId,
+    );
+  }
+
+  withCoverAttachmentId(coverAttachmentId: string | null): Task {
+    return new Task(
+      this.id,
+      this.projectId,
+      this.title,
+      this.description,
+      this.status,
+      this.priority,
+      this.dueDate,
+      this.createdAt,
+      this.deletedAt,
+      coverAttachmentId,
     );
   }
 
@@ -228,6 +257,7 @@ export class Task {
       this.dueDate,
       this.createdAt,
       now,
+      this.coverAttachmentId,
     );
   }
 }

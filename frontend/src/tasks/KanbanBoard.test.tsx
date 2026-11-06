@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PublicTaskDto } from "../api/types";
 import {
@@ -9,6 +9,7 @@ import {
 import { KanbanBoard, resolveKanbanDrop } from "./KanbanBoard";
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -22,6 +23,7 @@ const todoTask: PublicTaskDto = {
   dueDate: null,
   createdAt: "2026-10-29T18:00:00.000Z",
   labels: [],
+  cover: null,
 };
 
 const datedTask: PublicTaskDto = {
@@ -224,5 +226,69 @@ describe("KanbanBoard drag-and-drop", () => {
     expect(overlay).not.toBeNull();
     expect(overlay).toHaveTextContent("Write tests");
     expect(card).toHaveClass("opacity-50");
+  });
+
+  it("loads card-face cover via authenticated content fetch, not a public /uploads URL (AC-011)", async () => {
+    const coverTask: PublicTaskDto = {
+      ...todoTask,
+      cover: {
+        attachmentId: "att-cover",
+        contentType: "image/png",
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/attachments/att-cover/content",
+      );
+      expect(url).not.toMatch(/\/uploads\b/);
+      expect(init?.credentials).toBe("include");
+      return new Response(new Uint8Array([137, 80, 78, 71]), {
+        status: 200,
+        headers: { "Content-Type": "image/png", "Cache-Control": "private" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const createObjectURL = vi.fn(() => "blob:kanban-cover");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL,
+    });
+
+    const { rerender } = render(
+      <KanbanBoard
+        tasks={[coverTask]}
+        onSelectTask={vi.fn()}
+        onMoveTask={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("kanban-card-cover")).toHaveAttribute(
+        "src",
+        "blob:kanban-cover",
+      );
+    });
+    expect(screen.getByTestId("kanban-card-cover")).toHaveAttribute(
+      "data-cover-attachment-id",
+      "att-cover",
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    rerender(
+      <KanbanBoard
+        tasks={[{ ...coverTask, cover: null }]}
+        onSelectTask={vi.fn()}
+        onMoveTask={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.queryByTestId("kanban-card-cover")).not.toBeInTheDocument();
   });
 });

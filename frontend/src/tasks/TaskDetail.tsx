@@ -17,8 +17,10 @@ import {
 } from "../api/client";
 import type {
   PublicActivityDto,
+  PublicAttachmentDto,
   PublicChecklistDto,
   PublicCommentDto,
+  PublicCoverSummaryDto,
   PublicLabelDto,
   PublicTaskDto,
   TaskEmbeddedLabelDto,
@@ -30,11 +32,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, nativeSelectClassName } from "@/lib/utils";
+import { AttachmentsPopover } from "./AttachmentsPopover";
 import { CommentsActivityPanel } from "./CommentsActivityPanel";
 import { CreateChecklistDialog } from "./CreateChecklistDialog";
 import { LabelChips } from "./LabelChips";
 import { LabelsPopover } from "./LabelsPopover";
 import { taskStatusLabel } from "./statusDisplay";
+import { TaskAttachmentsPanel } from "./TaskAttachmentsPanel";
 import { TaskChecklistsPanel } from "./TaskChecklistsPanel";
 
 const TASK_FIELD_LABEL_CLASS =
@@ -134,6 +138,8 @@ export function TaskDetail({
   const [createChecklistOpen, setCreateChecklistOpen] = useState(false);
   const [ingestedChecklist, setIngestedChecklist] =
     useState<PublicChecklistDto | null>(null);
+  const [ingestedAttachment, setIngestedAttachment] =
+    useState<PublicAttachmentDto | null>(null);
 
   const applyTask = useCallback((next: PublicTaskDto) => {
     setTask(next);
@@ -147,6 +153,11 @@ export function TaskDetail({
   const applyAssignedLabels = useCallback((labels: TaskEmbeddedLabelDto[]) => {
     setTask((current) => (current === null ? current : { ...current, labels }));
   }, []);
+
+  const applyCover = useCallback((cover: PublicCoverSummaryDto | null) => {
+    setTask((current) => (current === null ? current : { ...current, cover }));
+    onUpdated();
+  }, [onUpdated]);
 
   const loadComments = useCallback(async () => {
     setCommentsLoadState({ kind: "loading" });
@@ -532,6 +543,14 @@ export function TaskDetail({
               >
                 Checklist
               </Button>
+              <AttachmentsPopover
+                taskId={taskId}
+                canWrite={canWrite}
+                disabled={archived}
+                onUploaded={setIngestedAttachment}
+                onActivityMaybeChanged={loadActivity}
+                onUnauthenticated={onUnauthenticated}
+              />
             </div>
 
             {task.labels.length === 0 ? (
@@ -664,6 +683,16 @@ export function TaskDetail({
               onUnauthenticated={onUnauthenticated}
               onActivityMaybeChanged={loadActivity}
               ingestCreatedChecklist={ingestedChecklist}
+            />
+
+            <TaskAttachmentsPanel
+              taskId={taskId}
+              canWrite={canWrite}
+              disabled={archived}
+              ingestCreatedAttachment={ingestedAttachment}
+              onUnauthenticated={onUnauthenticated}
+              onActivityMaybeChanged={loadActivity}
+              onCoverChange={applyCover}
             />
           </div>
 
