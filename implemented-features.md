@@ -4,7 +4,7 @@ Human-readable catalog of **Verified** work: what shipped, and how (tech + conce
 
 **How this file is updated:** after a spec is Verified, the agent proposes a catalog patch and **does not edit this file until you confirm**. Do not treat a completion report as an automatic update.
 
-Last confirmed: 2026-10-31 (features `001`–`009`).
+Last confirmed: 2026-11-06 (features `001`–`018`).
 
 ---
 
@@ -119,13 +119,19 @@ Last confirmed: 2026-10-31 (features `001`–`009`).
 
 - **Spec:** `specs/016-ui-refinements/`
 - **What:** Checklist create Dialog; checklist contrast; thinner field labels; palette preview picker; friendly fixed statuses.
-- **Approach:** Frontend-only. Create Dialog from Checklist button; checklist blocks `bg-card`+border; thinner TaskDetail labels; Color palette circle + scheme preview (`devtrack.uiPalette` only); `To do` / `In progress` / `Done` on TaskDetail status + Kanban headers (API values unchanged). Custom statuses deferred separately. Later shipped: **G** attachments (`017`).
+- **Approach:** Frontend-only. Create Dialog from Checklist button; checklist blocks `bg-card`+border; thinner TaskDetail labels; Color palette circle + scheme preview (`devtrack.uiPalette` only); `To do` / `In progress` / `Done` on TaskDetail status + Kanban headers (API values unchanged). Later shipped: **G** attachments (`017`); custom statuses (`018`).
 
 ### 017 — Task Attachments
 
 - **Spec:** `specs/017-task-attachments/`
 - **What:** Task file attachments + image cover; Kanban cover face.
-- **Approach:** Owned by `tasks`. Compose volume (`attachments_data` / `ATTACHMENTS_ROOT`); nested multipart + authenticated `/content`; cover summary on `PublicTaskDto` only; activity `ATTACHMENT_ADDED` / `ATTACHMENT_REMOVED` / `COVER_CHANGED`. UI: action-row Attachment Popover for upload; attachment list stacked in main column. Max 20 MiB/file. Deferred: custom statuses; **C** audit.
+- **Approach:** Owned by `tasks`. Compose volume (`attachments_data` / `ATTACHMENTS_ROOT`); nested multipart + authenticated `/content`; cover summary on `PublicTaskDto` only; activity `ATTACHMENT_ADDED` / `ATTACHMENT_REMOVED` / `COVER_CHANGED`. UI: action-row Attachment Popover for upload; attachment list stacked in main column. Max 20 MiB/file. Later shipped: custom statuses (`018`). Deferred: **C** audit.
+
+### 018 — Custom Task Statuses
+
+- **Spec:** `specs/018-custom-task-statuses/`
+- **What:** Per-project status catalog; dynamic Kanban columns; catalog reorder; dashboard via `isCompleted`.
+- **Approach:** Owned by `tasks`. `Task.status` = stable string key; `ProjectStatus` for name/color/`isCompleted`/position; seed TODO/IN_PROGRESS/DONE (editable, keys immutable); Statuses Dialog + label color tokens. Deferred: within-column rank **H**; **C** audit.
 
 ---
 
