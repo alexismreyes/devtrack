@@ -26,6 +26,76 @@ export class InvalidTaskStatusError extends Error {
   }
 }
 
+export class StatusNotFoundError extends Error {
+  constructor() {
+    super("Status was not found");
+    this.name = "StatusNotFoundError";
+  }
+}
+
+export class InvalidStatusNameError extends Error {
+  constructor() {
+    super("Status name must be 1–40 characters after trim");
+    this.name = "InvalidStatusNameError";
+  }
+}
+
+export class InvalidStatusColorError extends Error {
+  constructor() {
+    super("Status color is invalid");
+    this.name = "InvalidStatusColorError";
+  }
+}
+
+export class DuplicateStatusNameError extends Error {
+  constructor() {
+    super("A status with this name already exists in the project");
+    this.name = "DuplicateStatusNameError";
+  }
+}
+
+export class StatusInUseError extends Error {
+  constructor() {
+    super("Cannot delete a status that is assigned to live tasks");
+    this.name = "StatusInUseError";
+  }
+}
+
+export class LastStatusError extends Error {
+  constructor() {
+    super("Cannot delete the last remaining status in the project");
+    this.name = "LastStatusError";
+  }
+}
+
+export class LastNonCompletedStatusError extends Error {
+  constructor() {
+    super("Project must keep at least one non-completed status");
+    this.name = "LastNonCompletedStatusError";
+  }
+}
+
+export class StatusKeyImmutableError extends Error {
+  constructor() {
+    super("Status key cannot be changed");
+    this.name = "StatusKeyImmutableError";
+  }
+}
+
+export class InvalidStatusReorderError extends Error {
+  constructor() {
+    super("Status reorder must include each project status id exactly once");
+    this.name = "InvalidStatusReorderError";
+  }
+}
+
+export class InvalidStatusKeyError extends Error {
+  constructor() {
+    super("Status key is invalid");
+    this.name = "InvalidStatusKeyError";
+  }
+}
+
 export class InvalidTaskPriorityError extends Error {
   constructor() {
     super("Task priority is invalid");

@@ -9,9 +9,16 @@ import {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export const TASK_STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
-export type TaskStatus = (typeof TASK_STATUSES)[number];
+/** Stable catalog key string on Task.status (not an enum). */
+export type TaskStatus = string;
+/** Preferred create default when that catalog key still exists. */
 export const DEFAULT_TASK_STATUS: TaskStatus = "TODO";
+/** Seeded keys preserved for migration / docs; customs are opaque UUID strings. */
+export const SEEDED_TASK_STATUS_KEYS = [
+  "TODO",
+  "IN_PROGRESS",
+  "DONE",
+] as const;
 
 export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
@@ -25,11 +32,13 @@ export type TaskDetailsChange = {
   dueDate?: Date | null;
 };
 
+/** Normalize a status key string; catalog membership is enforced in the service. */
 export function parseTaskStatus(value: string): TaskStatus {
-  if ((TASK_STATUSES as readonly string[]).includes(value)) {
-    return value as TaskStatus;
+  const normalized = value.trim();
+  if (normalized.length < 1 || normalized.length > 64) {
+    throw new InvalidTaskStatusError();
   }
-  throw new InvalidTaskStatusError();
+  return normalized;
 }
 
 export function parseTaskPriority(value: string): TaskPriority {

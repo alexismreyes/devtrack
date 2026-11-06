@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { validationError } from "../../../infrastructure/http/app-error";
 import type { CreateTaskRequestDto } from "../dto/task-dtos";
-import { TASK_PRIORITIES, TASK_STATUSES } from "../domain/task";
+import { TASK_PRIORITIES } from "../domain/task";
 import { optionalDueDateSchema } from "./calendar-date";
 
 function normalizeDescription(value: string | null | undefined): string | null {
@@ -18,7 +18,7 @@ export const createTaskBodySchema = z
     title: z.string().trim().min(1),
     description: z.union([z.string(), z.null()]).optional(),
     dueDate: optionalDueDateSchema,
-    status: z.enum(TASK_STATUSES).optional(),
+    status: z.string().trim().min(1).max(64).optional(),
     priority: z.enum(TASK_PRIORITIES).optional(),
   })
   .strict()

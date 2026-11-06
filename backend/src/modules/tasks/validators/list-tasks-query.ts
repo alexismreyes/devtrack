@@ -1,11 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { validationError } from "../../../infrastructure/http/app-error";
-import { TASK_PRIORITIES, TASK_STATUSES } from "../domain/task";
+import { TASK_PRIORITIES } from "../domain/task";
 
 export const listTasksQuerySchema = z
   .object({
-    status: z.enum(TASK_STATUSES).optional(),
+    status: z.string().trim().min(1).max(64).optional(),
     priority: z.enum(TASK_PRIORITIES).optional(),
     labelId: z.uuid().optional(),
   })

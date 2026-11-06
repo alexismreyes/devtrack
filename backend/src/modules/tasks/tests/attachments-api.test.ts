@@ -15,6 +15,7 @@ import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repositor
 import { InMemoryChecklistsRepository } from "./in-memory-checklists-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryStatusesRepository } from "./in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
@@ -51,6 +52,7 @@ function createAttachmentsApp() {
   const labelsRepository = new InMemoryLabelsRepository();
   const taskLabelsRepository = new InMemoryTaskLabelsRepository(labelsRepository);
   const tasksRepository = new InMemoryTasksRepository(taskLabelsRepository.joins);
+  const statusesRepository = new InMemoryStatusesRepository(tasksRepository);
   const commentsRepository = new InMemoryCommentsRepository();
   const activityRepository = new InMemoryActivityRepository();
   const checklistsRepository = new InMemoryChecklistsRepository();
@@ -71,6 +73,7 @@ function createAttachmentsApp() {
     attachmentStorage,
     labelsRepository,
     taskLabelsRepository,
+    statusesRepository,
     projectMembersRepository,
   });
   return {

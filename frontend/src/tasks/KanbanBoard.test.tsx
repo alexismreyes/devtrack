@@ -6,12 +6,15 @@ import {
   keyboardStartDrag,
   stubKanbanRects,
 } from "../test/kanban-dnd";
+import { DEFAULT_PROJECT_STATUSES } from "../test/statuses";
 import { KanbanBoard, resolveKanbanDrop } from "./KanbanBoard";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+const columnKeys = DEFAULT_PROJECT_STATUSES.map((status) => status.key);
 
 const todoTask: PublicTaskDto = {
   id: "task-1",
@@ -44,20 +47,52 @@ const labeledTask: PublicTaskDto = {
   ],
 };
 
+function renderBoard(
+  props: {
+    columns?: typeof DEFAULT_PROJECT_STATUSES;
+    tasks?: PublicTaskDto[];
+    onSelectTask?: (taskId: string) => void;
+    onMoveTask?: (taskId: string, status: string) => Promise<void>;
+    onAddTask?: (status: string) => void;
+    disabled?: boolean;
+  } = {},
+): ReturnType<typeof render> {
+  return render(
+    <KanbanBoard
+      columns={props.columns ?? DEFAULT_PROJECT_STATUSES}
+      tasks={props.tasks ?? [todoTask]}
+      onSelectTask={props.onSelectTask ?? vi.fn()}
+      onMoveTask={props.onMoveTask ?? vi.fn().mockResolvedValue(undefined)}
+      onAddTask={props.onAddTask}
+      disabled={props.disabled}
+    />,
+  );
+}
+
 describe("resolveKanbanDrop", () => {
-  it("returns the target status for a cross-column drop", () => {
-    expect(resolveKanbanDrop("task-1", "IN_PROGRESS", [todoTask])).toEqual({
+  it("returns the target status key for a cross-column drop (AC-005)", () => {
+    expect(
+      resolveKanbanDrop("task-1", "IN_PROGRESS", [todoTask], columnKeys),
+    ).toEqual({
       taskId: "task-1",
       status: "IN_PROGRESS",
     });
   });
 
-  it("is a no-op for a same-column drop", () => {
-    expect(resolveKanbanDrop("task-1", "TODO", [todoTask])).toBeNull();
+  it("is a no-op for a same-column drop (no task rank H)", () => {
+    expect(
+      resolveKanbanDrop("task-1", "TODO", [todoTask], columnKeys),
+    ).toBeNull();
   });
 
   it("is a no-op when there is no drop target", () => {
-    expect(resolveKanbanDrop("task-1", null, [todoTask])).toBeNull();
+    expect(resolveKanbanDrop("task-1", null, [todoTask], columnKeys)).toBeNull();
+  });
+
+  it("rejects unknown column keys", () => {
+    expect(
+      resolveKanbanDrop("task-1", "NOT_A_COLUMN", [todoTask], columnKeys),
+    ).toBeNull();
   });
 });
 
@@ -65,13 +100,7 @@ describe("KanbanBoard drag-and-drop", () => {
   it("calls onMoveTask when a card is dropped on another column", async () => {
     stubKanbanRects();
     const onMoveTask = vi.fn().mockResolvedValue(undefined);
-    render(
-      <KanbanBoard
-        tasks={[todoTask]}
-        onSelectTask={vi.fn()}
-        onMoveTask={onMoveTask}
-      />,
-    );
+    renderBoard({ onMoveTask });
 
     const card = document.querySelector('[data-kanban-card="task-1"]');
     expect(card).toBeInstanceOf(HTMLElement);
@@ -83,13 +112,7 @@ describe("KanbanBoard drag-and-drop", () => {
   it("does not call onMoveTask for a same-column drop", async () => {
     stubKanbanRects();
     const onMoveTask = vi.fn().mockResolvedValue(undefined);
-    render(
-      <KanbanBoard
-        tasks={[todoTask]}
-        onSelectTask={vi.fn()}
-        onMoveTask={onMoveTask}
-      />,
-    );
+    renderBoard({ onMoveTask });
 
     const card = document.querySelector('[data-kanban-card="task-1"]');
     expect(card).toBeInstanceOf(HTMLElement);
@@ -101,14 +124,7 @@ describe("KanbanBoard drag-and-drop", () => {
   it("does not call onMoveTask when the board is disabled", async () => {
     stubKanbanRects();
     const onMoveTask = vi.fn().mockResolvedValue(undefined);
-    render(
-      <KanbanBoard
-        tasks={[todoTask]}
-        onSelectTask={vi.fn()}
-        onMoveTask={onMoveTask}
-        disabled
-      />,
-    );
+    renderBoard({ onMoveTask, disabled: true });
 
     const card = document.querySelector('[data-kanban-card="task-1"]');
     expect(card).toBeInstanceOf(HTMLElement);
@@ -116,15 +132,45 @@ describe("KanbanBoard drag-and-drop", () => {
     expect(onMoveTask).not.toHaveBeenCalled();
   });
 
+  it("renders columns in catalog position order including customs (AC-005 / AC-014)", () => {
+    const customColumns = [
+      {
+        ...DEFAULT_PROJECT_STATUSES[2]!,
+        position: 0,
+      },
+      {
+        id: "status-hold",
+        projectId: "proj-1",
+        key: "hold-key",
+        name: "On hold",
+        color: "ORANGE" as const,
+        isSystem: false,
+        isCompleted: false,
+        position: 1,
+        createdAt: "2026-11-06T13:00:00.000Z",
+      },
+      DEFAULT_PROJECT_STATUSES[0]!,
+      DEFAULT_PROJECT_STATUSES[1]!,
+    ];
+    renderBoard({ columns: customColumns, tasks: [] });
+
+    const headers = screen.getAllByRole("columnheader");
+    expect(headers.map((header) => header.textContent)).toEqual([
+      "Done",
+      "On hold",
+      "To do",
+      "In progress",
+    ]);
+    expect(document.querySelector('[data-kanban-column="hold-key"]')).not.toBeNull();
+    expect(screen.queryByText(/wip/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/rank/i)).not.toBeInTheDocument();
+  });
+
   it("shows title, priority, and due date only when present", () => {
-    render(
-      <KanbanBoard
-        tasks={[todoTask, datedTask]}
-        onSelectTask={vi.fn()}
-        onMoveTask={vi.fn().mockResolvedValue(undefined)}
-        onAddTask={vi.fn()}
-      />,
-    );
+    renderBoard({
+      tasks: [todoTask, datedTask],
+      onAddTask: vi.fn(),
+    });
 
     expect(screen.getByRole("button", { name: /write tests/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /dated work/i })).toBeInTheDocument();
@@ -139,13 +185,7 @@ describe("KanbanBoard drag-and-drop", () => {
   });
 
   it("shows assigned label names and color tokens on the card face", () => {
-    render(
-      <KanbanBoard
-        tasks={[labeledTask]}
-        onSelectTask={vi.fn()}
-        onMoveTask={vi.fn().mockResolvedValue(undefined)}
-      />,
-    );
+    renderBoard({ tasks: [labeledTask] });
 
     const card = document.querySelector(
       '[data-kanban-card="task-labeled"]',
@@ -164,14 +204,7 @@ describe("KanbanBoard drag-and-drop", () => {
   });
 
   it("keeps compact left-aligned columns instead of stretching the full main width", () => {
-    render(
-      <KanbanBoard
-        tasks={[todoTask]}
-        onSelectTask={vi.fn()}
-        onMoveTask={vi.fn().mockResolvedValue(undefined)}
-        onAddTask={vi.fn()}
-      />,
-    );
+    renderBoard({ onAddTask: vi.fn() });
 
     const board = document.querySelector('[data-slot="kanban-board"]');
     expect(board).toHaveClass("flex", "justify-start", "flex-1", "min-h-0");
@@ -195,13 +228,7 @@ describe("KanbanBoard drag-and-drop", () => {
   });
 
   it("shows a pointer cursor on task cards", () => {
-    render(
-      <KanbanBoard
-        tasks={[todoTask]}
-        onSelectTask={vi.fn()}
-        onMoveTask={vi.fn().mockResolvedValue(undefined)}
-      />,
-    );
+    renderBoard();
 
     expect(document.querySelector('[data-kanban-card="task-1"]')).toHaveClass(
       "cursor-pointer",
@@ -210,13 +237,7 @@ describe("KanbanBoard drag-and-drop", () => {
 
   it("shows a drag overlay while a card is being dragged", async () => {
     stubKanbanRects();
-    render(
-      <KanbanBoard
-        tasks={[todoTask]}
-        onSelectTask={vi.fn()}
-        onMoveTask={vi.fn().mockResolvedValue(undefined)}
-      />,
-    );
+    renderBoard();
 
     const card = document.querySelector('[data-kanban-card="task-1"]');
     expect(card).toBeInstanceOf(HTMLElement);
@@ -262,13 +283,7 @@ describe("KanbanBoard drag-and-drop", () => {
       revokeObjectURL,
     });
 
-    const { rerender } = render(
-      <KanbanBoard
-        tasks={[coverTask]}
-        onSelectTask={vi.fn()}
-        onMoveTask={vi.fn().mockResolvedValue(undefined)}
-      />,
-    );
+    const { rerender } = renderBoard({ tasks: [coverTask] });
 
     await waitFor(() => {
       expect(screen.getByTestId("kanban-card-cover")).toHaveAttribute(
@@ -284,6 +299,7 @@ describe("KanbanBoard drag-and-drop", () => {
 
     rerender(
       <KanbanBoard
+        columns={DEFAULT_PROJECT_STATUSES}
         tasks={[{ ...coverTask, cover: null }]}
         onSelectTask={vi.fn()}
         onMoveTask={vi.fn().mockResolvedValue(undefined)}

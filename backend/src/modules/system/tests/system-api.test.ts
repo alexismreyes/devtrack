@@ -17,6 +17,7 @@ import { PrismaChecklistsRepository } from "../../tasks/repository/prisma-checkl
 import { PrismaCommentsRepository } from "../../tasks/repository/prisma-comments-repository";
 import { PrismaTasksRepository } from "../../tasks/repository/prisma-tasks-repository";
 import { PrismaLabelsRepository } from "../../tasks/repository/prisma-labels-repository";
+import { PrismaStatusesRepository } from "../../tasks/repository/prisma-statuses-repository";
 import { PrismaTaskLabelsRepository } from "../../tasks/repository/prisma-task-labels-repository";
 import { InMemoryActivityRepository } from "../../tasks/tests/in-memory-activity-repository";
 import { PrismaAttachmentsRepository } from "../../tasks/repository/prisma-attachments-repository";
@@ -25,6 +26,7 @@ import { InMemoryAttachmentsRepository } from "../../tasks/tests/in-memory-attac
 import { InMemoryChecklistsRepository } from "../../tasks/tests/in-memory-checklists-repository";
 import { InMemoryCommentsRepository } from "../../tasks/tests/in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "../../tasks/tests/in-memory-labels-repository";
+import { InMemoryStatusesRepository } from "../../tasks/tests/in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "../../tasks/tests/in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
 import { PrismaUsersRepository } from "../../users/repository/prisma-users-repository";
@@ -76,6 +78,7 @@ function createSystemApp(systemRepository: FakeSystemRepository = new FakeSystem
   const labelsRepository = new InMemoryLabelsRepository();
   const taskLabelsRepository = new InMemoryTaskLabelsRepository(labelsRepository);
   const tasksRepository = new InMemoryTasksRepository(taskLabelsRepository.joins);
+  const statusesRepository = new InMemoryStatusesRepository(tasksRepository);
   const commentsRepository = new InMemoryCommentsRepository();
   const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
@@ -93,6 +96,7 @@ function createSystemApp(systemRepository: FakeSystemRepository = new FakeSystem
     attachmentStorage: new InMemoryAttachmentStorage(),
     labelsRepository,
     taskLabelsRepository,
+    statusesRepository,
     projectMembersRepository,
   });
   return { app, systemRepository, usersRepository, authRepository };
@@ -323,6 +327,7 @@ describe("system HTTP API persistence", () => {
       attachmentStorage: new InMemoryAttachmentStorage(),
       labelsRepository: new PrismaLabelsRepository(prisma),
       taskLabelsRepository: new PrismaTaskLabelsRepository(prisma),
+      statusesRepository: new PrismaStatusesRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),
       unitOfWork: new PrismaUnitOfWork(prisma),
     });

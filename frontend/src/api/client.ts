@@ -18,6 +18,7 @@ import type {
   CreateCommentRequestDto,
   CreateLabelRequestDto,
   CreateProjectRequestDto,
+  CreateStatusRequestDto,
   CreateTaskRequestDto,
   DashboardProjectSummaryDto,
   DashboardSummaryResponseDto,
@@ -41,11 +42,14 @@ import type {
   PublicLabelDto,
   PublicMemberDto,
   PublicProjectDto,
+  PublicProjectStatusDto,
   PublicTaskDto,
   PublicUserDto,
   RegisterRequestDto,
+  ReorderStatusesRequestDto,
   ReplaceTaskLabelsRequestDto,
   SetCoverRequestDto,
+  StatusListResponseDto,
   TaskActivityChangeField,
   TaskActivityFieldChange,
   TaskActivityKind,
@@ -63,6 +67,7 @@ import type {
   UpdateMemberRequestDto,
   UpdateProfileRequestDto,
   UpdateProjectRequestDto,
+  UpdateStatusRequestDto,
   UpdateTaskRequestDto,
 } from "./types";
 
@@ -297,6 +302,71 @@ export async function replaceTaskLabels(
   }
   return {
     labels: body.labels.map(toPublicLabel),
+  };
+}
+
+export async function listStatuses(
+  projectId: string,
+): Promise<StatusListResponseDto> {
+  const body = await request("GET", statusesCollectionPath(projectId));
+  if (!isStatusListResponse(body)) {
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "Unexpected status list response",
+    );
+  }
+  return {
+    statuses: body.statuses.map(toPublicProjectStatus),
+  };
+}
+
+export async function createStatus(
+  projectId: string,
+  input: CreateStatusRequestDto,
+): Promise<PublicProjectStatusDto> {
+  const body = await request("POST", statusesCollectionPath(projectId), input);
+  return requirePublicProjectStatus(body, "Unexpected status response");
+}
+
+export async function updateStatus(
+  projectId: string,
+  statusId: string,
+  input: UpdateStatusRequestDto,
+): Promise<PublicProjectStatusDto> {
+  const body = await request(
+    "PATCH",
+    statusItemPath(projectId, statusId),
+    input,
+  );
+  return requirePublicProjectStatus(body, "Unexpected status response");
+}
+
+export async function deleteStatus(
+  projectId: string,
+  statusId: string,
+): Promise<void> {
+  await request("DELETE", statusItemPath(projectId, statusId));
+}
+
+export async function reorderStatuses(
+  projectId: string,
+  input: ReorderStatusesRequestDto,
+): Promise<StatusListResponseDto> {
+  const body = await request(
+    "PUT",
+    statusesReorderPath(projectId),
+    input,
+  );
+  if (!isStatusListResponse(body)) {
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "Unexpected status reorder response",
+    );
+  }
+  return {
+    statuses: body.statuses.map(toPublicProjectStatus),
   };
 }
 
@@ -807,6 +877,18 @@ function taskLabelsPath(taskId: string): string {
   return `/api/tasks/${taskId}/labels`;
 }
 
+function statusesCollectionPath(projectId: string): string {
+  return `/api/projects/${projectId}/statuses`;
+}
+
+function statusItemPath(projectId: string, statusId: string): string {
+  return `${statusesCollectionPath(projectId)}/${statusId}`;
+}
+
+function statusesReorderPath(projectId: string): string {
+  return `${statusesCollectionPath(projectId)}/reorder`;
+}
+
 function requirePublicTask(value: unknown, message: string): PublicTaskDto {
   if (!isPublicTask(value)) {
     throw new ApiError(500, "INTERNAL_ERROR", message);
@@ -856,7 +938,7 @@ function isPublicCoverSummary(
 }
 
 function isTaskStatus(value: unknown): value is TaskStatus {
-  return value === "TODO" || value === "IN_PROGRESS" || value === "DONE";
+  return typeof value === "string" && value.length > 0;
 }
 
 function isTaskPriority(value: unknown): value is TaskPriority {
@@ -950,6 +1032,72 @@ function isLabelListResponse(value: unknown): value is LabelListResponseDto {
 
 function isTaskLabelsResponse(value: unknown): value is TaskLabelsResponseDto {
   return isLabelListResponse(value);
+}
+
+function requirePublicProjectStatus(
+  value: unknown,
+  message: string,
+): PublicProjectStatusDto {
+  if (!isPublicProjectStatus(value)) {
+    throw new ApiError(500, "INTERNAL_ERROR", message);
+  }
+  return toPublicProjectStatus(value);
+}
+
+function toPublicProjectStatus(
+  value: PublicProjectStatusDto,
+): PublicProjectStatusDto {
+  return {
+    id: value.id,
+    projectId: value.projectId,
+    key: value.key,
+    name: value.name,
+    color: value.color,
+    isSystem: value.isSystem,
+    isCompleted: value.isCompleted,
+    position: value.position,
+    createdAt: value.createdAt,
+  };
+}
+
+function isPublicProjectStatus(
+  value: unknown,
+): value is PublicProjectStatusDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const status = value as {
+    id?: unknown;
+    projectId?: unknown;
+    key?: unknown;
+    name?: unknown;
+    color?: unknown;
+    isSystem?: unknown;
+    isCompleted?: unknown;
+    position?: unknown;
+    createdAt?: unknown;
+  };
+  return (
+    typeof status.id === "string" &&
+    typeof status.projectId === "string" &&
+    typeof status.key === "string" &&
+    status.key.length > 0 &&
+    typeof status.name === "string" &&
+    isLabelColor(status.color) &&
+    typeof status.isSystem === "boolean" &&
+    typeof status.isCompleted === "boolean" &&
+    typeof status.position === "number" &&
+    Number.isInteger(status.position) &&
+    typeof status.createdAt === "string"
+  );
+}
+
+function isStatusListResponse(value: unknown): value is StatusListResponseDto {
+  if (typeof value !== "object" || value === null || !("statuses" in value)) {
+    return false;
+  }
+  const statuses = (value as { statuses: unknown }).statuses;
+  return Array.isArray(statuses) && statuses.every(isPublicProjectStatus);
 }
 
 function isPublicTask(value: unknown): value is PublicTaskDto {

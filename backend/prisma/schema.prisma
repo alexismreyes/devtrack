@@ -57,12 +57,6 @@ model AuthSession {
   @@map("auth_sessions")
 }
 
-enum TaskStatus {
-  TODO
-  IN_PROGRESS
-  DONE
-}
-
 enum TaskPriority {
   LOW
   MEDIUM
@@ -100,6 +94,7 @@ model Project {
   tasks       Task[]
   members     ProjectMember[]
   labels      ProjectLabel[]
+  statuses    ProjectStatus[]
 
   @@index([ownerUserId])
   @@map("projects")
@@ -124,7 +119,7 @@ model Task {
   projectId   String       @db.Uuid
   title       String
   description String?
-  status      TaskStatus   @default(TODO)
+  status      String       @default("TODO")
   priority    TaskPriority @default(MEDIUM)
   dueDate     DateTime?    @db.Date
   createdAt   DateTime
@@ -197,6 +192,27 @@ model ProjectLabel {
   @@unique([projectId, nameKey])
   @@index([projectId])
   @@map("project_labels")
+}
+
+model ProjectStatus {
+  id          String   @id @db.Uuid
+  projectId   String   @db.Uuid
+  key         String
+  name        String
+  nameKey     String
+  color       String
+  isSystem    Boolean
+  isCompleted Boolean
+  position    Int
+  createdAt   DateTime
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, key])
+  @@unique([projectId, nameKey])
+  @@unique([projectId, position])
+  @@index([projectId])
+  @@index([projectId, position])
+  @@map("project_statuses")
 }
 
 model TaskLabel {

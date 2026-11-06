@@ -1,5 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { TaskPriority, TaskStatus } from "../api/types";
+import type {
+  PublicProjectStatusDto,
+  TaskPriority,
+  TaskStatus,
+} from "../api/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,8 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, nativeSelectClassName } from "@/lib/utils";
+import { taskStatusLabel } from "./statusDisplay";
 
-const STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 
 export type CreateTaskPayload = {
@@ -30,6 +34,7 @@ type CreateTaskDialogProps = {
   onOpenChange: (open: boolean) => void;
   omitStatus: boolean;
   initialStatus?: TaskStatus;
+  statusOptions?: PublicProjectStatusDto[];
   creating: boolean;
   errorMessage?: string;
   onSubmit: (payload: CreateTaskPayload) => void;
@@ -40,6 +45,7 @@ export function CreateTaskDialog({
   onOpenChange,
   omitStatus,
   initialStatus,
+  statusOptions = [],
   creating,
   errorMessage,
   onSubmit,
@@ -135,14 +141,12 @@ export function CreateTaskDialog({
                 name="new-task-status"
                 className={cn(nativeSelectClassName)}
                 value={status}
-                onChange={(event) =>
-                  setStatus(event.target.value as TaskStatus | "")
-                }
+                onChange={(event) => setStatus(event.target.value)}
                 disabled={creating}
               >
-                {STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
+                {statusOptions.map((option) => (
+                  <option key={option.id} value={option.key}>
+                    {taskStatusLabel(option.key, statusOptions)}
                   </option>
                 ))}
               </select>

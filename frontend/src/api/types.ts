@@ -55,7 +55,8 @@ export type UpdateProjectRequestDto = {
   description?: string | null;
 };
 
-export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
+/** Catalog status key (seeded TODO/IN_PROGRESS/DONE or custom opaque key). */
+export type TaskStatus = string;
 
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
@@ -69,6 +70,8 @@ export type LabelColor =
   | "PURPLE"
   | "PINK"
   | "GRAY";
+
+export type StatusColor = LabelColor;
 
 export type TaskEmbeddedLabelDto = {
   id: string;
@@ -96,6 +99,38 @@ export type CreateLabelRequestDto = {
 export type UpdateLabelRequestDto = {
   name?: string;
   color?: LabelColor;
+};
+
+export type PublicProjectStatusDto = {
+  id: string;
+  projectId: string;
+  key: string;
+  name: string;
+  color: StatusColor;
+  isSystem: boolean;
+  isCompleted: boolean;
+  position: number;
+  createdAt: string;
+};
+
+export type StatusListResponseDto = {
+  statuses: PublicProjectStatusDto[];
+};
+
+export type CreateStatusRequestDto = {
+  name: string;
+  color: StatusColor;
+  isCompleted?: boolean;
+};
+
+export type UpdateStatusRequestDto = {
+  name?: string;
+  color?: StatusColor;
+  isCompleted?: boolean;
+};
+
+export type ReorderStatusesRequestDto = {
+  statusIds: string[];
 };
 
 export type ReplaceTaskLabelsRequestDto = {

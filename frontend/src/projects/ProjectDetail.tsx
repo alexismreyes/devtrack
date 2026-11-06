@@ -14,6 +14,7 @@ import {
 import type { ProjectMemberRole, PublicProjectDto } from "../api/types";
 import { Button } from "@/components/ui/button";
 import { LabelsDialog } from "../tasks/LabelsDialog";
+import { StatusesDialog } from "../tasks/StatusesDialog";
 import { TasksPanel } from "../tasks/TasksPanel";
 import { EditProjectDialog } from "./EditProjectDialog";
 import { MembersDialog } from "./MembersDialog";
@@ -58,6 +59,8 @@ export function ProjectDetail({
   const [membersOpen, setMembersOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelsRevision, setLabelsRevision] = useState(0);
+  const [statusesOpen, setStatusesOpen] = useState(false);
+  const [statusesRevision, setStatusesRevision] = useState(0);
 
   const applyProject = useCallback((next: PublicProjectDto) => {
     setProject(next);
@@ -69,6 +72,7 @@ export function ProjectDetail({
     setEditOpen(false);
     setMembersOpen(false);
     setLabelsOpen(false);
+    setStatusesOpen(false);
     setActorRole(null);
     setActorUserId(null);
     try {
@@ -155,6 +159,7 @@ export function ProjectDetail({
       setEditOpen(false);
       setMembersOpen(false);
       setLabelsOpen(false);
+      setStatusesOpen(false);
       setActionState({ kind: "success", message: "Project archived." });
     } catch (err) {
       if (handleAuthzError(err)) {
@@ -289,6 +294,18 @@ export function ProjectDetail({
             >
               Labels
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setActionState({ kind: "idle" });
+                setStatusesOpen(true);
+              }}
+              disabled={busy}
+            >
+              Statuses
+            </Button>
           </div>
         ) : null}
       </div>
@@ -345,6 +362,16 @@ export function ProjectDetail({
               setLabelsRevision((value) => value + 1);
             }}
           />
+          <StatusesDialog
+            open={statusesOpen}
+            onOpenChange={setStatusesOpen}
+            projectId={projectId}
+            canWrite={writeTasks}
+            onUnauthenticated={onUnauthenticated}
+            onCatalogChanged={() => {
+              setStatusesRevision((value) => value + 1);
+            }}
+          />
           <TasksPanel
             projectId={projectId}
             archived={archived}
@@ -352,6 +379,7 @@ export function ProjectDetail({
             canManageMembers={showMembers}
             currentUserId={actorUserId}
             labelsRevision={labelsRevision}
+            statusesRevision={statusesRevision}
             onUnauthenticated={onUnauthenticated}
           />
         </>

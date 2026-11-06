@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PublicTaskDto } from "../api/types";
 import { keyboardDropOnColumn, stubKanbanRects } from "../test/kanban-dnd";
 import { expectNoSessionTokenStorage } from "../test/storage";
+import { DEFAULT_PROJECT_STATUSES } from "../test/statuses";
 import { TasksPanel } from "./TasksPanel";
 
 const task = {
@@ -131,6 +132,12 @@ function mockFetch(
         : input instanceof URL
           ? input.href
           : input.url;
+    if (
+      isStatusesListUrl(url) &&
+      (init?.method === undefined || init.method === "GET")
+    ) {
+      return defaultStatusesResponse();
+    }
     return handler(url, init);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -153,6 +160,10 @@ function isLabelsListUrl(url: string): boolean {
   return /\/api\/projects\/[^/]+\/labels$/.test(url);
 }
 
+function isStatusesListUrl(url: string): boolean {
+  return /\/api\/projects\/[^/]+\/statuses$/.test(url);
+}
+
 function emptyCommentsResponse(): Response {
   return jsonResponse(200, { comments: [] });
 }
@@ -165,12 +176,19 @@ function emptyLabelsResponse(): Response {
   return jsonResponse(200, { labels: [] });
 }
 
+function defaultStatusesResponse(): Response {
+  return jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES });
+}
+
 function respondCommonReads(
   url: string,
   init: RequestInit | undefined,
 ): Response | null {
   if (isLabelsListUrl(url) && (init?.method === undefined || init.method === "GET")) {
     return emptyLabelsResponse();
+  }
+  if (isStatusesListUrl(url) && (init?.method === undefined || init.method === "GET")) {
+    return defaultStatusesResponse();
   }
   if (isTaskCommentsUrl(url) && (init?.method === undefined || init.method === "GET")) {
     return emptyCommentsResponse();
@@ -199,6 +217,9 @@ describe("TasksPanel", () => {
       expect(init?.credentials).toBe("include");
       if (isLabelsListUrl(url)) {
         return emptyLabelsResponse();
+      }
+      if (isStatusesListUrl(url)) {
+        return defaultStatusesResponse();
       }
       expect(url).toBe("http://localhost:3000/api/projects/proj-1/tasks");
       return listPromise;
@@ -393,6 +414,9 @@ describe("TasksPanel", () => {
       expect(init?.method).toBe("GET");
       if (isLabelsListUrl(url)) {
         return emptyLabelsResponse();
+      }
+      if (isStatusesListUrl(url)) {
+        return defaultStatusesResponse();
       }
       if (url.includes("status=TODO") && url.includes("priority=HIGH")) {
         return jsonResponse(200, { tasks: [] });

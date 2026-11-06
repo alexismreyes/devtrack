@@ -3,6 +3,7 @@ import type {
   ProjectAccessOperation,
   ProjectMembershipQueryPort,
 } from "../access/project-membership-port";
+import type { ProjectStatusSeedPort } from "../access/project-status-seed-port";
 import type { UnitOfWork } from "../access/unit-of-work";
 import { ProjectNotFoundError } from "../domain/errors";
 import type { Project } from "../domain/project";
@@ -17,6 +18,7 @@ export class ProjectsService {
     private readonly membership: ProjectMembershipQueryPort,
     private readonly ownerMembership: OwnerMembershipWritePort,
     private readonly unitOfWork: UnitOfWork,
+    private readonly statusSeed: ProjectStatusSeedPort,
   ) {}
 
   create(
@@ -31,6 +33,7 @@ export class ProjectsService {
         description,
       });
       await this.ownerMembership.insertCreatingOwner(project.id, actorId);
+      await this.statusSeed.seedDefaultsForProject(project.id);
       return project;
     });
   }

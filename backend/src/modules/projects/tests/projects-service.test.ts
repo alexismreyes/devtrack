@@ -12,6 +12,8 @@ import {
   ProjectNotFoundError,
 } from "../domain/errors";
 import { ProjectsService } from "../service/projects-service";
+import { ProjectStatusSeedAdapter } from "../../tasks/access/project-status-seed-adapter";
+import { InMemoryStatusesRepository } from "../../tasks/tests/in-memory-statuses-repository";
 import { InMemoryProjectsRepository } from "./in-memory-projects-repository";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
@@ -22,25 +24,28 @@ const OTHER_ID = "44444444-4444-4444-8444-444444444444";
 function createService() {
   const projects = new InMemoryProjectsRepository();
   const members = new InMemoryProjectMembersRepository();
+  const statuses = new InMemoryStatusesRepository();
   const snapshots = new ProjectSnapshotAdapter(projects);
   const service = new ProjectsService(
     projects,
     new ProjectMembershipAccessAdapter(members, snapshots),
     new OwnerMembershipWriteAdapter(members),
     new ImmediateUnitOfWork(),
+    new ProjectStatusSeedAdapter(statuses),
   );
-  return { service, projects, members };
+  return { service, projects, members, statuses };
 }
 
 describe("ProjectsService", () => {
   it("creates a project owned by the actor and inserts an OWNER membership", async () => {
-    const { service, members } = createService();
+    const { service, members, statuses } = createService();
 
     const created = await service.create(OWNER_ID, "Roadmap", "Q1");
     const membership = await members.findByProjectAndUser(
       created.id,
       OWNER_ID,
     );
+    const seeded = await statuses.listByProjectId(created.id);
 
     expect(created.ownerUserId).toBe(OWNER_ID);
     expect(created.name).toBe("Roadmap");
@@ -48,6 +53,11 @@ describe("ProjectsService", () => {
     expect(created.archivedAt).toBeNull();
     expect(membership?.role).toBe("OWNER");
     expect(membership?.userId).toBe(OWNER_ID);
+    expect(seeded.map((status) => status.key)).toEqual([
+      "TODO",
+      "IN_PROGRESS",
+      "DONE",
+    ]);
   });
 
   it("returns an owned project including after archive", async () => {

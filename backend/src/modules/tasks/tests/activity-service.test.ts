@@ -17,6 +17,7 @@ import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryStatusesRepository } from "./in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
@@ -103,7 +104,7 @@ function seedIdentities(identities: FakeUsersIdentityPort) {
   }
 }
 
-function createHarness(activity: ActivityRepository = new InMemoryActivityRepository()) {
+async function createHarness(activity: ActivityRepository = new InMemoryActivityRepository()) {
   const tasks = new InMemoryTasksRepository();
   const comments = new InMemoryCommentsRepository();
   const projects = new FakeProjectAccessPort();
@@ -132,6 +133,8 @@ function createHarness(activity: ActivityRepository = new InMemoryActivityReposi
 
   const labels = new InMemoryLabelsRepository();
   const taskLabels = new InMemoryTaskLabelsRepository(labels);
+  const statuses = new InMemoryStatusesRepository(tasks);
+  await statuses.seedDefaultsForProject(PROJECT_ID);
   const tasksService = new TasksService(
     tasks,
     projects,
@@ -139,6 +142,7 @@ function createHarness(activity: ActivityRepository = new InMemoryActivityReposi
     activity,
     taskLabels,
     new InMemoryAttachmentsRepository(tasks),
+    statuses,
     unitOfWork,
   );
   const commentsService = new CommentsService(
@@ -168,7 +172,7 @@ function createHarness(activity: ActivityRepository = new InMemoryActivityReposi
 
 describe("ActivityService and emission", () => {
   it("emits TASK_CREATED on create and lists with actor display name (AC-001, AC-008)", async () => {
-    const { tasksService, activityService, activity } = createHarness();
+    const { tasksService, activityService, activity } = await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Write",
       description: null,
@@ -192,7 +196,7 @@ describe("ActivityService and emission", () => {
   });
 
   it("emits one TASK_FIELDS_CHANGED event with old/new and skips no-op (AC-002, AC-014)", async () => {
-    const { tasksService, activityService } = createHarness();
+    const { tasksService, activityService } = await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Write",
       description: null,
@@ -227,7 +231,7 @@ describe("ActivityService and emission", () => {
   });
 
   it("emits TASK_SOFT_DELETED and hides list after soft-delete (AC-003)", async () => {
-    const { tasksService, activityService, activity } = createHarness();
+    const { tasksService, activityService, activity } = await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Write",
       description: null,
@@ -247,7 +251,7 @@ describe("ActivityService and emission", () => {
 
   it("emits COMMENT_ADDED on create only, not edit/delete (AC-004)", async () => {
     const { tasksService, commentsService, activityService, activity } =
-      createHarness();
+      await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Write",
       description: null,
@@ -320,7 +324,7 @@ describe("ActivityService list authz", () => {
   });
 
   it("returns newest-first full list (AC-016)", async () => {
-    const { tasksService, commentsService, activityService } = createHarness();
+    const { tasksService, commentsService, activityService } = await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Write",
       description: null,
@@ -341,7 +345,7 @@ describe("ActivityService list authz", () => {
 
   it("fails the write when activity insert fails in the same unit of work (AC-015)", async () => {
     const failing = new FailingActivityRepository();
-    const { tasksService, tasks } = createHarness(failing);
+    const { tasksService, tasks } = await createHarness(failing);
 
     await expect(
       tasksService.create(OWNER_ID, PROJECT_ID, {

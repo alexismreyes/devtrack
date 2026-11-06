@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { expectNoSessionTokenStorage } from "../test/storage";
+import { DEFAULT_PROJECT_STATUSES } from "../test/statuses";
 import { TaskDetail } from "./TaskDetail";
 
 const task = {
@@ -82,6 +83,10 @@ function isLabelsListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/projects/proj-1/labels";
 }
 
+function isStatusesListUrl(url: string): boolean {
+  return url === "http://localhost:3000/api/projects/proj-1/statuses";
+}
+
 function isChecklistsListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/tasks/task-1/checklists";
 }
@@ -107,6 +112,9 @@ function defaultTaskHandler(
   }
   if (isLabelsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { labels });
+  }
+  if (isStatusesListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+    return jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES });
   }
   if (isChecklistsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { checklists });

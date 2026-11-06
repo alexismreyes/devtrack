@@ -29,9 +29,11 @@ import { InMemoryChecklistsRepository } from "./in-memory-checklists-repository"
 import { PrismaAttachmentsRepository } from "../repository/prisma-attachments-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryStatusesRepository } from "./in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 import { PrismaLabelsRepository } from "../repository/prisma-labels-repository";
+import { PrismaStatusesRepository } from "../repository/prisma-statuses-repository";
 import { PrismaTaskLabelsRepository } from "../repository/prisma-task-labels-repository";
 
 class FakeSystemRepository implements SystemRepository {
@@ -67,6 +69,7 @@ function createTasksApp() {
   const labelsRepository = new InMemoryLabelsRepository();
   const taskLabelsRepository = new InMemoryTaskLabelsRepository(labelsRepository);
   const tasksRepository = new InMemoryTasksRepository(taskLabelsRepository.joins);
+  const statusesRepository = new InMemoryStatusesRepository(tasksRepository);
   const commentsRepository = new InMemoryCommentsRepository();
   const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
@@ -84,6 +87,7 @@ function createTasksApp() {
     attachmentStorage: new InMemoryAttachmentStorage(),
     labelsRepository,
     taskLabelsRepository,
+    statusesRepository,
     projectMembersRepository,
   });
   return { app, tasksRepository };
@@ -1175,6 +1179,7 @@ describe("tasks HTTP API persistence", () => {
       attachmentStorage: new InMemoryAttachmentStorage(),
       labelsRepository: new PrismaLabelsRepository(prisma),
       taskLabelsRepository: new PrismaTaskLabelsRepository(prisma),
+      statusesRepository: new PrismaStatusesRepository(prisma),
       projectMembersRepository: new PrismaProjectMembersRepository(prisma),
       unitOfWork: new PrismaUnitOfWork(prisma),
     });

@@ -8,6 +8,7 @@ import {
   isForbidden,
   isUnauthenticated,
   listLabels,
+  listStatuses,
   listTaskActivity,
   listTaskComments,
   softDeleteTask,
@@ -22,6 +23,7 @@ import type {
   PublicCommentDto,
   PublicCoverSummaryDto,
   PublicLabelDto,
+  PublicProjectStatusDto,
   PublicTaskDto,
   TaskEmbeddedLabelDto,
   TaskPriority,
@@ -98,7 +100,6 @@ type ActivityLoadState =
   | { kind: "forbidden"; message: string }
   | { kind: "not_found"; message: string };
 
-const STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 
 export function TaskDetail({
@@ -135,6 +136,9 @@ export function TaskDetail({
     kind: "loading",
   });
   const [catalogLabels, setCatalogLabels] = useState<PublicLabelDto[]>([]);
+  const [catalogStatuses, setCatalogStatuses] = useState<
+    PublicProjectStatusDto[]
+  >([]);
   const [createChecklistOpen, setCreateChecklistOpen] = useState(false);
   const [ingestedChecklist, setIngestedChecklist] =
     useState<PublicChecklistDto | null>(null);
@@ -242,6 +246,15 @@ export function TaskDetail({
     }
   }, []);
 
+  const loadStatusCatalog = useCallback(async (projectId: string) => {
+    try {
+      const result = await listStatuses(projectId);
+      setCatalogStatuses(result.statuses);
+    } catch {
+      setCatalogStatuses([]);
+    }
+  }, []);
+
   const loadTask = useCallback(async () => {
     setLoadState({ kind: "loading" });
     setActionState({ kind: "idle" });
@@ -257,6 +270,7 @@ export function TaskDetail({
         loadComments(),
         loadActivity(),
         loadCatalog(result.projectId),
+        loadStatusCatalog(result.projectId),
       ]);
     } catch (err) {
       if (isUnauthenticated(err)) {
@@ -275,6 +289,7 @@ export function TaskDetail({
     loadActivity,
     loadCatalog,
     loadComments,
+    loadStatusCatalog,
     onUnauthenticated,
     taskId,
   ]);
@@ -513,7 +528,8 @@ export function TaskDetail({
             className="grid min-w-0 gap-4 content-start"
           >
             <p className="text-sm text-muted-foreground">
-              Status {task.status}, priority {task.priority}
+              Status {taskStatusLabel(task.status, catalogStatuses)}, priority{" "}
+              {task.priority}
               {task.dueDate === null ? "" : `, due ${task.dueDate}`}
             </p>
 
@@ -619,14 +635,12 @@ export function TaskDetail({
                     name="task-status"
                     className={cn(nativeSelectClassName)}
                     value={status}
-                    onChange={(event) =>
-                      setStatus(event.target.value as TaskStatus)
-                    }
+                    onChange={(event) => setStatus(event.target.value)}
                     disabled={writesDisabled}
                   >
-                    {STATUSES.map((value) => (
-                      <option key={value} value={value}>
-                        {taskStatusLabel(value)}
+                    {catalogStatuses.map((option) => (
+                      <option key={option.id} value={option.key}>
+                        {taskStatusLabel(option.key, catalogStatuses)}
                       </option>
                     ))}
                   </select>

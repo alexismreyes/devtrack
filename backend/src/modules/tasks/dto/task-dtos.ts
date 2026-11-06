@@ -17,6 +17,7 @@ export type PublicTaskDto = {
   projectId: string;
   title: string;
   description: string | null;
+  /** Catalog status key string (not enum). */
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;

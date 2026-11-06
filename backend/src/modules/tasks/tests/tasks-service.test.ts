@@ -12,6 +12,7 @@ import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryStatusesRepository } from "./in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
@@ -38,10 +39,11 @@ function seedBoth(
   authorization.seed(snapshot);
 }
 
-function createService(archivedAt: Date | null = null) {
+async function createService(archivedAt: Date | null = null) {
   const labels = new InMemoryLabelsRepository();
   const taskLabels = new InMemoryTaskLabelsRepository(labels);
   const tasks = new InMemoryTasksRepository(taskLabels.joins);
+  const statuses = new InMemoryStatusesRepository(tasks);
   const projects = new FakeProjectAccessPort();
   const authorization = new FakeTaskAuthorizationPort();
   const activity = new InMemoryActivityRepository();
@@ -57,6 +59,8 @@ function createService(archivedAt: Date | null = null) {
     name: "Other",
     archivedAt: null,
   });
+  await statuses.seedDefaultsForProject(PROJECT_ID);
+  await statuses.seedDefaultsForProject(OTHER_PROJECT_ID);
   return {
     service: new TasksService(
       tasks,
@@ -65,6 +69,7 @@ function createService(archivedAt: Date | null = null) {
       activity,
       taskLabels,
       new InMemoryAttachmentsRepository(tasks),
+      statuses,
       new ImmediateUnitOfWork(),
     ),
     tasks,
@@ -73,12 +78,13 @@ function createService(archivedAt: Date | null = null) {
     activity,
     labels,
     taskLabels,
+    statuses,
   };
 }
 
 describe("TasksService", () => {
   it("creates a task associated with the owned project and applies defaults", async () => {
-    const { service } = createService();
+    const { service } = await createService();
 
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Write spec",
@@ -95,7 +101,7 @@ describe("TasksService", () => {
   });
 
   it("creates with supplied status and priority and allows duplicate titles", async () => {
-    const { service } = createService();
+    const { service } = await createService();
 
     const first = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Shared",
@@ -118,7 +124,7 @@ describe("TasksService", () => {
   });
 
   it("rejects create on an archived parent and does not persist", async () => {
-    const { service, tasks } = createService(
+    const { service, tasks } = await createService(
       new Date("2026-10-29T12:00:00.000Z"),
     );
 
@@ -133,7 +139,7 @@ describe("TasksService", () => {
   });
 
   it("rejects non-members and missing projects without leaking another user's tasks", async () => {
-    const { service, tasks } = createService();
+    const { service, tasks } = await createService();
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Private",
       description: null,
@@ -169,7 +175,7 @@ describe("TasksService", () => {
   });
 
   it("returns an owned live task including when the parent is archived", async () => {
-    const { service, projects, authorization } = createService();
+    const { service, projects, authorization } = await createService();
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Write spec",
       description: null,
@@ -190,7 +196,7 @@ describe("TasksService", () => {
   });
 
   it("treats missing and deleted tasks as not found before ownership", async () => {
-    const { service, tasks } = createService();
+    const { service, tasks } = await createService();
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Write spec",
       description: null,
@@ -217,7 +223,7 @@ describe("TasksService", () => {
   });
 
   it("lists only that project's non-deleted tasks, newest first, with optional filters", async () => {
-    const { service, tasks } = createService();
+    const { service, tasks } = await createService();
     const older = Task.create(
       PROJECT_ID,
       "Older",
@@ -261,7 +267,7 @@ describe("TasksService", () => {
   });
 
   it("updates allowed fields without changing identity or projectId", async () => {
-    const { service } = createService();
+    const { service } = await createService();
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Write spec",
       description: "First",
@@ -288,7 +294,7 @@ describe("TasksService", () => {
   });
 
   it("rejects update and soft-delete when the parent is archived", async () => {
-    const { service, projects, authorization, tasks } = createService();
+    const { service, projects, authorization, tasks } = await createService();
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Write spec",
       description: "First",
@@ -314,7 +320,7 @@ describe("TasksService", () => {
   });
 
   it("soft-deletes by setting deletedAt without removing the row", async () => {
-    const { service, tasks } = createService();
+    const { service, tasks } = await createService();
     const created = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Write spec",
       description: null,
@@ -330,7 +336,7 @@ describe("TasksService", () => {
   });
 
   it("returns zeros for an owner with no active projects", async () => {
-    const { service } = createService();
+    const { service } = await createService();
     const now = new Date("2026-10-31T15:00:00.000Z");
 
     const summary = await service.getDashboard(EMPTY_OWNER_ID, now);
@@ -346,7 +352,7 @@ describe("TasksService", () => {
   });
 
   it("lists an active owned project with zero live tasks", async () => {
-    const { service } = createService();
+    const { service } = await createService();
     const now = new Date("2026-10-31T15:00:00.000Z");
 
     const summary = await service.getDashboard(OWNER_ID, now);
@@ -371,7 +377,7 @@ describe("TasksService", () => {
   });
 
   it("aggregates owner-scoped pending, completed, and overdue counts", async () => {
-    const { service, tasks, projects, authorization } = createService();
+    const { service, tasks, projects, authorization } = await createService();
     const now = new Date("2026-10-31T15:00:00.000Z");
     const emptyProjectId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
     const archivedProjectId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -471,7 +477,7 @@ describe("TasksService", () => {
   });
 
   it("drops an archived project and restores it after unarchive", async () => {
-    const { service, projects } = createService();
+    const { service, projects } = await createService();
     const now = new Date("2026-10-31T15:00:00.000Z");
     await service.create(OWNER_ID, PROJECT_ID, {
       title: "Live",
@@ -510,7 +516,7 @@ describe("TasksService", () => {
   });
 
   it("lets OWNER and EDITOR write tasks and VIEWER only read them", async () => {
-    const { service, authorization, tasks } = createService();
+    const { service, authorization, tasks } = await createService();
     authorization.addMember(PROJECT_ID, EDITOR_ID, "EDITOR");
     authorization.addMember(PROJECT_ID, VIEWER_ID, "VIEWER");
 
@@ -543,7 +549,7 @@ describe("TasksService", () => {
   });
 
   it("returns 403-equivalent for non-owner members on an archived parent and 409 for ownerUserId writes", async () => {
-    const { service, projects, authorization } = createService();
+    const { service, projects, authorization } = await createService();
     authorization.addMember(PROJECT_ID, EDITOR_ID, "EDITOR");
     const created = await service.create(EDITOR_ID, PROJECT_ID, {
       title: "Live",
@@ -580,7 +586,7 @@ describe("TasksService", () => {
   });
 
   it("does not include member-only projects in owner-scoped dashboard counts", async () => {
-    const { service, authorization } = createService();
+    const { service, authorization } = await createService();
     authorization.addMember(PROJECT_ID, EDITOR_ID, "EDITOR");
     await service.create(EDITOR_ID, PROJECT_ID, {
       title: "Shared work",

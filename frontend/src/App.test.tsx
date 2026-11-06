@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, RouterProvider, createMemoryRouter } from "react-router-dom";
 import { App } from "./App";
 import { expectNoSessionTokenStorage } from "./test/storage";
+import { DEFAULT_PROJECT_STATUSES } from "./test/statuses";
 import { UI_PALETTE_IDS, UI_PALETTE_STORAGE_KEY } from "./theme/uiPalettes";
 
 const publicUser = {
@@ -124,6 +125,10 @@ function isMembersListUrl(url: string): boolean {
 
 function isLabelsListUrl(url: string): boolean {
   return /\/api\/projects\/[^/]+\/labels$/.test(url);
+}
+
+function isStatusesListUrl(url: string): boolean {
+  return /\/api\/projects\/[^/]+\/statuses$/.test(url);
 }
 
 function renderApp(path = "/"): ReturnType<typeof render> {
@@ -479,6 +484,9 @@ describe("App frontend shell", () => {
       if (isLabelsListUrl(url)) {
         return jsonResponse(200, { labels: [] });
       }
+      if (isStatusesListUrl(url)) {
+        return jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES });
+      }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, { members: [ownerMember] });
       }
@@ -545,6 +553,9 @@ describe("App frontend shell", () => {
       if (isLabelsListUrl(url)) {
         return jsonResponse(200, { labels: [] });
       }
+      if (isStatusesListUrl(url)) {
+        return jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES });
+      }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, { members: [ownerMember] });
       }
@@ -593,6 +604,9 @@ describe("App frontend shell", () => {
       }
       if (isLabelsListUrl(url)) {
         return jsonResponse(200, { labels: [] });
+      }
+      if (isStatusesListUrl(url)) {
+        return jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES });
       }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, { members: [ownerMember] });
@@ -765,6 +779,9 @@ describe("App frontend shell", () => {
       }
       if (isLabelsListUrl(url)) {
         return jsonResponse(200, { labels: [] });
+      }
+      if (isStatusesListUrl(url)) {
+        return jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES });
       }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, { members: [ownerMember] });
@@ -958,6 +975,9 @@ describe("App frontend shell", () => {
       }
       if (isLabelsListUrl(url)) {
         return jsonResponse(200, { labels: [] });
+      }
+      if (isStatusesListUrl(url)) {
+        return jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES });
       }
       if (isMembersListUrl(url)) {
         return jsonResponse(200, {

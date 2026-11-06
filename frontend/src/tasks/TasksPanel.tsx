@@ -6,6 +6,7 @@ import {
   isForbidden,
   isUnauthenticated,
   listLabels,
+  listStatuses,
   listTasks,
   toUserMessage,
   updateTask,
@@ -13,6 +14,7 @@ import {
 import type {
   ListTasksQueryDto,
   PublicLabelDto,
+  PublicProjectStatusDto,
   PublicTaskDto,
   TaskPriority,
   TaskStatus,
@@ -29,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { cn, nativeSelectClassName } from "@/lib/utils";
 import { CreateTaskDialog, type CreateTaskPayload } from "./CreateTaskDialog";
 import { KanbanBoard } from "./KanbanBoard";
+import { taskStatusLabel } from "./statusDisplay";
 import { TaskDetail } from "./TaskDetail";
 
 type TasksPanelProps = {
@@ -38,6 +41,7 @@ type TasksPanelProps = {
   canManageMembers?: boolean;
   currentUserId?: string | null;
   labelsRevision?: number;
+  statusesRevision?: number;
   onUnauthenticated: () => void;
 };
 
@@ -62,7 +66,6 @@ type MoveState =
   | { kind: "error"; message: string }
   | { kind: "conflict"; message: string };
 
-const STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 
 export function TasksPanel({
@@ -72,6 +75,7 @@ export function TasksPanel({
   canManageMembers = false,
   currentUserId = null,
   labelsRevision = 0,
+  statusesRevision = 0,
   onUnauthenticated,
 }: TasksPanelProps) {
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
@@ -81,6 +85,9 @@ export function TasksPanel({
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "">("");
   const [labelFilter, setLabelFilter] = useState("");
   const [catalogLabels, setCatalogLabels] = useState<PublicLabelDto[]>([]);
+  const [catalogStatuses, setCatalogStatuses] = useState<
+    PublicProjectStatusDto[]
+  >([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createPresetStatus, setCreatePresetStatus] = useState<TaskStatus | null>(
@@ -93,6 +100,23 @@ export function TasksPanel({
       setCatalogLabels(result.labels);
     } catch {
       setCatalogLabels([]);
+    }
+  }, [projectId]);
+
+  const loadStatuses = useCallback(async (): Promise<void> => {
+    try {
+      const result = await listStatuses(projectId);
+      setCatalogStatuses(result.statuses);
+      setStatusFilter((current) => {
+        if (current === "") {
+          return current;
+        }
+        return result.statuses.some((status) => status.key === current)
+          ? current
+          : "";
+      });
+    } catch {
+      setCatalogStatuses([]);
     }
   }, [projectId]);
 
@@ -140,11 +164,16 @@ export function TasksPanel({
   }, [loadCatalog, labelsRevision]);
 
   useEffect(() => {
+    void loadStatuses();
+  }, [loadStatuses, statusesRevision]);
+
+  useEffect(() => {
     setSelectedTaskId(null);
     setCreateOpen(false);
     setCreatePresetStatus(null);
     setCreateState({ kind: "ready" });
     setLabelFilter("");
+    setStatusFilter("");
   }, [projectId]);
 
   function openCreate(presetStatus: TaskStatus | null): void {
@@ -275,14 +304,12 @@ export function TasksPanel({
               name="task-status-filter"
               className={cn(nativeSelectClassName, "h-8 w-40")}
               value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(event.target.value as TaskStatus | "")
-              }
+              onChange={(event) => setStatusFilter(event.target.value)}
             >
               <option value="">All</option>
-              {STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {value}
+              {catalogStatuses.map((status) => (
+                <option key={status.id} value={status.key}>
+                  {taskStatusLabel(status.key, catalogStatuses)}
                 </option>
               ))}
             </select>
@@ -334,6 +361,7 @@ export function TasksPanel({
         }}
         omitStatus={createPresetStatus === null}
         initialStatus={createPresetStatus ?? undefined}
+        statusOptions={catalogStatuses}
         creating={creating}
         errorMessage={createErrorMessage}
         onSubmit={(payload) => {
@@ -367,6 +395,7 @@ export function TasksPanel({
       ) : null}
       {listedTasks !== null ? (
         <KanbanBoard
+          columns={catalogStatuses}
           tasks={listedTasks}
           onSelectTask={(taskId) => {
             closeCreate();

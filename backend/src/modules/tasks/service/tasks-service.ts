@@ -2,11 +2,16 @@ import type { TaskAuthorizationPort } from "../../project-members/access/task-au
 import type { UnitOfWork } from "../../projects/access/unit-of-work";
 import type { ProjectAccessPort } from "../../projects/access/project-access-port";
 import {
+  buildCompletionByProject,
   summarizeDashboard,
   type DashboardSummary,
 } from "../domain/dashboard-summary";
 import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
 import type { LabelColor } from "../domain/project-label";
+import {
+  assertStatusKeyInCatalog,
+  resolveDefaultStatusKey,
+} from "../domain/project-status";
 import type { Task } from "../domain/task";
 import {
   buildTaskFieldChanges,
@@ -14,6 +19,7 @@ import {
 } from "../domain/task-activity";
 import type { ActivityRepository } from "../repository/activity-repository";
 import type { AttachmentsRepository } from "../repository/attachments-repository";
+import type { StatusesRepository } from "../repository/statuses-repository";
 import type { TaskLabelsRepository } from "../repository/task-labels-repository";
 import type {
   ListTasksFilters,
@@ -61,6 +67,7 @@ export class TasksService {
     private readonly activity: ActivityRepository,
     private readonly taskLabels: TaskLabelsRepository,
     private readonly attachments: AttachmentsRepository,
+    private readonly statuses: StatusesRepository,
     private readonly unitOfWork: UnitOfWork,
   ) {}
 
@@ -74,12 +81,17 @@ export class TasksService {
       projectId,
     );
     this.assertParentWritable(snapshot.archivedAt);
+    const catalog = await this.statuses.listByProjectId(projectId);
+    const statusKey =
+      input.status === undefined
+        ? resolveDefaultStatusKey(catalog)
+        : assertStatusKeyInCatalog(catalog, projectId, input.status).key;
     const task = await this.unitOfWork.run(async () => {
       const created = await this.tasks.create({
         projectId,
         title: input.title,
         description: input.description,
-        status: input.status,
+        status: statusKey,
         priority: input.priority,
         dueDate: input.dueDate,
       });
@@ -97,6 +109,10 @@ export class TasksService {
     filters: ListTasksFilters = {},
   ): Promise<TaskView[]> {
     await this.authorization.requireTaskRead(actorId, projectId);
+    if (filters.status !== undefined) {
+      const catalog = await this.statuses.listByProjectId(projectId);
+      assertStatusKeyInCatalog(catalog, projectId, filters.status);
+    }
     const tasks = await this.tasks.listByProjectId(projectId, filters);
     return this.toViews(tasks);
   }
@@ -106,10 +122,15 @@ export class TasksService {
     now: Date = new Date(),
   ): Promise<DashboardSummary> {
     const owned = await this.projects.listOwnedActiveProjects(actorId);
-    const tasks = await this.tasks.listNonDeletedByProjectIds(
-      owned.map((project) => project.id),
+    const projectIds = owned.map((project) => project.id);
+    const tasks = await this.tasks.listNonDeletedByProjectIds(projectIds);
+    const statuses = await this.statuses.listByProjectIds(projectIds);
+    return summarizeDashboard(
+      owned,
+      tasks,
+      now,
+      buildCompletionByProject(statuses),
     );
-    return summarizeDashboard(owned, tasks, now);
   }
 
   async getById(actorId: string, taskId: string): Promise<TaskView> {
@@ -129,11 +150,21 @@ export class TasksService {
       task.projectId,
     );
     this.assertParentWritable(snapshot.archivedAt);
-    const changes = buildTaskFieldChanges(task, input);
+    let nextInput = input;
+    if (input.status !== undefined) {
+      const catalog = await this.statuses.listByProjectId(task.projectId);
+      const resolved = assertStatusKeyInCatalog(
+        catalog,
+        task.projectId,
+        input.status,
+      );
+      nextInput = { ...input, status: resolved.key };
+    }
+    const changes = buildTaskFieldChanges(task, nextInput);
     // Validate normalized update even when no-op (preserve prior invariant).
-    task.withDetails(input);
+    task.withDetails(nextInput);
     const updated = await this.unitOfWork.run(async () => {
-      const next = await this.tasks.update(taskId, input);
+      const next = await this.tasks.update(taskId, nextInput);
       if (changes.length > 0) {
         await this.activity.create(
           TaskActivityEvent.taskFieldsChanged(taskId, actorId, changes),

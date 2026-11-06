@@ -20,6 +20,7 @@ import { Plus } from "lucide-react";
 import { fetchAttachmentContent } from "../api/client";
 import type {
   PublicCoverSummaryDto,
+  PublicProjectStatusDto,
   PublicTaskDto,
   TaskStatus,
 } from "../api/types";
@@ -27,11 +28,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LabelChips } from "./LabelChips";
-import { taskStatusLabel } from "./statusDisplay";
-
-const COLUMN_STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
+import { labelChipClassName } from "./labelColors";
 
 type KanbanBoardProps = {
+  columns: PublicProjectStatusDto[];
   tasks: PublicTaskDto[];
   onSelectTask: (taskId: string) => void;
   onMoveTask: (taskId: string, status: TaskStatus) => Promise<void>;
@@ -39,20 +39,17 @@ type KanbanBoardProps = {
   disabled?: boolean;
 };
 
-export function isTaskStatus(value: string): value is TaskStatus {
-  return value === "TODO" || value === "IN_PROGRESS" || value === "DONE";
-}
-
 export function resolveKanbanDrop(
   activeId: UniqueIdentifier,
   overId: UniqueIdentifier | null | undefined,
   tasks: PublicTaskDto[],
+  columnKeys: readonly string[],
 ): { taskId: string; status: TaskStatus } | null {
   if (overId === null || overId === undefined) {
     return null;
   }
   const target = String(overId);
-  if (!isTaskStatus(target)) {
+  if (!columnKeys.includes(target)) {
     return null;
   }
   const task = tasks.find((item) => item.id === String(activeId));
@@ -70,35 +67,40 @@ const kanbanCollision: CollisionDetection = (args) => {
   return closestCorners(args);
 };
 
-const kanbanKeyboardCoordinates: KeyboardCoordinateGetter = (
-  event,
-  { currentCoordinates, context },
-) => {
-  if (event.code !== "ArrowRight" && event.code !== "ArrowLeft") {
-    return;
-  }
-  const currentId =
-    context.over?.id !== undefined && context.over?.id !== null
-      ? String(context.over.id)
-      : null;
-  const currentIndex =
-    currentId === null ? -1 : COLUMN_STATUSES.findIndex((status) => status === currentId);
-  const nextIndex =
-    event.code === "ArrowRight"
-      ? Math.min(COLUMN_STATUSES.length - 1, Math.max(0, currentIndex) + 1)
-      : Math.max(0, currentIndex === -1 ? 0 : currentIndex - 1);
-  const nextStatus = COLUMN_STATUSES[nextIndex];
-  const rect = context.droppableRects.get(nextStatus);
-  if (rect === undefined) {
-    return {
-      x: currentCoordinates.x + (event.code === "ArrowRight" ? 280 : -280),
-      y: currentCoordinates.y,
-    };
-  }
-  return { x: rect.left + rect.width / 2, y: rect.top + 40 };
-};
+function createKeyboardCoordinates(
+  columnKeys: readonly string[],
+): KeyboardCoordinateGetter {
+  return (event, { currentCoordinates, context }) => {
+    if (event.code !== "ArrowRight" && event.code !== "ArrowLeft") {
+      return;
+    }
+    const currentId =
+      context.over?.id !== undefined && context.over?.id !== null
+        ? String(context.over.id)
+        : null;
+    const currentIndex =
+      currentId === null ? -1 : columnKeys.findIndex((key) => key === currentId);
+    const nextIndex =
+      event.code === "ArrowRight"
+        ? Math.min(columnKeys.length - 1, Math.max(0, currentIndex) + 1)
+        : Math.max(0, currentIndex === -1 ? 0 : currentIndex - 1);
+    const nextStatus = columnKeys[nextIndex];
+    if (nextStatus === undefined) {
+      return;
+    }
+    const rect = context.droppableRects.get(nextStatus);
+    if (rect === undefined) {
+      return {
+        x: currentCoordinates.x + (event.code === "ArrowRight" ? 280 : -280),
+        y: currentCoordinates.y,
+      };
+    }
+    return { x: rect.left + rect.width / 2, y: rect.top + 40 };
+  };
+}
 
 export function KanbanBoard({
+  columns,
   tasks,
   onSelectTask,
   onMoveTask,
@@ -106,12 +108,13 @@ export function KanbanBoard({
   disabled = false,
 }: KanbanBoardProps) {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const columnKeys = columns.map((column) => column.key);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
     }),
     useSensor(KeyboardSensor, {
-      coordinateGetter: kanbanKeyboardCoordinates,
+      coordinateGetter: createKeyboardCoordinates(columnKeys),
     }),
   );
   const activeTask = tasks.find((task) => task.id === activeTaskId);
@@ -121,7 +124,12 @@ export function KanbanBoard({
   }
 
   function handleDragEnd(event: DragEndEvent): void {
-    const move = resolveKanbanDrop(event.active.id, event.over?.id, tasks);
+    const move = resolveKanbanDrop(
+      event.active.id,
+      event.over?.id,
+      tasks,
+      columnKeys,
+    );
     setActiveTaskId(null);
     if (move === null || disabled) {
       return;
@@ -147,11 +155,11 @@ export function KanbanBoard({
         data-slot="kanban-board"
         className="flex min-h-0 min-w-0 flex-1 justify-start gap-3 overflow-x-auto"
       >
-        {COLUMN_STATUSES.map((status) => (
+        {columns.map((column) => (
           <KanbanColumn
-            key={status}
-            status={status}
-            tasks={tasks.filter((task) => task.status === status)}
+            key={column.id}
+            column={column}
+            tasks={tasks.filter((task) => task.status === column.key)}
             onSelectTask={onSelectTask}
             onAddTask={onAddTask}
             disabled={disabled}
@@ -170,44 +178,52 @@ export function KanbanBoard({
 }
 
 function KanbanColumn({
-  status,
+  column,
   tasks,
   onSelectTask,
   onAddTask,
   disabled,
 }: {
-  status: TaskStatus;
+  column: PublicProjectStatusDto;
   tasks: PublicTaskDto[];
   onSelectTask: (taskId: string) => void;
   onAddTask?: (status: TaskStatus) => void;
   disabled: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({
-    id: status,
+    id: column.key,
     disabled,
-    data: { type: "column", status },
+    data: { type: "column", status: column.key },
   });
 
   return (
     <section
       ref={setNodeRef}
-      data-kanban-column={status}
-      aria-labelledby={`task-column-${status}`}
+      data-kanban-column={column.key}
+      aria-labelledby={`task-column-${column.key}`}
       className={cn(
         "flex min-h-0 w-72 min-w-64 max-w-80 shrink-0 flex-col overflow-hidden rounded-xl border bg-card/60 p-3",
         isOver && !disabled ? "border-primary" : null,
       )}
     >
       <h4
-        id={`task-column-${status}`}
+        id={`task-column-${column.key}`}
         role="columnheader"
-        className="mb-3 shrink-0 inline-flex items-center rounded-md bg-muted px-2 py-1 text-sm font-semibold tracking-tight text-foreground"
-        data-testid={`kanban-column-header-${status}`}
+        className="mb-3 shrink-0 inline-flex items-center gap-2 rounded-md bg-muted px-2 py-1 text-sm font-semibold tracking-tight text-foreground"
+        data-testid={`kanban-column-header-${column.key}`}
       >
-        {taskStatusLabel(status)}
+        <span
+          aria-hidden="true"
+          data-status-color={column.color}
+          className={cn(
+            "inline-block size-2.5 shrink-0 rounded-sm",
+            labelChipClassName(column.color),
+          )}
+        />
+        {column.name}
       </h4>
       <ul
-        aria-label={`${status} tasks`}
+        aria-label={`${column.key} tasks`}
         className="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto"
       >
         {tasks.map((task) => (
@@ -225,8 +241,8 @@ function KanbanColumn({
           variant="ghost"
           size="sm"
           className="mt-2 h-8 w-full shrink-0 justify-start"
-          aria-label={`Add task to ${status}`}
-          onClick={() => onAddTask(status)}
+          aria-label={`Add task to ${column.key}`}
+          onClick={() => onAddTask(column.key)}
           disabled={disabled}
         >
           <Plus aria-hidden="true" />

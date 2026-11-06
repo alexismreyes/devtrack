@@ -12,6 +12,7 @@ import { PrismaAttachmentsRepository } from "./modules/tasks/repository/prisma-a
 import { PrismaChecklistsRepository } from "./modules/tasks/repository/prisma-checklists-repository";
 import { PrismaCommentsRepository } from "./modules/tasks/repository/prisma-comments-repository";
 import { PrismaLabelsRepository } from "./modules/tasks/repository/prisma-labels-repository";
+import { PrismaStatusesRepository } from "./modules/tasks/repository/prisma-statuses-repository";
 import { PrismaTaskLabelsRepository } from "./modules/tasks/repository/prisma-task-labels-repository";
 import { PrismaTasksRepository } from "./modules/tasks/repository/prisma-tasks-repository";
 import { FilesystemAttachmentStorage } from "./modules/tasks/storage/filesystem-attachment-storage";
@@ -35,6 +36,7 @@ const attachmentStorage = new FilesystemAttachmentStorage(
 );
 const labelsRepository = new PrismaLabelsRepository(prisma);
 const taskLabelsRepository = new PrismaTaskLabelsRepository(prisma);
+const statusesRepository = new PrismaStatusesRepository(prisma);
 const projectMembersRepository = new PrismaProjectMembersRepository(prisma);
 const app = createApp({
   corsOrigin: config.corsOrigin,
@@ -50,6 +52,7 @@ const app = createApp({
   attachmentStorage,
   labelsRepository,
   taskLabelsRepository,
+  statusesRepository,
   projectMembersRepository,
   unitOfWork: new PrismaUnitOfWork(prisma),
 });

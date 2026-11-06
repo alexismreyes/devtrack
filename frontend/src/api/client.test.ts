@@ -18,15 +18,18 @@ import {
   listProbes,
   listProjects,
   createLabel,
+  createStatus,
   clearTaskCover,
   createTaskChecklist,
   createTaskChecklistItem,
   deleteLabel,
+  deleteStatus,
   deleteTaskAttachment,
   deleteTaskChecklist,
   deleteTaskChecklistItem,
   fetchAttachmentContent,
   listLabels,
+  listStatuses,
   listTaskActivity,
   listTaskAttachments,
   listTaskChecklists,
@@ -36,6 +39,7 @@ import {
   logout,
   register,
   removeMember,
+  reorderStatuses,
   replaceTaskLabels,
   setTaskCover,
   softDeleteTask,
@@ -44,6 +48,7 @@ import {
   updateMember,
   updateProfile,
   updateProject,
+  updateStatus,
   updateTask,
   updateTaskChecklist,
   updateTaskChecklistItem,
@@ -999,6 +1004,189 @@ describe("task labels API client", () => {
       status: 401,
       code: "UNAUTHENTICATED",
       message: "Authentication is required",
+    });
+    expectNoTokenStorage();
+  });
+});
+
+describe("project statuses API client", () => {
+  const status = {
+    id: "status-1",
+    projectId: "proj-1",
+    key: "TODO",
+    name: "To do",
+    color: "GRAY" as const,
+    isSystem: true,
+    isCompleted: false,
+    position: 0,
+    createdAt: "2026-11-06T12:00:00.000Z",
+  };
+
+  it("lists project statuses with credentials included and strips extras", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/statuses");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        statuses: [{ ...status, token: "must-not-be-kept" }],
+      });
+    });
+
+    await expect(listStatuses("proj-1")).resolves.toEqual({ statuses: [status] });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("creates a status with credentials included", async () => {
+    const created = {
+      ...status,
+      id: "status-custom",
+      key: "custom-key",
+      name: "On hold",
+      color: "ORANGE" as const,
+      isSystem: false,
+      position: 3,
+    };
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/statuses");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(
+        JSON.stringify({ name: "On hold", color: "ORANGE", isCompleted: false }),
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(201, created);
+    });
+
+    await expect(
+      createStatus("proj-1", {
+        name: "On hold",
+        color: "ORANGE",
+        isCompleted: false,
+      }),
+    ).resolves.toEqual(created);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("patches status name, color, and isCompleted with credentials included", async () => {
+    const updated = {
+      ...status,
+      name: "Backlog",
+      color: "PURPLE" as const,
+      isCompleted: true,
+    };
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/statuses/status-1",
+      );
+      expect(init?.method).toBe("PATCH");
+      expect(init?.body).toBe(
+        JSON.stringify({
+          name: "Backlog",
+          color: "PURPLE",
+          isCompleted: true,
+        }),
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(200, updated);
+    });
+
+    await expect(
+      updateStatus("proj-1", "status-1", {
+        name: "Backlog",
+        color: "PURPLE",
+        isCompleted: true,
+      }),
+    ).resolves.toEqual(updated);
+    expectNoTokenStorage();
+  });
+
+  it("deletes a status with DELETE, empty body, 204, and credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/statuses/status-1",
+      );
+      expect(init?.method).toBe("DELETE");
+      expect(init?.body).toBeUndefined();
+      expectCredentialsInclude(init);
+      return emptyResponse(204);
+    });
+
+    await expect(deleteStatus("proj-1", "status-1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("reorders statuses with PUT statusIds and credentials included (AC-014)", async () => {
+    const reordered = [
+      { ...status, id: "b", position: 0 },
+      { ...status, id: "a", position: 1 },
+    ];
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/statuses/reorder",
+      );
+      expect(init?.method).toBe("PUT");
+      expect(init?.body).toBe(JSON.stringify({ statusIds: ["b", "a"] }));
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { statuses: reordered });
+    });
+
+    await expect(
+      reorderStatuses("proj-1", { statusIds: ["b", "a"] }),
+    ).resolves.toEqual({ statuses: reordered });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("filters tasks by status key with credentials included (AC-008)", async () => {
+    const task = {
+      id: "task-1",
+      projectId: "proj-1",
+      title: "Write tests",
+      description: null,
+      status: "custom-key",
+      priority: "MEDIUM" as const,
+      dueDate: null,
+      createdAt: "2026-11-06T12:00:00.000Z",
+      labels: [],
+      cover: null,
+    };
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/tasks?status=custom-key",
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { tasks: [task] });
+    });
+
+    await expect(
+      listTasks("proj-1", { status: "custom-key" }),
+    ).resolves.toEqual({ tasks: [task] });
+    expectNoTokenStorage();
+  });
+
+  it("maps conflict when deleting an in-use status", async () => {
+    mockFetch(() =>
+      jsonResponse(409, {
+        error: {
+          code: "CONFLICT",
+          message: "Status is in use by one or more tasks",
+        },
+      }),
+    );
+
+    const error = await deleteStatus("proj-1", "status-1").catch(
+      (err: unknown) => err,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 409,
+      code: "CONFLICT",
+      message: "Status is in use by one or more tasks",
     });
     expectNoTokenStorage();
   });
