@@ -20,6 +20,7 @@ const TASK_SELECT = {
   dueDate: true,
   createdAt: true,
   deletedAt: true,
+  coverAttachmentId: true,
 } as const;
 
 const CONNECTION_CODES = new Set([
@@ -82,6 +83,7 @@ function toTask(row: {
   dueDate: Date | null;
   createdAt: Date;
   deletedAt: Date | null;
+  coverAttachmentId: string | null;
 }): Task {
   return Task.rehydrate(
     row.id,
@@ -93,6 +95,7 @@ function toTask(row: {
     row.dueDate,
     row.createdAt,
     row.deletedAt,
+    row.coverAttachmentId,
   );
 }
 

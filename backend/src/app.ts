@@ -31,26 +31,36 @@ import type { ProjectsRepository } from "./modules/projects/repository/projects-
 import { createProjectsRouter } from "./modules/projects/routes/projects-routes";
 import { ProjectsService } from "./modules/projects/service/projects-service";
 import { ActivityController } from "./modules/tasks/controller/activity-controller";
+import { AttachmentsController } from "./modules/tasks/controller/attachments-controller";
 import { ChecklistsController } from "./modules/tasks/controller/checklists-controller";
 import { CommentsController } from "./modules/tasks/controller/comments-controller";
 import { LabelsController } from "./modules/tasks/controller/labels-controller";
+import { StatusesController } from "./modules/tasks/controller/statuses-controller";
 import { TasksController } from "./modules/tasks/controller/tasks-controller";
+import { ProjectStatusSeedAdapter } from "./modules/tasks/access/project-status-seed-adapter";
 import type { ActivityRepository } from "./modules/tasks/repository/activity-repository";
+import type { AttachmentsRepository } from "./modules/tasks/repository/attachments-repository";
 import type { ChecklistsRepository } from "./modules/tasks/repository/checklists-repository";
 import type { CommentsRepository } from "./modules/tasks/repository/comments-repository";
 import type { LabelsRepository } from "./modules/tasks/repository/labels-repository";
+import type { StatusesRepository } from "./modules/tasks/repository/statuses-repository";
 import type { TaskLabelsRepository } from "./modules/tasks/repository/task-labels-repository";
 import type { TasksRepository } from "./modules/tasks/repository/tasks-repository";
 import { createActivityRouter } from "./modules/tasks/routes/activity-routes";
+import { createAttachmentsRouter } from "./modules/tasks/routes/attachments-routes";
 import { createChecklistsRouter } from "./modules/tasks/routes/checklists-routes";
 import { createCommentsRouter } from "./modules/tasks/routes/comments-routes";
 import { createLabelsRouter } from "./modules/tasks/routes/labels-routes";
+import { createStatusesRouter } from "./modules/tasks/routes/statuses-routes";
 import { createTasksRouter } from "./modules/tasks/routes/tasks-routes";
 import { ActivityService } from "./modules/tasks/service/activity-service";
+import { AttachmentsService } from "./modules/tasks/service/attachments-service";
 import { ChecklistsService } from "./modules/tasks/service/checklists-service";
 import { CommentsService } from "./modules/tasks/service/comments-service";
 import { LabelsService } from "./modules/tasks/service/labels-service";
+import { StatusesService } from "./modules/tasks/service/statuses-service";
 import { TasksService } from "./modules/tasks/service/tasks-service";
+import type { AttachmentStoragePort } from "./modules/tasks/storage/attachment-storage-port";
 import { UsersController } from "./modules/users/controller/users-controller";
 import { UsersIdentityAdapter } from "./modules/users/identity/users-identity-adapter";
 import type { UsersRepository } from "./modules/users/repository/users-repository";
@@ -67,8 +77,11 @@ export type AppDependencies = {
   commentsRepository: CommentsRepository;
   activityRepository: ActivityRepository;
   checklistsRepository: ChecklistsRepository;
+  attachmentsRepository: AttachmentsRepository;
+  attachmentStorage: AttachmentStoragePort;
   labelsRepository: LabelsRepository;
   taskLabelsRepository: TaskLabelsRepository;
+  statusesRepository: StatusesRepository;
   projectMembersRepository: ProjectMembersRepository;
   unitOfWork?: UnitOfWork;
 };
@@ -89,11 +102,13 @@ export function createApp(deps: AppDependencies): Express {
   const ownerMembershipWrite = new OwnerMembershipWriteAdapter(
     deps.projectMembersRepository,
   );
+  const statusSeed = new ProjectStatusSeedAdapter(deps.statusesRepository);
   const projectsService = new ProjectsService(
     deps.projectsRepository,
     projectMembershipAccess,
     ownerMembershipWrite,
     unitOfWork,
+    statusSeed,
   );
   const projectAccess = new ProjectAccessAdapter(deps.projectsRepository);
   const projectMembersService = new ProjectMembersService(
@@ -111,6 +126,8 @@ export function createApp(deps: AppDependencies): Express {
     taskAuthorization,
     deps.activityRepository,
     deps.taskLabelsRepository,
+    deps.attachmentsRepository,
+    deps.statusesRepository,
     unitOfWork,
   );
   const commentsService = new CommentsService(
@@ -134,11 +151,23 @@ export function createApp(deps: AppDependencies): Express {
     taskAuthorization,
     unitOfWork,
   );
+  const statusesService = new StatusesService(
+    deps.statusesRepository,
+    taskAuthorization,
+  );
   const checklistsService = new ChecklistsService(
     deps.checklistsRepository,
     deps.tasksRepository,
     taskAuthorization,
     deps.activityRepository,
+    unitOfWork,
+  );
+  const attachmentsService = new AttachmentsService(
+    deps.attachmentsRepository,
+    deps.tasksRepository,
+    taskAuthorization,
+    deps.activityRepository,
+    deps.attachmentStorage,
     unitOfWork,
   );
 
@@ -153,7 +182,9 @@ export function createApp(deps: AppDependencies): Express {
   const commentsController = new CommentsController(commentsService);
   const activityController = new ActivityController(activityService);
   const labelsController = new LabelsController(labelsService);
+  const statusesController = new StatusesController(statusesService);
   const checklistsController = new ChecklistsController(checklistsService);
+  const attachmentsController = new AttachmentsController(attachmentsService);
   const requireAuth = createRequireAuth(authService);
 
   app.use(
@@ -173,7 +204,9 @@ export function createApp(deps: AppDependencies): Express {
   app.use(createCommentsRouter(commentsController, requireAuth));
   app.use(createActivityRouter(activityController, requireAuth));
   app.use(createLabelsRouter(labelsController, requireAuth));
+  app.use(createStatusesRouter(statusesController, requireAuth));
   app.use(createChecklistsRouter(checklistsController, requireAuth));
+  app.use(createAttachmentsRouter(attachmentsController, requireAuth));
   app.use(errorHandler);
 
   return app;

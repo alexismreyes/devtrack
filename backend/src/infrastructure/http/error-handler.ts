@@ -50,6 +50,11 @@ export function errorHandler(
       case "DuplicateEmailError":
       case "DuplicateMembershipError":
       case "DuplicateLabelNameError":
+      case "DuplicateStatusNameError":
+      case "StatusInUseError":
+      case "LastStatusError":
+      case "LastNonCompletedStatusError":
+      case "StatusKeyImmutableError":
       case "OwnerMembershipConflictError": {
         const mapped = conflict(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
@@ -81,8 +86,10 @@ export function errorHandler(
       case "MembershipNotFoundError":
       case "CommentNotFoundError":
       case "LabelNotFoundError":
+      case "StatusNotFoundError":
       case "ChecklistNotFoundError":
-      case "ChecklistItemNotFoundError": {
+      case "ChecklistItemNotFoundError":
+      case "AttachmentNotFoundError": {
         const mapped = notFound(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
@@ -113,10 +120,27 @@ export function errorHandler(
       case "InvalidCommentBodyError":
       case "InvalidLabelNameError":
       case "InvalidLabelColorError":
+      case "InvalidStatusNameError":
+      case "InvalidStatusColorError":
+      case "InvalidStatusKeyError":
+      case "InvalidStatusReorderError":
       case "InvalidChecklistNameError":
       case "InvalidChecklistItemTextError":
+      case "InvalidAttachmentFilenameError":
+      case "InvalidAttachmentContentTypeError":
+      case "AttachmentSizeExceededError":
+      case "AttachmentCountExceededError":
+      case "InvalidCoverAttachmentError":
       case "InvalidProjectMemberRoleError":
         sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
+        return;
+      case "AttachmentStorageError":
+        sendError(
+          res,
+          503,
+          ERROR_CODES.SERVICE_UNAVAILABLE,
+          "Attachment storage is unavailable",
+        );
         return;
       case "DatabaseUnavailableError":
         sendError(

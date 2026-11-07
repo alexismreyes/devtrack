@@ -32,6 +32,7 @@ model User {
   projectMemberships ProjectMember[]
   authoredTaskComments TaskComment[]
   taskActivityEvents TaskActivityEvent[]
+  uploadedTaskAttachments TaskAttachment[]
 
   @@map("users")
 }
@@ -56,12 +57,6 @@ model AuthSession {
   @@map("auth_sessions")
 }
 
-enum TaskStatus {
-  TODO
-  IN_PROGRESS
-  DONE
-}
-
 enum TaskPriority {
   LOW
   MEDIUM
@@ -83,6 +78,9 @@ enum TaskActivityKind {
   CHECKLIST_REMOVED
   CHECKLIST_ITEM_COMPLETED
   CHECKLIST_ITEM_UNCOMPLETED
+  ATTACHMENT_ADDED
+  ATTACHMENT_REMOVED
+  COVER_CHANGED
 }
 
 model Project {
@@ -96,6 +94,7 @@ model Project {
   tasks       Task[]
   members     ProjectMember[]
   labels      ProjectLabel[]
+  statuses    ProjectStatus[]
 
   @@index([ownerUserId])
   @@map("projects")
@@ -120,19 +119,40 @@ model Task {
   projectId   String       @db.Uuid
   title       String
   description String?
-  status      TaskStatus   @default(TODO)
+  status      String       @default("TODO")
   priority    TaskPriority @default(MEDIUM)
   dueDate     DateTime?    @db.Date
   createdAt   DateTime
   deletedAt   DateTime?
+  coverAttachmentId String? @unique @db.Uuid
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
   comments    TaskComment[]
   activityEvents TaskActivityEvent[]
   taskLabels  TaskLabel[]
   checklists  TaskChecklist[]
+  attachments TaskAttachment[] @relation("TaskAttachments")
+  coverAttachment TaskAttachment? @relation("TaskCover", fields: [coverAttachmentId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@map("tasks")
+}
+
+model TaskAttachment {
+  id               String   @id @db.Uuid
+  taskId           String   @db.Uuid
+  uploadedByUserId String   @db.Uuid
+  originalFilename String
+  contentType      String
+  sizeBytes        Int
+  storageKey       String   @unique
+  createdAt        DateTime
+  task             Task     @relation("TaskAttachments", fields: [taskId], references: [id], onDelete: Restrict)
+  uploadedBy       User     @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  coveredTask      Task?    @relation("TaskCover")
+
+  @@index([taskId])
+  @@index([taskId, createdAt])
+  @@map("task_attachments")
 }
 
 model TaskChecklist {
@@ -172,6 +192,27 @@ model ProjectLabel {
   @@unique([projectId, nameKey])
   @@index([projectId])
   @@map("project_labels")
+}
+
+model ProjectStatus {
+  id          String   @id @db.Uuid
+  projectId   String   @db.Uuid
+  key         String
+  name        String
+  nameKey     String
+  color       String
+  isSystem    Boolean
+  isCompleted Boolean
+  position    Int
+  createdAt   DateTime
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, key])
+  @@unique([projectId, nameKey])
+  @@unique([projectId, position])
+  @@index([projectId])
+  @@index([projectId, position])
+  @@map("project_statuses")
 }
 
 model TaskLabel {

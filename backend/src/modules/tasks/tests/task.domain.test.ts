@@ -132,10 +132,17 @@ describe("tasks domain", () => {
     );
   });
 
-  it("rejects unknown status and priority values", () => {
-    expect(() =>
-      Task.create(PROJECT_ID, "Write spec", null, "BLOCKED" as never),
-    ).toThrow(InvalidTaskStatusError);
+  it("accepts any non-empty status key string and rejects empty status or unknown priority", () => {
+    const custom = Task.create(
+      PROJECT_ID,
+      "Write spec",
+      null,
+      "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    );
+    expect(custom.status).toBe("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee");
+    expect(() => Task.create(PROJECT_ID, "Write spec", null, "   ")).toThrow(
+      InvalidTaskStatusError,
+    );
     expect(() =>
       Task.create(PROJECT_ID, "Write spec", null, "TODO", "URGENT" as never),
     ).toThrow(InvalidTaskPriorityError);

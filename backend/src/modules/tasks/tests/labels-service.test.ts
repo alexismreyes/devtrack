@@ -15,7 +15,9 @@ import { TasksService } from "../service/tasks-service";
 import { FakeProjectAccessPort } from "./fake-project-access-port";
 import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
+import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryStatusesRepository } from "./in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
@@ -27,10 +29,11 @@ const PROJECT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER_PROJECT_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const MISSING_ID = "99999999-9999-4999-8999-999999999999";
 
-function createHarness(archivedAt: Date | null = null) {
+async function createHarness(archivedAt: Date | null = null) {
   const labels = new InMemoryLabelsRepository();
   const taskLabels = new InMemoryTaskLabelsRepository(labels);
   const tasks = new InMemoryTasksRepository(taskLabels.joins);
+  const statuses = new InMemoryStatusesRepository(tasks);
   const projects = new FakeProjectAccessPort();
   const authorization = new FakeTaskAuthorizationPort();
   const activity = new InMemoryActivityRepository();
@@ -64,6 +67,8 @@ function createHarness(archivedAt: Date | null = null) {
     name: "Roadmap",
     archivedAt,
   });
+  await statuses.seedDefaultsForProject(PROJECT_ID);
+  await statuses.seedDefaultsForProject(OTHER_PROJECT_ID);
 
   const labelsService = new LabelsService(
     labels,
@@ -78,6 +83,8 @@ function createHarness(archivedAt: Date | null = null) {
     authorization,
     activity,
     taskLabels,
+    new InMemoryAttachmentsRepository(tasks),
+    statuses,
     unitOfWork,
   );
 
@@ -87,6 +94,7 @@ function createHarness(archivedAt: Date | null = null) {
     labels,
     taskLabels,
     tasks,
+    statuses,
     activity,
     authorization,
   };
@@ -94,7 +102,7 @@ function createHarness(archivedAt: Date | null = null) {
 
 describe("LabelsService", () => {
   it("creates and lists catalog labels for writers and readers", async () => {
-    const { labelsService } = createHarness();
+    const { labelsService } = await createHarness();
     const created = await labelsService.create(OWNER_ID, PROJECT_ID, {
       name: " Bug ",
       color: "RED",
@@ -107,7 +115,7 @@ describe("LabelsService", () => {
   });
 
   it("rejects duplicate case-insensitive names and VIEWER catalog writes", async () => {
-    const { labelsService } = createHarness();
+    const { labelsService } = await createHarness();
     await labelsService.create(EDITOR_ID, PROJECT_ID, {
       name: "Bug",
       color: "RED",
@@ -128,7 +136,7 @@ describe("LabelsService", () => {
   });
 
   it("assigns many labels via replace-set and embeds them on task reads", async () => {
-    const { labelsService, tasksService, activity } = createHarness();
+    const { labelsService, tasksService, activity } = await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Work",
       description: null,
@@ -160,7 +168,7 @@ describe("LabelsService", () => {
   });
 
   it("rejects cross-project label assignment without creating joins", async () => {
-    const { labelsService, tasksService, taskLabels } = createHarness();
+    const { labelsService, tasksService, taskLabels } = await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Work",
       description: null,
@@ -180,7 +188,7 @@ describe("LabelsService", () => {
   });
 
   it("hard-deletes a label and removes assignments", async () => {
-    const { labelsService, tasksService } = createHarness();
+    const { labelsService, tasksService } = await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Work",
       description: null,
@@ -200,7 +208,7 @@ describe("LabelsService", () => {
   });
 
   it("returns 404-equivalent for soft-deleted tasks on assignment", async () => {
-    const { labelsService, tasksService } = createHarness();
+    const { labelsService, tasksService } = await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Work",
       description: null,
@@ -218,7 +226,7 @@ describe("LabelsService", () => {
   });
 
   it("applies archived parent 409 for ownerUserId and 403 for members on mutate; owner can still list", async () => {
-    const { labelsService, authorization } = createHarness(null);
+    const { labelsService, authorization } = await createHarness(null);
     await labelsService.create(OWNER_ID, PROJECT_ID, {
       name: "Prior",
       color: "GRAY",
@@ -253,7 +261,7 @@ describe("LabelsService", () => {
   });
 
   it("rejects strangers and missing projects", async () => {
-    const { labelsService } = createHarness();
+    const { labelsService } = await createHarness();
     await expect(
       labelsService.listByProject(STRANGER_ID, PROJECT_ID),
     ).rejects.toBeInstanceOf(MembershipForbiddenError);

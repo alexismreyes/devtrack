@@ -36,9 +36,9 @@ Define detailed behavior in feature specs. High-level scope:
 
 **Projects:** create, read, update, archive; owner association; authorized listing only.
 
-**Tasks:** CRUD; project association; title, description, status, priority, optional due date; filters. Statuses: `TODO`, `IN_PROGRESS`, `DONE`. Priorities: `LOW`, `MEDIUM`, `HIGH`.
+**Tasks:** CRUD; project association; title, description, status, priority, optional due date; filters. Statuses: per-project catalog (seeded `TODO` / `IN_PROGRESS` / `DONE`; custom keys allowed). Priorities: `LOW`, `MEDIUM`, `HIGH`.
 
-**Kanban:** status columns and authorized status changes persisted through the backend. Drag-and-drop after the basic board works.
+**Kanban:** dynamic columns from the project status catalog; authorized status changes persisted through the backend. Drag-and-drop after the basic board works.
 
 **Dashboard:** project and task summaries plus pending, completed, and overdue counts from persisted data.
 

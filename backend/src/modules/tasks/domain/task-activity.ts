@@ -4,6 +4,7 @@ import {
   type Task,
   type TaskDetailsChange,
 } from "./task";
+import { truncateAttachmentFilenamePreview } from "./task-attachment";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -17,6 +18,9 @@ export const TASK_ACTIVITY_KINDS = [
   "CHECKLIST_REMOVED",
   "CHECKLIST_ITEM_COMPLETED",
   "CHECKLIST_ITEM_UNCOMPLETED",
+  "ATTACHMENT_ADDED",
+  "ATTACHMENT_REMOVED",
+  "COVER_CHANGED",
 ] as const;
 
 export type TaskActivityKind = (typeof TASK_ACTIVITY_KINDS)[number];
@@ -67,6 +71,18 @@ export type ChecklistItemUncompletedPayload = {
   itemId: string;
   textPreview: string;
 };
+export type AttachmentAddedPayload = {
+  attachmentId: string;
+  filenamePreview: string;
+};
+export type AttachmentRemovedPayload = {
+  attachmentId: string;
+  filenamePreview: string;
+};
+export type CoverChangedPayload = {
+  attachmentId: string | null;
+  filenamePreview: string | null;
+};
 
 export type TaskActivityPayload =
   | TaskCreatedPayload
@@ -76,7 +92,10 @@ export type TaskActivityPayload =
   | ChecklistAddedPayload
   | ChecklistRemovedPayload
   | ChecklistItemCompletedPayload
-  | ChecklistItemUncompletedPayload;
+  | ChecklistItemUncompletedPayload
+  | AttachmentAddedPayload
+  | AttachmentRemovedPayload
+  | CoverChangedPayload;
 
 /** Short plain-text preview length for COMMENT_ADDED and checklist previews (Q-075 / Q-124). */
 export const COMMENT_BODY_PREVIEW_MAX_LENGTH = 120;
@@ -351,6 +370,81 @@ export class TaskActivityEvent {
     );
   }
 
+  static attachmentAdded(
+    taskId: string,
+    actorUserId: string,
+    attachmentId: string,
+    originalFilename: string,
+    now: Date = new Date(),
+  ): TaskActivityEvent {
+    if (!UUID_PATTERN.test(attachmentId)) {
+      throw new Error("Attachment id must be a UUID");
+    }
+    return new TaskActivityEvent(
+      randomUUID(),
+      taskId,
+      actorUserId,
+      "ATTACHMENT_ADDED",
+      {
+        attachmentId,
+        filenamePreview: truncateAttachmentFilenamePreview(originalFilename),
+      },
+      now,
+    );
+  }
+
+  static attachmentRemoved(
+    taskId: string,
+    actorUserId: string,
+    attachmentId: string,
+    originalFilename: string,
+    now: Date = new Date(),
+  ): TaskActivityEvent {
+    if (!UUID_PATTERN.test(attachmentId)) {
+      throw new Error("Attachment id must be a UUID");
+    }
+    return new TaskActivityEvent(
+      randomUUID(),
+      taskId,
+      actorUserId,
+      "ATTACHMENT_REMOVED",
+      {
+        attachmentId,
+        filenamePreview: truncateAttachmentFilenamePreview(originalFilename),
+      },
+      now,
+    );
+  }
+
+  static coverChanged(
+    taskId: string,
+    actorUserId: string,
+    attachmentId: string | null,
+    originalFilename: string | null,
+    now: Date = new Date(),
+  ): TaskActivityEvent {
+    if (attachmentId !== null && !UUID_PATTERN.test(attachmentId)) {
+      throw new Error("Attachment id must be a UUID");
+    }
+    if ((attachmentId === null) !== (originalFilename === null)) {
+      throw new Error("Cover-changed payload requires matching id and filename");
+    }
+    return new TaskActivityEvent(
+      randomUUID(),
+      taskId,
+      actorUserId,
+      "COVER_CHANGED",
+      {
+        attachmentId,
+        filenamePreview:
+          originalFilename === null
+            ? null
+            : truncateAttachmentFilenamePreview(originalFilename),
+      },
+      now,
+    );
+  }
+
   static rehydrate(
     id: string,
     taskId: string,
@@ -495,6 +589,46 @@ function normalizePayload(
         checklistId: record.checklistId,
         itemId: record.itemId,
         textPreview: record.textPreview,
+      };
+    }
+    case "ATTACHMENT_ADDED":
+    case "ATTACHMENT_REMOVED": {
+      if (typeof record.attachmentId !== "string") {
+        throw new Error("Attachment activity payload requires attachmentId");
+      }
+      if (typeof record.filenamePreview !== "string") {
+        throw new Error("Attachment activity payload requires filenamePreview");
+      }
+      if (!UUID_PATTERN.test(record.attachmentId)) {
+        throw new Error("Attachment id must be a UUID");
+      }
+      return {
+        attachmentId: record.attachmentId,
+        filenamePreview: record.filenamePreview,
+      };
+    }
+    case "COVER_CHANGED": {
+      if (record.attachmentId !== null && typeof record.attachmentId !== "string") {
+        throw new Error("Cover-changed payload requires attachmentId or null");
+      }
+      if (
+        record.filenamePreview !== null &&
+        typeof record.filenamePreview !== "string"
+      ) {
+        throw new Error("Cover-changed payload requires filenamePreview or null");
+      }
+      if ((record.attachmentId === null) !== (record.filenamePreview === null)) {
+        throw new Error("Cover-changed payload requires matching id and filename");
+      }
+      if (
+        typeof record.attachmentId === "string" &&
+        !UUID_PATTERN.test(record.attachmentId)
+      ) {
+        throw new Error("Attachment id must be a UUID");
+      }
+      return {
+        attachmentId: record.attachmentId,
+        filenamePreview: record.filenamePreview,
       };
     }
   }

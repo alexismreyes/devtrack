@@ -26,6 +26,76 @@ export class InvalidTaskStatusError extends Error {
   }
 }
 
+export class StatusNotFoundError extends Error {
+  constructor() {
+    super("Status was not found");
+    this.name = "StatusNotFoundError";
+  }
+}
+
+export class InvalidStatusNameError extends Error {
+  constructor() {
+    super("Status name must be 1–40 characters after trim");
+    this.name = "InvalidStatusNameError";
+  }
+}
+
+export class InvalidStatusColorError extends Error {
+  constructor() {
+    super("Status color is invalid");
+    this.name = "InvalidStatusColorError";
+  }
+}
+
+export class DuplicateStatusNameError extends Error {
+  constructor() {
+    super("A status with this name already exists in the project");
+    this.name = "DuplicateStatusNameError";
+  }
+}
+
+export class StatusInUseError extends Error {
+  constructor() {
+    super("Cannot delete a status that is assigned to live tasks");
+    this.name = "StatusInUseError";
+  }
+}
+
+export class LastStatusError extends Error {
+  constructor() {
+    super("Cannot delete the last remaining status in the project");
+    this.name = "LastStatusError";
+  }
+}
+
+export class LastNonCompletedStatusError extends Error {
+  constructor() {
+    super("Project must keep at least one non-completed status");
+    this.name = "LastNonCompletedStatusError";
+  }
+}
+
+export class StatusKeyImmutableError extends Error {
+  constructor() {
+    super("Status key cannot be changed");
+    this.name = "StatusKeyImmutableError";
+  }
+}
+
+export class InvalidStatusReorderError extends Error {
+  constructor() {
+    super("Status reorder must include each project status id exactly once");
+    this.name = "InvalidStatusReorderError";
+  }
+}
+
+export class InvalidStatusKeyError extends Error {
+  constructor() {
+    super("Status key is invalid");
+    this.name = "InvalidStatusKeyError";
+  }
+}
+
 export class InvalidTaskPriorityError extends Error {
   constructor() {
     super("Task priority is invalid");
@@ -121,5 +191,54 @@ export class InvalidChecklistItemTextError extends Error {
   constructor() {
     super("Checklist item text must be 1–200 characters after trim");
     this.name = "InvalidChecklistItemTextError";
+  }
+}
+
+export class AttachmentNotFoundError extends Error {
+  constructor() {
+    super("Attachment was not found");
+    this.name = "AttachmentNotFoundError";
+  }
+}
+
+export class InvalidAttachmentFilenameError extends Error {
+  constructor() {
+    super("Attachment filename is invalid");
+    this.name = "InvalidAttachmentFilenameError";
+  }
+}
+
+export class InvalidAttachmentContentTypeError extends Error {
+  constructor() {
+    super("Attachment content type is not allowed");
+    this.name = "InvalidAttachmentContentTypeError";
+  }
+}
+
+export class AttachmentSizeExceededError extends Error {
+  constructor() {
+    super("Attachment exceeds the maximum allowed size");
+    this.name = "AttachmentSizeExceededError";
+  }
+}
+
+export class AttachmentCountExceededError extends Error {
+  constructor() {
+    super("Task already has the maximum number of attachments");
+    this.name = "AttachmentCountExceededError";
+  }
+}
+
+export class InvalidCoverAttachmentError extends Error {
+  constructor() {
+    super("Cover must be an image attachment on the same task");
+    this.name = "InvalidCoverAttachmentError";
+  }
+}
+
+export class AttachmentStorageError extends Error {
+  constructor(message = "Attachment storage operation failed") {
+    super(message);
+    this.name = "AttachmentStorageError";
   }
 }

@@ -55,7 +55,8 @@ export type UpdateProjectRequestDto = {
   description?: string | null;
 };
 
-export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
+/** Catalog status key (seeded TODO/IN_PROGRESS/DONE or custom opaque key). */
+export type TaskStatus = string;
 
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
@@ -69,6 +70,8 @@ export type LabelColor =
   | "PURPLE"
   | "PINK"
   | "GRAY";
+
+export type StatusColor = LabelColor;
 
 export type TaskEmbeddedLabelDto = {
   id: string;
@@ -98,12 +101,50 @@ export type UpdateLabelRequestDto = {
   color?: LabelColor;
 };
 
+export type PublicProjectStatusDto = {
+  id: string;
+  projectId: string;
+  key: string;
+  name: string;
+  color: StatusColor;
+  isSystem: boolean;
+  isCompleted: boolean;
+  position: number;
+  createdAt: string;
+};
+
+export type StatusListResponseDto = {
+  statuses: PublicProjectStatusDto[];
+};
+
+export type CreateStatusRequestDto = {
+  name: string;
+  color: StatusColor;
+  isCompleted?: boolean;
+};
+
+export type UpdateStatusRequestDto = {
+  name?: string;
+  color?: StatusColor;
+  isCompleted?: boolean;
+};
+
+export type ReorderStatusesRequestDto = {
+  statusIds: string[];
+};
+
 export type ReplaceTaskLabelsRequestDto = {
   labelIds: string[];
 };
 
 export type TaskLabelsResponseDto = {
   labels: PublicLabelDto[];
+};
+
+/** Cover summary only — never a full attachments array (Q-140). */
+export type PublicCoverSummaryDto = {
+  attachmentId: string;
+  contentType: string;
 };
 
 export type PublicTaskDto = {
@@ -116,7 +157,66 @@ export type PublicTaskDto = {
   dueDate: string | null;
   createdAt: string;
   labels: TaskEmbeddedLabelDto[];
+  cover: PublicCoverSummaryDto | null;
 };
+
+export type PublicAttachmentDto = {
+  id: string;
+  taskId: string;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+  uploadedByUserId: string;
+  isCover: boolean;
+};
+
+export type AttachmentListResponseDto = {
+  attachments: PublicAttachmentDto[];
+};
+
+export type CoverResponseDto = {
+  cover: PublicCoverSummaryDto | null;
+};
+
+export type SetCoverRequestDto = {
+  attachmentId: string;
+};
+
+/** Q-133 allowlist — must match backend. */
+export const ATTACHMENT_ALLOWED_CONTENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "text/plain",
+] as const;
+
+export type AttachmentContentType =
+  (typeof ATTACHMENT_ALLOWED_CONTENT_TYPES)[number];
+
+export const COVER_IMAGE_CONTENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+] as const;
+
+/** Q-133: 20 MiB per file. */
+export const ATTACHMENT_MAX_SIZE_BYTES = 20 * 1024 * 1024;
+
+export function isAllowedAttachmentContentType(
+  value: string,
+): value is AttachmentContentType {
+  return (ATTACHMENT_ALLOWED_CONTENT_TYPES as readonly string[]).includes(
+    value,
+  );
+}
+
+export function isCoverImageContentType(value: string): boolean {
+  return (COVER_IMAGE_CONTENT_TYPES as readonly string[]).includes(value);
+}
 
 export type TaskListResponseDto = {
   tasks: PublicTaskDto[];
@@ -252,7 +352,10 @@ export type TaskActivityKind =
   | "CHECKLIST_ADDED"
   | "CHECKLIST_REMOVED"
   | "CHECKLIST_ITEM_COMPLETED"
-  | "CHECKLIST_ITEM_UNCOMPLETED";
+  | "CHECKLIST_ITEM_UNCOMPLETED"
+  | "ATTACHMENT_ADDED"
+  | "ATTACHMENT_REMOVED"
+  | "COVER_CHANGED";
 
 export type TaskActivityChangeField =
   | "title"
@@ -302,6 +405,21 @@ export type ChecklistItemUncompletedActivityPayload = {
   textPreview: string;
 };
 
+export type AttachmentAddedActivityPayload = {
+  attachmentId: string;
+  filenamePreview: string;
+};
+
+export type AttachmentRemovedActivityPayload = {
+  attachmentId: string;
+  filenamePreview: string;
+};
+
+export type CoverChangedActivityPayload = {
+  attachmentId: string | null;
+  filenamePreview: string | null;
+};
+
 export type TaskActivityPayload =
   | TaskCreatedActivityPayload
   | TaskFieldsChangedActivityPayload
@@ -310,7 +428,10 @@ export type TaskActivityPayload =
   | ChecklistAddedActivityPayload
   | ChecklistRemovedActivityPayload
   | ChecklistItemCompletedActivityPayload
-  | ChecklistItemUncompletedActivityPayload;
+  | ChecklistItemUncompletedActivityPayload
+  | AttachmentAddedActivityPayload
+  | AttachmentRemovedActivityPayload
+  | CoverChangedActivityPayload;
 
 export type PublicActivityDto = {
   id: string;

@@ -18,13 +18,20 @@ import {
   listProbes,
   listProjects,
   createLabel,
+  createStatus,
+  clearTaskCover,
   createTaskChecklist,
   createTaskChecklistItem,
   deleteLabel,
+  deleteStatus,
+  deleteTaskAttachment,
   deleteTaskChecklist,
   deleteTaskChecklistItem,
+  fetchAttachmentContent,
   listLabels,
+  listStatuses,
   listTaskActivity,
+  listTaskAttachments,
   listTaskChecklists,
   listTaskComments,
   listTasks,
@@ -32,17 +39,21 @@ import {
   logout,
   register,
   removeMember,
+  reorderStatuses,
   replaceTaskLabels,
+  setTaskCover,
   softDeleteTask,
   unarchiveProject,
   updateLabel,
   updateMember,
   updateProfile,
   updateProject,
+  updateStatus,
   updateTask,
   updateTaskChecklist,
   updateTaskChecklistItem,
   updateTaskComment,
+  uploadTaskAttachment,
 } from "./client";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -621,6 +632,7 @@ describe("tasks API client", () => {
     dueDate: "2026-11-01" as string | null,
     createdAt: "2026-10-29T18:00:00.000Z",
     labels: [] as Array<{ id: string; name: string; color: string }>,
+    cover: null as { attachmentId: string; contentType: string } | null,
   };
 
   it("creates a task under the project path with credentials included and no token storage", async () => {
@@ -725,6 +737,30 @@ describe("tasks API client", () => {
     });
 
     await expect(getTask("task-1")).resolves.toEqual(labeled);
+    expectNoTokenStorage();
+  });
+
+  it("maps PublicTaskDto.cover summary only and never keeps an attachments array (Q-140)", async () => {
+    const withCover = {
+      ...task,
+      cover: {
+        attachmentId: "att-1",
+        contentType: "image/png",
+      },
+    };
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, {
+        ...withCover,
+        attachments: [{ id: "att-1", bytes: "must-not-be-kept" }],
+        deletedAt: "must-not-be-kept",
+      });
+    });
+
+    const result = await getTask("task-1");
+    expect(result).toEqual(withCover);
+    expect(result).not.toHaveProperty("attachments");
     expectNoTokenStorage();
   });
 
@@ -973,6 +1009,189 @@ describe("task labels API client", () => {
   });
 });
 
+describe("project statuses API client", () => {
+  const status = {
+    id: "status-1",
+    projectId: "proj-1",
+    key: "TODO",
+    name: "To do",
+    color: "GRAY" as const,
+    isSystem: true,
+    isCompleted: false,
+    position: 0,
+    createdAt: "2026-11-06T12:00:00.000Z",
+  };
+
+  it("lists project statuses with credentials included and strips extras", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/statuses");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        statuses: [{ ...status, token: "must-not-be-kept" }],
+      });
+    });
+
+    await expect(listStatuses("proj-1")).resolves.toEqual({ statuses: [status] });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("creates a status with credentials included", async () => {
+    const created = {
+      ...status,
+      id: "status-custom",
+      key: "custom-key",
+      name: "On hold",
+      color: "ORANGE" as const,
+      isSystem: false,
+      position: 3,
+    };
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/statuses");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(
+        JSON.stringify({ name: "On hold", color: "ORANGE", isCompleted: false }),
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(201, created);
+    });
+
+    await expect(
+      createStatus("proj-1", {
+        name: "On hold",
+        color: "ORANGE",
+        isCompleted: false,
+      }),
+    ).resolves.toEqual(created);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("patches status name, color, and isCompleted with credentials included", async () => {
+    const updated = {
+      ...status,
+      name: "Backlog",
+      color: "PURPLE" as const,
+      isCompleted: true,
+    };
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/statuses/status-1",
+      );
+      expect(init?.method).toBe("PATCH");
+      expect(init?.body).toBe(
+        JSON.stringify({
+          name: "Backlog",
+          color: "PURPLE",
+          isCompleted: true,
+        }),
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(200, updated);
+    });
+
+    await expect(
+      updateStatus("proj-1", "status-1", {
+        name: "Backlog",
+        color: "PURPLE",
+        isCompleted: true,
+      }),
+    ).resolves.toEqual(updated);
+    expectNoTokenStorage();
+  });
+
+  it("deletes a status with DELETE, empty body, 204, and credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/statuses/status-1",
+      );
+      expect(init?.method).toBe("DELETE");
+      expect(init?.body).toBeUndefined();
+      expectCredentialsInclude(init);
+      return emptyResponse(204);
+    });
+
+    await expect(deleteStatus("proj-1", "status-1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("reorders statuses with PUT statusIds and credentials included (AC-014)", async () => {
+    const reordered = [
+      { ...status, id: "b", position: 0 },
+      { ...status, id: "a", position: 1 },
+    ];
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/statuses/reorder",
+      );
+      expect(init?.method).toBe("PUT");
+      expect(init?.body).toBe(JSON.stringify({ statusIds: ["b", "a"] }));
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { statuses: reordered });
+    });
+
+    await expect(
+      reorderStatuses("proj-1", { statusIds: ["b", "a"] }),
+    ).resolves.toEqual({ statuses: reordered });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("filters tasks by status key with credentials included (AC-008)", async () => {
+    const task = {
+      id: "task-1",
+      projectId: "proj-1",
+      title: "Write tests",
+      description: null,
+      status: "custom-key",
+      priority: "MEDIUM" as const,
+      dueDate: null,
+      createdAt: "2026-11-06T12:00:00.000Z",
+      labels: [],
+      cover: null,
+    };
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/tasks?status=custom-key",
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { tasks: [task] });
+    });
+
+    await expect(
+      listTasks("proj-1", { status: "custom-key" }),
+    ).resolves.toEqual({ tasks: [task] });
+    expectNoTokenStorage();
+  });
+
+  it("maps conflict when deleting an in-use status", async () => {
+    mockFetch(() =>
+      jsonResponse(409, {
+        error: {
+          code: "CONFLICT",
+          message: "Status is in use by one or more tasks",
+        },
+      }),
+    );
+
+    const error = await deleteStatus("proj-1", "status-1").catch(
+      (err: unknown) => err,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 409,
+      code: "CONFLICT",
+      message: "Status is in use by one or more tasks",
+    });
+    expectNoTokenStorage();
+  });
+});
+
 describe("task comments API client", () => {
   const comment = {
     id: "comment-1",
@@ -1189,6 +1408,45 @@ describe("task activity API client", () => {
     },
   };
 
+  const attachmentAddedEvent = {
+    id: "activity-8",
+    taskId: "task-1",
+    kind: "ATTACHMENT_ADDED" as const,
+    actorUserId: "user-1",
+    actorDisplayName: "Ada",
+    createdAt: "2026-11-04T19:00:00.000Z",
+    payload: {
+      attachmentId: "att-1",
+      filenamePreview: "cover.png",
+    },
+  };
+
+  const attachmentRemovedEvent = {
+    id: "activity-9",
+    taskId: "task-1",
+    kind: "ATTACHMENT_REMOVED" as const,
+    actorUserId: "user-1",
+    actorDisplayName: "Ada",
+    createdAt: "2026-11-04T20:00:00.000Z",
+    payload: {
+      attachmentId: "att-1",
+      filenamePreview: "cover.png",
+    },
+  };
+
+  const coverChangedEvent = {
+    id: "activity-10",
+    taskId: "task-1",
+    kind: "COVER_CHANGED" as const,
+    actorUserId: "user-1",
+    actorDisplayName: "Ada",
+    createdAt: "2026-11-04T21:00:00.000Z",
+    payload: {
+      attachmentId: "att-1",
+      filenamePreview: "cover.png",
+    },
+  };
+
   it("lists activity with credentials included and strips non-public fields", async () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     const fetchMock = mockFetch((url, init) => {
@@ -1228,6 +1486,18 @@ describe("task activity API client", () => {
             ...checklistItemUncompletedEvent,
             sessionId: "must-not-be-kept",
           },
+          {
+            ...attachmentAddedEvent,
+            secret: "must-not-be-kept",
+          },
+          {
+            ...attachmentRemovedEvent,
+            token: "must-not-be-kept",
+          },
+          {
+            ...coverChangedEvent,
+            passwordHash: "must-not-be-kept",
+          },
         ],
       });
     });
@@ -1241,6 +1511,9 @@ describe("task activity API client", () => {
         checklistRemovedEvent,
         checklistItemCompletedEvent,
         checklistItemUncompletedEvent,
+        attachmentAddedEvent,
+        attachmentRemovedEvent,
+        coverChangedEvent,
       ],
     });
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -1474,6 +1747,161 @@ describe("task checklists API client", () => {
       status: 401,
       code: "UNAUTHENTICATED",
       message: "Authentication is required",
+    });
+    expectNoTokenStorage();
+  });
+});
+
+describe("attachments API client", () => {
+  const attachment = {
+    id: "att-1",
+    taskId: "task-1",
+    originalFilename: "cover.png",
+    contentType: "image/png",
+    sizeBytes: 128,
+    createdAt: "2026-11-06T12:00:00.000Z",
+    uploadedByUserId: "user-1",
+    isCover: false,
+  };
+
+  it("lists attachments with credentials included and strips non-public fields", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/attachments");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        attachments: [
+          {
+            ...attachment,
+            storageKey: "must-not-be-kept",
+            token: "must-not-be-kept",
+          },
+        ],
+      });
+    });
+
+    await expect(listTaskAttachments("task-1")).resolves.toEqual({
+      attachments: [attachment],
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("uploads multipart with field file and credentials included (no public URL)", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "cover.png", {
+      type: "image/png",
+    });
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/attachments");
+      expect(url).not.toMatch(/\/uploads\b/);
+      expect(init?.method).toBe("POST");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      expect(init?.body).toBeInstanceOf(FormData);
+      const form = init?.body as FormData;
+      expect(form.get("file")).toBeInstanceOf(File);
+      const headers = init?.headers as Record<string, string> | undefined;
+      expect(headers?.["Content-Type"]).toBeUndefined();
+      return jsonResponse(201, {
+        ...attachment,
+        storageKey: "must-not-be-kept",
+      });
+    });
+
+    await expect(uploadTaskAttachment("task-1", file)).resolves.toEqual(
+      attachment,
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("fetches attachment content with credentials and no public static path", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/attachments/att-1/content",
+      );
+      expect(url).not.toMatch(/\/uploads\b/);
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "private",
+        },
+      });
+    });
+
+    const result = await fetchAttachmentContent("task-1", "att-1");
+    expect(result.contentType).toBe("image/png");
+    expect(result.blob.size).toBe(4);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("deletes an attachment with credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/attachments/att-1",
+      );
+      expect(init?.method).toBe("DELETE");
+      expectCredentialsInclude(init);
+      return emptyResponse(204);
+    });
+
+    await expect(deleteTaskAttachment("task-1", "att-1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("sets and clears cover with credentials included", async () => {
+    const cover = {
+      attachmentId: "att-1",
+      contentType: "image/png",
+    };
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/cover");
+      expect(init?.method).toBe("PUT");
+      expect(init?.body).toBe(JSON.stringify({ attachmentId: "att-1" }));
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { cover });
+    });
+    await expect(
+      setTaskCover("task-1", { attachmentId: "att-1" }),
+    ).resolves.toEqual({ cover });
+
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1/cover");
+      expect(init?.method).toBe("DELETE");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { cover: null });
+    });
+    await expect(clearTaskCover("task-1")).resolves.toEqual({ cover: null });
+    expectNoTokenStorage();
+  });
+
+  it("maps unauthenticated attachment access without storing credentials", async () => {
+    mockFetch(() =>
+      jsonResponse(401, {
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Authentication is required",
+        },
+      }),
+    );
+
+    const error = await listTaskAttachments("task-1").catch(
+      (err: unknown) => err,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "UNAUTHENTICATED",
     });
     expectNoTokenStorage();
   });

@@ -2,23 +2,34 @@ import type { TaskAuthorizationPort } from "../../project-members/access/task-au
 import type { UnitOfWork } from "../../projects/access/unit-of-work";
 import type { ProjectAccessPort } from "../../projects/access/project-access-port";
 import {
+  buildCompletionByProject,
   summarizeDashboard,
   type DashboardSummary,
 } from "../domain/dashboard-summary";
 import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
 import type { LabelColor } from "../domain/project-label";
+import {
+  assertStatusKeyInCatalog,
+  resolveDefaultStatusKey,
+} from "../domain/project-status";
 import type { Task } from "../domain/task";
 import {
   buildTaskFieldChanges,
   TaskActivityEvent,
 } from "../domain/task-activity";
 import type { ActivityRepository } from "../repository/activity-repository";
+import type { AttachmentsRepository } from "../repository/attachments-repository";
+import type { StatusesRepository } from "../repository/statuses-repository";
 import type { TaskLabelsRepository } from "../repository/task-labels-repository";
 import type {
   ListTasksFilters,
   TasksRepository,
   UpdateTaskInput,
 } from "../repository/tasks-repository";
+import {
+  isCoverImageContentType,
+  type TaskCoverSummary,
+} from "../domain/task-attachment";
 
 export type CreateTaskCommand = {
   title: string;
@@ -45,6 +56,7 @@ export type TaskView = {
   createdAt: Date;
   deletedAt: Date | null;
   labels: TaskLabelSummary[];
+  cover: TaskCoverSummary | null;
 };
 
 export class TasksService {
@@ -54,6 +66,8 @@ export class TasksService {
     private readonly authorization: TaskAuthorizationPort,
     private readonly activity: ActivityRepository,
     private readonly taskLabels: TaskLabelsRepository,
+    private readonly attachments: AttachmentsRepository,
+    private readonly statuses: StatusesRepository,
     private readonly unitOfWork: UnitOfWork,
   ) {}
 
@@ -67,12 +81,17 @@ export class TasksService {
       projectId,
     );
     this.assertParentWritable(snapshot.archivedAt);
+    const catalog = await this.statuses.listByProjectId(projectId);
+    const statusKey =
+      input.status === undefined
+        ? resolveDefaultStatusKey(catalog)
+        : assertStatusKeyInCatalog(catalog, projectId, input.status).key;
     const task = await this.unitOfWork.run(async () => {
       const created = await this.tasks.create({
         projectId,
         title: input.title,
         description: input.description,
-        status: input.status,
+        status: statusKey,
         priority: input.priority,
         dueDate: input.dueDate,
       });
@@ -81,7 +100,7 @@ export class TasksService {
       );
       return created;
     });
-    return this.toView(task, []);
+    return this.toView(task, [], null);
   }
 
   async listByProject(
@@ -90,6 +109,10 @@ export class TasksService {
     filters: ListTasksFilters = {},
   ): Promise<TaskView[]> {
     await this.authorization.requireTaskRead(actorId, projectId);
+    if (filters.status !== undefined) {
+      const catalog = await this.statuses.listByProjectId(projectId);
+      assertStatusKeyInCatalog(catalog, projectId, filters.status);
+    }
     const tasks = await this.tasks.listByProjectId(projectId, filters);
     return this.toViews(tasks);
   }
@@ -99,10 +122,15 @@ export class TasksService {
     now: Date = new Date(),
   ): Promise<DashboardSummary> {
     const owned = await this.projects.listOwnedActiveProjects(actorId);
-    const tasks = await this.tasks.listNonDeletedByProjectIds(
-      owned.map((project) => project.id),
+    const projectIds = owned.map((project) => project.id);
+    const tasks = await this.tasks.listNonDeletedByProjectIds(projectIds);
+    const statuses = await this.statuses.listByProjectIds(projectIds);
+    return summarizeDashboard(
+      owned,
+      tasks,
+      now,
+      buildCompletionByProject(statuses),
     );
-    return summarizeDashboard(owned, tasks, now);
   }
 
   async getById(actorId: string, taskId: string): Promise<TaskView> {
@@ -122,11 +150,21 @@ export class TasksService {
       task.projectId,
     );
     this.assertParentWritable(snapshot.archivedAt);
-    const changes = buildTaskFieldChanges(task, input);
+    let nextInput = input;
+    if (input.status !== undefined) {
+      const catalog = await this.statuses.listByProjectId(task.projectId);
+      const resolved = assertStatusKeyInCatalog(
+        catalog,
+        task.projectId,
+        input.status,
+      );
+      nextInput = { ...input, status: resolved.key };
+    }
+    const changes = buildTaskFieldChanges(task, nextInput);
     // Validate normalized update even when no-op (preserve prior invariant).
-    task.withDetails(input);
+    task.withDetails(nextInput);
     const updated = await this.unitOfWork.run(async () => {
-      const next = await this.tasks.update(taskId, input);
+      const next = await this.tasks.update(taskId, nextInput);
       if (changes.length > 0) {
         await this.activity.create(
           TaskActivityEvent.taskFieldsChanged(taskId, actorId, changes),
@@ -169,21 +207,51 @@ export class TasksService {
 
   private async toViewWithLabels(task: Task): Promise<TaskView> {
     const byTask = await this.taskLabels.listForTaskIds([task.id]);
-    return this.toView(task, byTask.get(task.id) ?? []);
+    const covers = await this.coverMapForTasks([task]);
+    return this.toView(
+      task,
+      byTask.get(task.id) ?? [],
+      covers.get(task.id) ?? null,
+    );
   }
 
   private async toViews(tasks: Task[]): Promise<TaskView[]> {
     const byTask = await this.taskLabels.listForTaskIds(
       tasks.map((task) => task.id),
     );
+    const covers = await this.coverMapForTasks(tasks);
     return tasks.map((task) =>
-      this.toView(task, byTask.get(task.id) ?? []),
+      this.toView(
+        task,
+        byTask.get(task.id) ?? [],
+        covers.get(task.id) ?? null,
+      ),
     );
+  }
+
+  private async coverMapForTasks(
+    tasks: Task[],
+  ): Promise<Map<string, TaskCoverSummary>> {
+    const rows = await this.attachments.listCoverSummariesForTaskIds(
+      tasks.map((task) => task.id),
+    );
+    const map = new Map<string, TaskCoverSummary>();
+    for (const row of rows) {
+      if (!isCoverImageContentType(row.contentType)) {
+        continue;
+      }
+      map.set(row.taskId, {
+        attachmentId: row.attachmentId,
+        contentType: row.contentType,
+      });
+    }
+    return map;
   }
 
   private toView(
     task: Task,
     labels: Array<{ id: string; name: string; color: LabelColor }>,
+    cover: TaskCoverSummary | null,
   ): TaskView {
     return {
       id: task.id,
@@ -200,6 +268,7 @@ export class TasksService {
         name: label.name,
         color: label.color,
       })),
+      cover,
     };
   }
 }

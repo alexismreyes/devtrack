@@ -9,9 +9,16 @@ import {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export const TASK_STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
-export type TaskStatus = (typeof TASK_STATUSES)[number];
+/** Stable catalog key string on Task.status (not an enum). */
+export type TaskStatus = string;
+/** Preferred create default when that catalog key still exists. */
 export const DEFAULT_TASK_STATUS: TaskStatus = "TODO";
+/** Seeded keys preserved for migration / docs; customs are opaque UUID strings. */
+export const SEEDED_TASK_STATUS_KEYS = [
+  "TODO",
+  "IN_PROGRESS",
+  "DONE",
+] as const;
 
 export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
@@ -25,11 +32,13 @@ export type TaskDetailsChange = {
   dueDate?: Date | null;
 };
 
+/** Normalize a status key string; catalog membership is enforced in the service. */
 export function parseTaskStatus(value: string): TaskStatus {
-  if ((TASK_STATUSES as readonly string[]).includes(value)) {
-    return value as TaskStatus;
+  const normalized = value.trim();
+  if (normalized.length < 1 || normalized.length > 64) {
+    throw new InvalidTaskStatusError();
   }
-  throw new InvalidTaskStatusError();
+  return normalized;
 }
 
 export function parseTaskPriority(value: string): TaskPriority {
@@ -101,6 +110,8 @@ export class Task {
   readonly dueDate: Date | null;
   readonly createdAt: Date;
   readonly deletedAt: Date | null;
+  /** Nullable pointer to an image attachment on this task (Q-138). */
+  readonly coverAttachmentId: string | null;
 
   private constructor(
     id: string,
@@ -112,12 +123,19 @@ export class Task {
     dueDate: Date | null,
     createdAt: Date,
     deletedAt: Date | null,
+    coverAttachmentId: string | null,
   ) {
     if (!UUID_PATTERN.test(id)) {
       throw new Error("Task id must be a UUID");
     }
     if (!UUID_PATTERN.test(projectId)) {
       throw new Error("Task project id must be a UUID");
+    }
+    if (
+      coverAttachmentId !== null &&
+      !UUID_PATTERN.test(coverAttachmentId)
+    ) {
+      throw new Error("Task cover attachment id must be a UUID");
     }
     if (Number.isNaN(createdAt.getTime())) {
       throw new Error("Task created time must be a valid date");
@@ -136,6 +154,7 @@ export class Task {
     this.createdAt = new Date(createdAt.getTime());
     this.deletedAt =
       deletedAt === null ? null : new Date(deletedAt.getTime());
+    this.coverAttachmentId = coverAttachmentId;
     Object.freeze(this);
   }
 
@@ -160,6 +179,7 @@ export class Task {
       normalizeDueDate(dueDate),
       now,
       null,
+      null,
     );
   }
 
@@ -173,6 +193,7 @@ export class Task {
     dueDate: Date | null,
     createdAt: Date,
     deletedAt: Date | null,
+    coverAttachmentId: string | null = null,
   ): Task {
     return new Task(
       id,
@@ -184,6 +205,7 @@ export class Task {
       normalizeDueDate(dueDate),
       createdAt,
       deletedAt,
+      coverAttachmentId,
     );
   }
 
@@ -210,6 +232,22 @@ export class Task {
         : this.dueDate,
       this.createdAt,
       this.deletedAt,
+      this.coverAttachmentId,
+    );
+  }
+
+  withCoverAttachmentId(coverAttachmentId: string | null): Task {
+    return new Task(
+      this.id,
+      this.projectId,
+      this.title,
+      this.description,
+      this.status,
+      this.priority,
+      this.dueDate,
+      this.createdAt,
+      this.deletedAt,
+      coverAttachmentId,
     );
   }
 
@@ -228,6 +266,7 @@ export class Task {
       this.dueDate,
       this.createdAt,
       now,
+      this.coverAttachmentId,
     );
   }
 }

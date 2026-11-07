@@ -10,9 +10,12 @@ import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
+import { InMemoryAttachmentStorage } from "./in-memory-attachment-storage";
+import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
 import { InMemoryChecklistsRepository } from "./in-memory-checklists-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
+import { InMemoryStatusesRepository } from "./in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "./in-memory-tasks-repository";
 
@@ -49,6 +52,7 @@ function createActivityApp() {
   const labelsRepository = new InMemoryLabelsRepository();
   const taskLabelsRepository = new InMemoryTaskLabelsRepository(labelsRepository);
   const tasksRepository = new InMemoryTasksRepository(taskLabelsRepository.joins);
+  const statusesRepository = new InMemoryStatusesRepository(tasksRepository);
   const commentsRepository = new InMemoryCommentsRepository();
   const activityRepository = new InMemoryActivityRepository();
   const projectMembersRepository = new InMemoryProjectMembersRepository();
@@ -62,8 +66,11 @@ function createActivityApp() {
     commentsRepository,
     activityRepository,
     checklistsRepository: new InMemoryChecklistsRepository(),
+    attachmentsRepository: new InMemoryAttachmentsRepository(tasksRepository),
+    attachmentStorage: new InMemoryAttachmentStorage(),
     labelsRepository,
     taskLabelsRepository,
+    statusesRepository,
     projectMembersRepository,
   });
   return { app, activityRepository, commentsRepository };

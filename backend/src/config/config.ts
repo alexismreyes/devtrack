@@ -2,6 +2,7 @@ export type AppConfig = {
   port: number;
   corsOrigin: string;
   databaseUrl: string;
+  attachmentsRoot: string;
 };
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -15,6 +16,7 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const corsOrigin = required(env, "CORS_ORIGIN");
   const databaseUrl = required(env, "DATABASE_URL");
+  const attachmentsRoot = required(env, "ATTACHMENTS_ROOT");
   const portRaw = env.PORT ?? "3000";
   const port = Number(portRaw);
 
@@ -22,5 +24,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error("PORT must be an integer between 1 and 65535");
   }
 
-  return { port, corsOrigin, databaseUrl };
+  return { port, corsOrigin, databaseUrl, attachmentsRoot };
 }

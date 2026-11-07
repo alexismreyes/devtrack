@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectMemberRole, PublicMemberDto } from "../api/types";
 import { expectNoSessionTokenStorage } from "../test/storage";
+import { DEFAULT_PROJECT_STATUSES } from "../test/statuses";
 import { ProjectDetail } from "./ProjectDetail";
 
 const publicUser = {
@@ -100,6 +101,10 @@ function isLabelsListUrl(url: string): boolean {
   return /\/api\/projects\/[^/]+\/labels$/.test(url);
 }
 
+function isStatusesListUrl(url: string): boolean {
+  return /\/api\/projects\/[^/]+\/statuses$/.test(url);
+}
+
 function respondBoardReads(
   url: string,
   init: RequestInit | undefined,
@@ -120,6 +125,9 @@ function respondBoardReads(
   }
   if (isLabelsListUrl(url) && (init?.method === undefined || init.method === "GET")) {
     return jsonResponse(200, { labels: [] });
+  }
+  if (isStatusesListUrl(url) && (init?.method === undefined || init.method === "GET")) {
+    return jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES });
   }
   if (isMembersListUrl(url) && (init?.method === undefined || init.method === "GET")) {
     return jsonResponse(200, { members });
@@ -236,6 +244,30 @@ describe("ProjectDetail", () => {
     expect(await within(dialog).findByText(/no labels yet/i)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/new label name/i)).toBeInTheDocument();
     expect(screen.queryByText(/checklist/i)).not.toBeInTheDocument();
+    expectNoSessionTokenStorage();
+  });
+
+  it("opens the Statuses Dialog from the board header (AC-008 / AC-014)", async () => {
+    mockFetch((url, init) => {
+      const common = respondBoardReads(url, init);
+      if (common !== null) {
+        return common;
+      }
+      return jsonResponse(500, {
+        error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
+      });
+    });
+    const user = userEvent.setup();
+
+    renderDetail();
+
+    expect(await screen.findByRole("button", { name: /^statuses$/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^statuses$/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: /^statuses$/i })).toBeInTheDocument();
+    expect(await within(dialog).findByText("To do")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/new status name/i)).toBeInTheDocument();
+    expect(screen.queryByText(/wip/i)).not.toBeInTheDocument();
     expectNoSessionTokenStorage();
   });
 
