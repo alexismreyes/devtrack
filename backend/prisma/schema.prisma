@@ -33,6 +33,7 @@ model User {
   authoredTaskComments TaskComment[]
   taskActivityEvents TaskActivityEvent[]
   uploadedTaskAttachments TaskAttachment[]
+  uploadedProjectCovers ProjectCover[]
 
   @@map("users")
 }
@@ -95,9 +96,25 @@ model Project {
   members     ProjectMember[]
   labels      ProjectLabel[]
   statuses    ProjectStatus[]
+  cover       ProjectCover?
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+model ProjectCover {
+  id               String   @id @db.Uuid
+  projectId        String   @unique @db.Uuid
+  uploadedByUserId String   @db.Uuid
+  originalFilename String
+  contentType      String
+  sizeBytes        Int
+  storageKey       String   @unique
+  createdAt        DateTime
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  uploadedBy       User     @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  @@map("project_covers")
 }
 
 model ProjectMember {

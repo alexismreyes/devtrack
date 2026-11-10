@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -108,6 +108,7 @@ export function KanbanBoard({
   disabled = false,
 }: KanbanBoardProps) {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const suppressSelectRef = useRef(false);
   const columnKeys = columns.map((column) => column.key);
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -115,11 +116,23 @@ export function KanbanBoard({
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: createKeyboardCoordinates(columnKeys),
+      keyboardCodes: {
+        start: ["Space"],
+        cancel: ["Escape"],
+        end: ["Space", "Enter", "Tab"],
+      },
     }),
   );
   const activeTask = tasks.find((task) => task.id === activeTaskId);
 
+  function clearSelectSuppression(): void {
+    window.setTimeout(() => {
+      suppressSelectRef.current = false;
+    }, 0);
+  }
+
   function handleDragStart(event: DragStartEvent): void {
+    suppressSelectRef.current = true;
     setActiveTaskId(String(event.active.id));
   }
 
@@ -131,6 +144,7 @@ export function KanbanBoard({
       columnKeys,
     );
     setActiveTaskId(null);
+    clearSelectSuppression();
     if (move === null || disabled) {
       return;
     }
@@ -139,6 +153,7 @@ export function KanbanBoard({
 
   function handleDragCancel(): void {
     setActiveTaskId(null);
+    clearSelectSuppression();
   }
 
   return (
@@ -161,6 +176,7 @@ export function KanbanBoard({
             column={column}
             tasks={tasks.filter((task) => task.status === column.key)}
             onSelectTask={onSelectTask}
+            suppressSelectRef={suppressSelectRef}
             onAddTask={onAddTask}
             disabled={disabled}
           />
@@ -181,12 +197,14 @@ function KanbanColumn({
   column,
   tasks,
   onSelectTask,
+  suppressSelectRef,
   onAddTask,
   disabled,
 }: {
   column: PublicProjectStatusDto;
   tasks: PublicTaskDto[];
   onSelectTask: (taskId: string) => void;
+  suppressSelectRef: RefObject<boolean>;
   onAddTask?: (status: TaskStatus) => void;
   disabled: boolean;
 }) {
@@ -231,6 +249,7 @@ function KanbanColumn({
             key={task.id}
             task={task}
             onSelectTask={onSelectTask}
+            suppressSelectRef={suppressSelectRef}
             disabled={disabled}
           />
         ))}
@@ -310,31 +329,14 @@ function KanbanCardCoverImage({
   );
 }
 
-function KanbanCardFace({
-  task,
-  onSelectTask,
-}: {
-  task: PublicTaskDto;
-  onSelectTask?: (taskId: string) => void;
-}) {
+function KanbanCardFace({ task }: { task: PublicTaskDto }) {
   return (
     <Card>
       <CardContent className="grid gap-1 p-3">
         {task.cover === null ? null : (
           <KanbanCardCoverImage taskId={task.id} cover={task.cover} />
         )}
-        {onSelectTask === undefined ? (
-          <p className="px-2 py-1 text-sm font-medium">{task.title}</p>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-auto w-full cursor-pointer justify-start px-2 py-1 text-left"
-            onClick={() => onSelectTask(task.id)}
-          >
-            {task.title}
-          </Button>
-        )}
+        <p className="px-2 py-1 text-sm font-medium">{task.title}</p>
         <p className="px-2 text-xs text-muted-foreground">Priority {task.priority}</p>
         {task.dueDate === null ? null : (
           <p className="px-2 text-xs text-muted-foreground">Due {task.dueDate}</p>
@@ -348,10 +350,12 @@ function KanbanCardFace({
 function KanbanCard({
   task,
   onSelectTask,
+  suppressSelectRef,
   disabled,
 }: {
   task: PublicTaskDto;
   onSelectTask: (taskId: string) => void;
+  suppressSelectRef: RefObject<boolean>;
   disabled: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -359,21 +363,56 @@ function KanbanCard({
     disabled,
     data: { type: "task", status: task.status },
     attributes: {
-      role: "group",
+      role: "button",
       roleDescription: "draggable",
     },
   });
+  const dragListeners = disabled ? undefined : listeners;
+  const dndKeyDown = dragListeners?.onKeyDown;
+  const otherDragListeners =
+    dragListeners === undefined
+      ? undefined
+      : Object.fromEntries(
+          Object.entries(dragListeners).filter(([key]) => key !== "onKeyDown"),
+        );
+
+  function handleSelect(): void {
+    if (suppressSelectRef.current) {
+      return;
+    }
+    onSelectTask(task.id);
+  }
 
   return (
     <li>
       <div
         ref={setNodeRef}
         data-kanban-card={task.id}
+        aria-label={task.title}
         className={cn("cursor-pointer touch-none", isDragging ? "opacity-50" : null)}
         {...attributes}
-        {...(disabled ? {} : listeners)}
+        {...otherDragListeners}
+        onClick={handleSelect}
+        onKeyDown={(event) => {
+          if (typeof dndKeyDown === "function") {
+            dndKeyDown(event);
+          }
+          if (event.defaultPrevented) {
+            return;
+          }
+          if (event.key === " " || event.code === "Space") {
+            // Block role=button Space→click when KeyboardSensor did not activate.
+            event.preventDefault();
+            return;
+          }
+          if (event.key !== "Enter") {
+            return;
+          }
+          event.preventDefault();
+          handleSelect();
+        }}
       >
-        <KanbanCardFace task={task} onSelectTask={onSelectTask} />
+        <KanbanCardFace task={task} />
       </div>
     </li>
   );

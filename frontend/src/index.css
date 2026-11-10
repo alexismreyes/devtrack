@@ -66,6 +66,12 @@
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.008 85),
+    oklch(0.94 0.02 85) 55%,
+    oklch(0.9 0.035 75)
+  );
 }
 
 [data-palette="Ocean"] {
@@ -99,6 +105,12 @@
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.01 230),
+    oklch(0.93 0.03 230) 55%,
+    oklch(0.88 0.045 220)
+  );
 }
 
 [data-palette="Sunset"] {
@@ -132,6 +144,12 @@
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.015 55),
+    oklch(0.94 0.035 55) 55%,
+    oklch(0.9 0.05 45)
+  );
 }
 
 [data-palette="Violet"] {
@@ -165,6 +183,12 @@
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.01 310),
+    oklch(0.94 0.03 310) 55%,
+    oklch(0.9 0.045 300)
+  );
 }
 
 [data-palette="Midnight"] {
@@ -198,6 +222,129 @@
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.26 0.035 270),
+    oklch(0.22 0.04 265) 55%,
+    oklch(0.2 0.05 255)
+  );
+}
+
+[data-palette="Obsidian"] {
+  --background: oklch(0.14 0.02 250);
+  --foreground: oklch(0.92 0.01 250);
+  --card: oklch(0.19 0.022 250);
+  --card-foreground: oklch(0.92 0.01 250);
+  --popover: oklch(0.19 0.022 250);
+  --popover-foreground: oklch(0.92 0.01 250);
+  --primary: oklch(0.72 0.08 230);
+  --primary-foreground: oklch(0.14 0.02 250);
+  --secondary: oklch(0.24 0.02 250);
+  --secondary-foreground: oklch(0.9 0.01 250);
+  --muted: oklch(0.22 0.018 250);
+  --muted-foreground: oklch(0.7 0.02 250);
+  --accent: oklch(0.28 0.035 240);
+  --accent-foreground: oklch(0.92 0.01 250);
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.98 0.01 80);
+  --border: oklch(0.3 0.025 250);
+  --input: oklch(0.3 0.025 250);
+  --ring: oklch(0.72 0.08 230);
+  --sidebar: oklch(0.12 0.02 250);
+  --sidebar-foreground: oklch(0.92 0.01 250);
+  --board: oklch(0.11 0.018 250);
+  --board-foreground: oklch(0.92 0.01 250);
+  --devtrack-bar: oklch(0.1 0.02 250);
+  --devtrack-bar-foreground: oklch(0.94 0.01 250);
+  --devtrack-bar-muted: oklch(0.68 0.02 250);
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.22 0.025 250),
+    oklch(0.18 0.03 245) 55%,
+    oklch(0.16 0.035 235)
+  );
+}
+
+[data-palette="Noir"] {
+  --background: oklch(0.13 0.01 80);
+  --foreground: oklch(0.93 0.01 85);
+  --card: oklch(0.18 0.012 80);
+  --card-foreground: oklch(0.93 0.01 85);
+  --popover: oklch(0.18 0.012 80);
+  --popover-foreground: oklch(0.93 0.01 85);
+  --primary: oklch(0.78 0.04 85);
+  --primary-foreground: oklch(0.14 0.01 80);
+  --secondary: oklch(0.23 0.012 80);
+  --secondary-foreground: oklch(0.9 0.01 85);
+  --muted: oklch(0.21 0.01 80);
+  --muted-foreground: oklch(0.7 0.015 85);
+  --accent: oklch(0.27 0.02 70);
+  --accent-foreground: oklch(0.93 0.01 85);
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.98 0.01 80);
+  --border: oklch(0.28 0.015 80);
+  --input: oklch(0.28 0.015 80);
+  --ring: oklch(0.78 0.04 85);
+  --sidebar: oklch(0.11 0.01 80);
+  --sidebar-foreground: oklch(0.93 0.01 85);
+  --board: oklch(0.1 0.01 80);
+  --board-foreground: oklch(0.93 0.01 85);
+  --devtrack-bar: oklch(0.09 0.01 80);
+  --devtrack-bar-foreground: oklch(0.94 0.01 85);
+  --devtrack-bar-muted: oklch(0.68 0.015 85);
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.21 0.014 80),
+    oklch(0.17 0.016 75) 55%,
+    oklch(0.15 0.02 65)
+  );
+}
+
+[data-palette="Dusk"] {
+  --background: oklch(0.16 0.04 290);
+  --foreground: oklch(0.93 0.015 300);
+  --card: oklch(0.21 0.045 290);
+  --card-foreground: oklch(0.93 0.015 300);
+  --popover: oklch(0.21 0.045 290);
+  --popover-foreground: oklch(0.93 0.015 300);
+  --primary: oklch(0.7 0.1 310);
+  --primary-foreground: oklch(0.16 0.04 290);
+  --secondary: oklch(0.26 0.04 290);
+  --secondary-foreground: oklch(0.9 0.015 300);
+  --muted: oklch(0.24 0.035 290);
+  --muted-foreground: oklch(0.72 0.03 300);
+  --accent: oklch(0.3 0.06 300);
+  --accent-foreground: oklch(0.93 0.015 300);
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.98 0.01 80);
+  --border: oklch(0.32 0.045 290);
+  --input: oklch(0.32 0.045 290);
+  --ring: oklch(0.7 0.1 310);
+  --sidebar: oklch(0.14 0.04 285);
+  --sidebar-foreground: oklch(0.93 0.015 300);
+  --board: oklch(0.13 0.04 295);
+  --board-foreground: oklch(0.93 0.015 300);
+  --devtrack-bar: oklch(0.12 0.045 290);
+  --devtrack-bar-foreground: oklch(0.95 0.015 300);
+  --devtrack-bar-muted: oklch(0.7 0.03 300);
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.24 0.05 290),
+    oklch(0.2 0.055 300) 55%,
+    oklch(0.18 0.06 310)
+  );
 }
 
 [data-palette="Aurora"] {
@@ -231,6 +378,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.88 0.06 180), oklch(0.86 0.08 280));
   --board-image: linear-gradient(160deg, oklch(0.86 0.07 190), oklch(0.82 0.09 290));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.32 0.1 180), oklch(0.3 0.12 300));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.98 0.01 280),
+    oklch(0.92 0.04 220) 55%,
+    oklch(0.88 0.07 190)
+  );
 }
 
 [data-palette="Ember"] {
@@ -264,6 +417,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.9 0.08 70), oklch(0.86 0.1 25));
   --board-image: linear-gradient(160deg, oklch(0.88 0.09 70), oklch(0.82 0.11 25));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.38 0.12 55), oklch(0.36 0.14 20));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.98 0.015 70),
+    oklch(0.92 0.05 60) 55%,
+    oklch(0.88 0.08 40)
+  );
 }
 
 [data-palette="Lagoon"] {
@@ -297,6 +456,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.9 0.06 210), oklch(0.88 0.08 155));
   --board-image: linear-gradient(160deg, oklch(0.87 0.07 205), oklch(0.83 0.09 160));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.32 0.08 210), oklch(0.34 0.1 155));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.98 0.01 190),
+    oklch(0.93 0.04 190) 55%,
+    oklch(0.88 0.07 170)
+  );
 }
 
 [data-palette="Twilight"] {
@@ -330,6 +495,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.24 0.09 280), oklch(0.28 0.12 330));
   --board-image: linear-gradient(160deg, oklch(0.26 0.1 285), oklch(0.3 0.13 325));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.2 0.1 280), oklch(0.24 0.14 330));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.3 0.07 300),
+    oklch(0.26 0.08 310) 55%,
+    oklch(0.24 0.1 320)
+  );
 }
 
 [data-palette="Citrus"] {
@@ -363,6 +534,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.93 0.1 120), oklch(0.9 0.12 90));
   --board-image: linear-gradient(160deg, oklch(0.91 0.11 118), oklch(0.88 0.13 88));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.4 0.14 125), oklch(0.42 0.15 80));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.02 100),
+    oklch(0.94 0.07 110) 55%,
+    oklch(0.9 0.1 95)
+  );
 }
 
 [data-palette="Magma"] {
@@ -396,6 +573,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.2 0.1 22), oklch(0.32 0.14 42));
   --board-image: linear-gradient(160deg, oklch(0.22 0.1 28), oklch(0.34 0.15 48));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.18 0.1 20), oklch(0.32 0.14 40));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.28 0.09 30),
+    oklch(0.24 0.1 35) 55%,
+    oklch(0.22 0.12 45)
+  );
 }
 
 [data-palette="Glacier"] {
@@ -429,6 +612,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.94 0.03 230), oklch(0.9 0.04 210));
   --board-image: linear-gradient(160deg, oklch(0.92 0.04 225), oklch(0.88 0.05 205));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.4 0.08 240), oklch(0.42 0.08 200));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.01 220),
+    oklch(0.94 0.03 220) 55%,
+    oklch(0.9 0.045 210)
+  );
 }
 
 @layer base {
@@ -465,6 +654,14 @@
     background-size: cover;
     background-repeat: no-repeat;
   }
+
+  /* 023: palette-token gradient surface for checklist / dashboard / profile cards */
+  .bg-eyecandy-surface {
+    background-color: var(--card);
+    background-image: var(--eyecandy-surface-image, none);
+    background-size: cover;
+    background-repeat: no-repeat;
+  }
 }
 
 /* Safe CSS-only circular previews for UiPaletteSelector (Q-041 catalog). */
@@ -482,6 +679,15 @@
 }
 .ui-palette-preview[data-preview-palette="Midnight"] {
   background: oklch(0.28 0.06 270);
+}
+.ui-palette-preview[data-preview-palette="Obsidian"] {
+  background: oklch(0.22 0.03 250);
+}
+.ui-palette-preview[data-preview-palette="Noir"] {
+  background: oklch(0.2 0.015 80);
+}
+.ui-palette-preview[data-preview-palette="Dusk"] {
+  background: oklch(0.24 0.05 290);
 }
 .ui-palette-preview[data-preview-palette="Aurora"] {
   background-image: linear-gradient(160deg, oklch(0.82 0.08 180), oklch(0.78 0.1 300));

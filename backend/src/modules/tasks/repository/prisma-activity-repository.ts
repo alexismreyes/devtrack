@@ -3,7 +3,11 @@ import { Prisma as PrismaNamespace } from "@prisma/client";
 import { currentPrisma } from "../../../infrastructure/prisma/prisma-context";
 import { DatabaseUnavailableError } from "../domain/errors";
 import { TaskActivityEvent } from "../domain/task-activity";
-import type { ActivityRepository } from "./activity-repository";
+import type {
+  ActivityPageResult,
+  ActivityRepository,
+  ListActivityPageInput,
+} from "./activity-repository";
 
 const ACTIVITY_SELECT = {
   id: true,
@@ -105,14 +109,38 @@ export class PrismaActivityRepository implements ActivityRepository {
     }
   }
 
-  async listByTaskId(taskId: string): Promise<TaskActivityEvent[]> {
+  async listPage(input: ListActivityPageInput): Promise<ActivityPageResult> {
     try {
       const rows = await this.client().taskActivityEvent.findMany({
-        where: { taskId },
-        orderBy: { createdAt: "desc" },
+        where: {
+          taskId: input.taskId,
+          ...(input.cursor === null
+            ? {}
+            : {
+                OR: [
+                  { createdAt: { lt: input.cursor.createdAt } },
+                  {
+                    createdAt: input.cursor.createdAt,
+                    id: { lt: input.cursor.id },
+                  },
+                ],
+              }),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: input.limit + 1,
         select: ACTIVITY_SELECT,
       });
-      return rows.map(toEvent);
+      const hasMore = rows.length > input.limit;
+      const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+      const items = pageRows.map(toEvent);
+      const last = items[items.length - 1];
+      return {
+        items,
+        nextCursor:
+          hasMore && last !== undefined
+            ? { createdAt: last.createdAt, id: last.id }
+            : null,
+      };
     } catch (err) {
       rethrowMapped(err);
     }

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { EYECANDY_SURFACE_CLASS } from "../theme/uiPalettes";
 
 export type ChecklistsLoadState =
   | { kind: "loading" }
@@ -391,7 +392,10 @@ export function TaskChecklistsPanel({
             return (
               <li
                 key={checklist.id}
-                className="grid gap-3 rounded-lg border border-border bg-card p-3"
+                className={cn(
+                  "grid gap-3 rounded-lg border border-border p-3",
+                  EYECANDY_SURFACE_CLASS,
+                )}
                 data-testid={`checklist-block-${checklist.id}`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -507,9 +511,15 @@ export function TaskChecklistsPanel({
                         key={item.id}
                         className="flex flex-wrap items-center gap-2"
                       >
-                        <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                        <label
+                          className={cn(
+                            "flex min-w-0 flex-1 items-center gap-2 text-sm",
+                            !mutationsDisabled && "cursor-pointer",
+                          )}
+                        >
                           <input
                             type="checkbox"
+                            className={cn(!mutationsDisabled && "cursor-pointer")}
                             checked={item.checked}
                             disabled={mutationsDisabled}
                             onChange={(event) =>

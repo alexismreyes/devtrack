@@ -6,6 +6,9 @@ export const UI_PALETTE_IDS = [
   "Sunset",
   "Violet",
   "Midnight",
+  "Obsidian",
+  "Noir",
+  "Dusk",
   "Aurora",
   "Ember",
   "Lagoon",
@@ -33,6 +36,9 @@ export const UI_PALETTES: readonly UiPaletteDefinition[] = [
   { id: "Sunset", label: "Sunset", kind: "solid" },
   { id: "Violet", label: "Violet", kind: "solid" },
   { id: "Midnight", label: "Midnight", kind: "solid" },
+  { id: "Obsidian", label: "Obsidian", kind: "solid" },
+  { id: "Noir", label: "Noir", kind: "solid" },
+  { id: "Dusk", label: "Dusk", kind: "solid" },
   { id: "Aurora", label: "Aurora", kind: "gradient" },
   { id: "Ember", label: "Ember", kind: "gradient" },
   { id: "Lagoon", label: "Lagoon", kind: "gradient" },
@@ -41,6 +47,9 @@ export const UI_PALETTES: readonly UiPaletteDefinition[] = [
   { id: "Magma", label: "Magma", kind: "gradient" },
   { id: "Glacier", label: "Glacier", kind: "gradient" },
 ];
+
+/** Shared surface class for checklist / dashboard / profile eyecandy (023). */
+export const EYECANDY_SURFACE_CLASS = "bg-eyecandy-surface";
 
 export function isUiPaletteId(value: string): value is UiPaletteId {
   return (UI_PALETTE_IDS as readonly string[]).includes(value);

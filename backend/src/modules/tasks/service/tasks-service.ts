@@ -1,10 +1,11 @@
 import type { TaskAuthorizationPort } from "../../project-members/access/task-authorization-port";
 import type { UnitOfWork } from "../../projects/access/unit-of-work";
 import type { ProjectAccessPort } from "../../projects/access/project-access-port";
+import type { ProjectMembershipQueryPort } from "../../projects/access/project-membership-port";
 import {
-  buildCompletionByProject,
+  emptyDashboardOverview,
   summarizeDashboard,
-  type DashboardSummary,
+  type DashboardOverview,
 } from "../domain/dashboard-summary";
 import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
 import type { LabelColor } from "../domain/project-label";
@@ -19,6 +20,7 @@ import {
 } from "../domain/task-activity";
 import type { ActivityRepository } from "../repository/activity-repository";
 import type { AttachmentsRepository } from "../repository/attachments-repository";
+import type { ChecklistsRepository } from "../repository/checklists-repository";
 import type { StatusesRepository } from "../repository/statuses-repository";
 import type { TaskLabelsRepository } from "../repository/task-labels-repository";
 import type {
@@ -63,11 +65,13 @@ export class TasksService {
   constructor(
     private readonly tasks: TasksRepository,
     private readonly projects: ProjectAccessPort,
+    private readonly membership: ProjectMembershipQueryPort,
     private readonly authorization: TaskAuthorizationPort,
     private readonly activity: ActivityRepository,
     private readonly taskLabels: TaskLabelsRepository,
     private readonly attachments: AttachmentsRepository,
     private readonly statuses: StatusesRepository,
+    private readonly checklists: ChecklistsRepository,
     private readonly unitOfWork: UnitOfWork,
   ) {}
 
@@ -120,16 +124,34 @@ export class TasksService {
   async getDashboard(
     actorId: string,
     now: Date = new Date(),
-  ): Promise<DashboardSummary> {
-    const owned = await this.projects.listOwnedActiveProjects(actorId);
-    const projectIds = owned.map((project) => project.id);
-    const tasks = await this.tasks.listNonDeletedByProjectIds(projectIds);
-    const statuses = await this.statuses.listByProjectIds(projectIds);
+  ): Promise<DashboardOverview> {
+    const projectIds =
+      await this.membership.listAuthorizedActiveProjectIds(actorId);
+    if (projectIds.length === 0) {
+      return emptyDashboardOverview();
+    }
+    const scoped = await this.projects.listActiveProjectsByIds(projectIds);
+    const activeIds = scoped.map((project) => project.id);
+    const [tasks, statuses, memberIds] = await Promise.all([
+      this.tasks.listNonDeletedByProjectIds(activeIds),
+      this.statuses.listByProjectIds(activeIds),
+      this.membership.listDistinctMemberUserIdsForProjectIds(activeIds),
+    ]);
+    const checklistTallies = await this.checklists.countItemTalliesByTaskIds(
+      tasks.map((task) => task.id),
+    );
     return summarizeDashboard(
-      owned,
+      scoped,
       tasks,
       now,
-      buildCompletionByProject(statuses),
+      memberIds.length,
+      statuses.map((status) => ({
+        projectId: status.projectId,
+        key: status.key,
+        name: status.name,
+        isCompleted: status.isCompleted,
+      })),
+      checklistTallies,
     );
   }
 

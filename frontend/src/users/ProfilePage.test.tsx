@@ -54,6 +54,7 @@ describe("ProfilePage", () => {
     expect(email).toHaveValue("ada@example.com");
     expect(email).toHaveAttribute("readOnly");
     expect(screen.getByLabelText(/display name/i)).toHaveValue("Ada");
+    expect(screen.getByTestId("profile-card")).toHaveClass("bg-eyecandy-surface");
   });
 
   it("shows loading then success when the display name is saved", async () => {
@@ -153,5 +154,106 @@ describe("ProfilePage", () => {
     ).toBeInTheDocument();
     expect(onUnauthenticated).toHaveBeenCalledOnce();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("validates confirm password locally without calling the API", async () => {
+    const fetchMock = mockFetch(() => {
+      throw new Error("change password should not be requested");
+    });
+    const user = userEvent.setup();
+
+    render(
+      <ProfilePage
+        user={currentUser}
+        onUpdated={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^current password$/i), "secret-pass");
+    await user.type(screen.getByLabelText(/^new password$/i), "new-secret");
+    await user.type(
+      screen.getByLabelText(/^confirm new password$/i),
+      "different-secret",
+    );
+    await user.click(screen.getByRole("button", { name: /update password/i }));
+
+    expect(
+      await screen.findByText(/new password and confirmation do not match/i),
+    ).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expectNoSessionTokenStorage();
+  });
+
+  it("shows loading then success when the password is changed", async () => {
+    let resolveChange: ((value: Response) => void) | undefined;
+    const changePromise = new Promise<Response>((resolve) => {
+      resolveChange = resolve;
+    });
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/auth/password");
+      expect(init?.method).toBe("POST");
+      expect(init?.credentials).toBe("include");
+      expect(init?.body).toBe(
+        JSON.stringify({
+          currentPassword: "secret-pass",
+          newPassword: "new-secret",
+        }),
+      );
+      return changePromise;
+    });
+    const user = userEvent.setup();
+
+    render(
+      <ProfilePage
+        user={currentUser}
+        onUpdated={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^current password$/i), "secret-pass");
+    await user.type(screen.getByLabelText(/^new password$/i), "new-secret");
+    await user.type(screen.getByLabelText(/^confirm new password$/i), "new-secret");
+    await user.click(screen.getByRole("button", { name: /update password/i }));
+
+    expect(screen.getByRole("status")).toHaveTextContent(/updating password/i);
+    resolveChange?.(new Response(null, { status: 204 }));
+
+    expect(await screen.findByText(/password updated/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^current password$/i)).toHaveValue("");
+    expect(screen.getByLabelText(/^new password$/i)).toHaveValue("");
+    expect(screen.getByLabelText(/^confirm new password$/i)).toHaveValue("");
+    expect(document.body.textContent).not.toMatch(/\$argon2/i);
+    expectNoSessionTokenStorage();
+  });
+
+  it("shows an error when password change is rejected", async () => {
+    mockFetch(() =>
+      jsonResponse(400, {
+        error: {
+          code: "INVALID_CREDENTIALS",
+          message: "Invalid credentials",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+
+    render(
+      <ProfilePage
+        user={currentUser}
+        onUpdated={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^current password$/i), "wrong-pass");
+    await user.type(screen.getByLabelText(/^new password$/i), "new-secret");
+    await user.type(screen.getByLabelText(/^confirm new password$/i), "new-secret");
+    await user.click(screen.getByRole("button", { name: /update password/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /invalid credentials/i,
+    );
   });
 });

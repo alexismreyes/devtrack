@@ -5,6 +5,8 @@ import { createApp } from "../../../app";
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
@@ -62,6 +64,8 @@ function createActivityApp() {
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -283,7 +287,7 @@ describe("task activity HTTP API", () => {
 
     const empty = await viewer.get(`/api/tasks/${task.id}/activity`);
     expect(empty.status).toBe(200);
-    expect(empty.body).toEqual({ activity: [] });
+    expect(empty.body).toEqual({ activity: [], nextCursor: null });
 
     const unauth = await request(app).get(`/api/tasks/${task.id}/activity`);
     expect(unauth.status).toBe(401);
@@ -355,7 +359,7 @@ describe("task activity HTTP API", () => {
     expect(activityRepository.eventsById.size).toBe(before);
   });
 
-  it("lists newest first and returns the full list (AC-016)", async () => {
+  it("lists newest first with nextCursor pagination (AC-002, AC-003; supersedes AC-016)", async () => {
     const { app } = createActivityApp();
     const { agent } = await registerAgent(app);
     const project = await createOwnedProject(agent);
@@ -368,9 +372,57 @@ describe("task activity HTTP API", () => {
     expect(listed.body.activity.map((event: { kind: string }) => event.kind)).toEqual(
       ["COMMENT_ADDED", "TASK_FIELDS_CHANGED", "TASK_CREATED"],
     );
-    expect(listed.body).not.toHaveProperty("nextCursor");
+    expect(listed.body.nextCursor).toBeNull();
     expect(listed.body).not.toHaveProperty("page");
     assertNoSecrets(listed.body);
+
+    for (let i = 0; i < 4; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await agent.patch(`/api/tasks/${task.id}`).send({ title: `Discuss ${i}` });
+    }
+
+    const firstPage = await agent.get(`/api/tasks/${task.id}/activity`);
+    expect(firstPage.status).toBe(200);
+    expect(firstPage.body.activity).toHaveLength(5);
+    expect(typeof firstPage.body.nextCursor).toBe("string");
+
+    const secondPage = await agent
+      .get(`/api/tasks/${task.id}/activity`)
+      .query({ cursor: firstPage.body.nextCursor });
+    expect(secondPage.status).toBe(200);
+    expect(secondPage.body.activity.length).toBeGreaterThan(0);
+    const ids = [
+      ...firstPage.body.activity.map((e: { id: string }) => e.id),
+      ...secondPage.body.activity.map((e: { id: string }) => e.id),
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(secondPage.body.nextCursor).toBeNull();
+  });
+
+  it("rejects invalid activity pagination query (AC-004)", async () => {
+    const { app } = createActivityApp();
+    const { agent } = await registerAgent(app);
+    const project = await createOwnedProject(agent);
+    const task = await createTask(agent, project.id);
+
+    const zero = await agent
+      .get(`/api/tasks/${task.id}/activity`)
+      .query({ limit: 0 });
+    const overMax = await agent
+      .get(`/api/tasks/${task.id}/activity`)
+      .query({ limit: 51 });
+    const badCursor = await agent
+      .get(`/api/tasks/${task.id}/activity`)
+      .query({ cursor: "%%%" });
+    const unknown = await agent
+      .get(`/api/tasks/${task.id}/activity`)
+      .query({ page: 2 });
+
+    expect(zero.status).toBe(400);
+    expect(zero.body).toMatchObject(envelope("VALIDATION_ERROR"));
+    expect(overMax.status).toBe(400);
+    expect(badCursor.status).toBe(400);
+    expect(unknown.status).toBe(400);
   });
 
   it("rejects invalid task id with 400", async () => {

@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PublicTaskDto } from "../api/types";
 import {
@@ -233,6 +234,59 @@ describe("KanbanBoard drag-and-drop", () => {
     expect(document.querySelector('[data-kanban-card="task-1"]')).toHaveClass(
       "cursor-pointer",
     );
+  });
+
+  it("opens task detail from a non-title region of the card (AC-002)", async () => {
+    const user = userEvent.setup();
+    const onSelectTask = vi.fn();
+    renderBoard({ onSelectTask });
+
+    await user.click(screen.getByText(/priority medium/i));
+    expect(onSelectTask).toHaveBeenCalledOnce();
+    expect(onSelectTask).toHaveBeenCalledWith("task-1");
+  });
+
+  it("uses a single card control without a nested title button (AC-002)", () => {
+    renderBoard();
+
+    const card = document.querySelector(
+      '[data-kanban-card="task-1"]',
+    ) as HTMLElement;
+    expect(card).toHaveAttribute("role", "button");
+    expect(card).toHaveAttribute("aria-label", "Write tests");
+    expect(card.querySelector("button")).toBeNull();
+    expect(screen.getByRole("button", { name: /write tests/i })).toBe(card);
+  });
+
+  it("does not open task detail after a completed status drag (AC-003 / Q-154)", async () => {
+    stubKanbanRects();
+    const onSelectTask = vi.fn();
+    const onMoveTask = vi.fn().mockResolvedValue(undefined);
+    renderBoard({ onSelectTask, onMoveTask });
+
+    const card = document.querySelector(
+      '[data-kanban-card="task-1"]',
+    ) as HTMLElement;
+    expect(card).toBeInstanceOf(HTMLElement);
+    await keyboardDropOnColumn(card, "IN_PROGRESS", "TODO");
+    expect(onMoveTask).toHaveBeenCalledOnce();
+    expect(onMoveTask).toHaveBeenCalledWith("task-1", "IN_PROGRESS");
+    expect(onSelectTask).not.toHaveBeenCalled();
+  });
+
+  it("suppresses card open while a drag is active (AC-003 / Q-154)", async () => {
+    stubKanbanRects();
+    const onSelectTask = vi.fn();
+    renderBoard({ onSelectTask });
+
+    const card = document.querySelector(
+      '[data-kanban-card="task-1"]',
+    ) as HTMLElement;
+    expect(card).toBeInstanceOf(HTMLElement);
+    await keyboardStartDrag(card);
+    expect(document.querySelector('[data-slot="kanban-drag-overlay"]')).not.toBeNull();
+    fireEvent.click(card);
+    expect(onSelectTask).not.toHaveBeenCalled();
   });
 
   it("shows a drag overlay while a card is being dragged", async () => {

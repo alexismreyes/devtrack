@@ -1,3 +1,11 @@
+import type { ProjectCoverSummary } from "../domain/project-cover";
+import type { ProjectView } from "../service/projects-service";
+
+export type PublicProjectCoverSummaryDto = {
+  id: string;
+  contentType: string;
+};
+
 export type PublicProjectDto = {
   id: string;
   ownerUserId: string;
@@ -5,6 +13,7 @@ export type PublicProjectDto = {
   description: string | null;
   createdAt: string;
   archivedAt: string | null;
+  cover: PublicProjectCoverSummaryDto | null;
 };
 
 export type ProjectListResponseDto = {
@@ -21,20 +30,31 @@ export type UpdateProjectRequestDto = {
   description?: string | null;
 };
 
-export function toPublicProjectDto(project: {
-  id: string;
-  ownerUserId: string;
-  name: string;
-  description: string | null;
-  createdAt: Date;
-  archivedAt: Date | null;
-}): PublicProjectDto {
+export type ProjectCoverResponseDto = {
+  cover: PublicProjectCoverSummaryDto | null;
+};
+
+export function toPublicProjectCoverSummaryDto(
+  cover: ProjectCoverSummary | null,
+): PublicProjectCoverSummaryDto | null {
+  if (cover === null) {
+    return null;
+  }
+  return {
+    id: cover.id,
+    contentType: cover.contentType,
+  };
+}
+
+export function toPublicProjectDto(project: ProjectView): PublicProjectDto {
   return {
     id: project.id,
     ownerUserId: project.ownerUserId,
     name: project.name,
     description: project.description,
     createdAt: project.createdAt.toISOString(),
-    archivedAt: project.archivedAt === null ? null : project.archivedAt.toISOString(),
+    archivedAt:
+      project.archivedAt === null ? null : project.archivedAt.toISOString(),
+    cover: toPublicProjectCoverSummaryDto(project.cover),
   };
 }

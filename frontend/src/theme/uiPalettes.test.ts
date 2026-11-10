@@ -25,6 +25,9 @@ describe("Q-041 UI palette catalog", () => {
       "Sunset",
       "Violet",
       "Midnight",
+      "Obsidian",
+      "Noir",
+      "Dusk",
       "Aurora",
       "Ember",
       "Lagoon",
@@ -40,6 +43,9 @@ describe("Q-041 UI palette catalog", () => {
       "Sunset",
       "Violet",
       "Midnight",
+      "Obsidian",
+      "Noir",
+      "Dusk",
     ]);
     expect(UI_PALETTES.filter((item) => item.kind === "gradient").map((item) => item.id)).toEqual([
       "Aurora",
@@ -50,6 +56,15 @@ describe("Q-041 UI palette catalog", () => {
       "Magma",
       "Glacier",
     ]);
+  });
+
+  it("includes Q-177 dark palette ids Obsidian, Noir, and Dusk", () => {
+    expect(UI_PALETTE_IDS).toEqual(
+      expect.arrayContaining(["Obsidian", "Noir", "Dusk"]),
+    );
+    expect(isUiPaletteId("Obsidian")).toBe(true);
+    expect(isUiPaletteId("Noir")).toBe(true);
+    expect(isUiPaletteId("Dusk")).toBe(true);
   });
 
   it("treats missing or unknown stored ids as Forest without writing", () => {

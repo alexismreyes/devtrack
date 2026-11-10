@@ -5,6 +5,8 @@ import { createApp } from "../../../app";
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
@@ -65,6 +67,8 @@ function createAttachmentsApp() {
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,

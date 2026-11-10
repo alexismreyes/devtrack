@@ -1,19 +1,91 @@
 import { describe, expect, it } from "vitest";
+import {
+  ImmediateUnitOfWork,
+  type UnitOfWork,
+} from "../../projects/access/unit-of-work";
 import { DuplicateEmailError } from "../../users/domain/errors";
 import { UsersIdentityAdapter } from "../../users/identity/users-identity-adapter";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
 import { AuthSession } from "../domain/auth-session";
 import {
   InvalidCredentialsError,
+  InvalidCurrentPasswordError,
+  PasswordPolicyError,
   UnauthenticatedError,
 } from "../domain/errors";
+import { verifyPassword } from "../domain/password-hasher";
+import type {
+  AuthRepository,
+  RegisterPersistenceInput,
+  RegisteredAuthRecord,
+} from "../repository/auth-repository";
 import { AuthService } from "../service/auth-service";
 import { InMemoryAuthRepository } from "./in-memory-auth-repository";
+
+class SnapshotAuthUnitOfWork implements UnitOfWork {
+  constructor(private readonly auth: InMemoryAuthRepository) {}
+
+  async run<T>(work: () => Promise<T>): Promise<T> {
+    const hashSnap = new Map(this.auth.passwordHashes);
+    const sessionSnap = new Map(this.auth.sessions);
+    try {
+      return await work();
+    } catch (error) {
+      this.auth.passwordHashes.clear();
+      for (const [id, hash] of hashSnap) {
+        this.auth.passwordHashes.set(id, hash);
+      }
+      this.auth.sessions.clear();
+      for (const [id, session] of sessionSnap) {
+        this.auth.sessions.set(id, session);
+      }
+      throw error;
+    }
+  }
+}
+
+class FailingRevokeAuthRepository implements AuthRepository {
+  constructor(private readonly inner: InMemoryAuthRepository) {}
+
+  savePasswordHash(userId: string, passwordHash: string): Promise<void> {
+    return this.inner.savePasswordHash(userId, passwordHash);
+  }
+
+  findPasswordHashByUserId(userId: string): Promise<string | null> {
+    return this.inner.findPasswordHashByUserId(userId);
+  }
+
+  createSession(userId: string): Promise<AuthSession> {
+    return this.inner.createSession(userId);
+  }
+
+  findSessionById(id: string): Promise<AuthSession | null> {
+    return this.inner.findSessionById(id);
+  }
+
+  revokeSession(id: string): Promise<void> {
+    return this.inner.revokeSession(id);
+  }
+
+  async revokeSessionsForUserExcept(): Promise<void> {
+    throw new Error("revoke other sessions failed");
+  }
+
+  createRegisteredUser(
+    input: RegisterPersistenceInput,
+  ): Promise<RegisteredAuthRecord> {
+    return this.inner.createRegisteredUser(input);
+  }
+}
 
 function createAuthService() {
   const users = new InMemoryUsersRepository();
   const auth = new InMemoryAuthRepository(users);
-  const service = new AuthService(auth, new UsersIdentityAdapter(users));
+  const service = new AuthService(
+    auth,
+    new UsersIdentityAdapter(users),
+    new ImmediateUnitOfWork(),
+  );
   return { users, auth, service };
 }
 
@@ -115,6 +187,171 @@ describe("AuthService", () => {
     const remaining = await auth.findSessionById(second.session.id);
     expect(revoked?.isValid()).toBe(false);
     expect(remaining?.isValid()).toBe(true);
+  });
+
+  it("changes password, keeps the current session, and revokes other sessions", async () => {
+    const { service, auth } = createAuthService();
+    const registered = await service.register({
+      email: "ada@example.com",
+      password: "secret-pass",
+      displayName: "Ada",
+    });
+    const other = await service.login({
+      email: "ada@example.com",
+      password: "secret-pass",
+    });
+
+    await service.changePassword(
+      {
+        userId: registered.user.id,
+        sessionId: registered.session.id,
+      },
+      {
+        currentPassword: "secret-pass",
+        newPassword: "new-secret",
+      },
+    );
+
+    const storedHash = await auth.findPasswordHashByUserId(registered.user.id);
+    expect(storedHash?.startsWith("$argon2id$")).toBe(true);
+    await expect(verifyPassword(storedHash!, "new-secret")).resolves.toBe(true);
+    await expect(verifyPassword(storedHash!, "secret-pass")).resolves.toBe(
+      false,
+    );
+
+    const current = await auth.findSessionById(registered.session.id);
+    const revokedOther = await auth.findSessionById(other.session.id);
+    expect(current?.isValid()).toBe(true);
+    expect(revokedOther?.isValid()).toBe(false);
+
+    await expect(
+      service.login({
+        email: "ada@example.com",
+        password: "new-secret",
+      }),
+    ).resolves.toMatchObject({ user: { id: registered.user.id } });
+    await expect(
+      service.login({
+        email: "ada@example.com",
+        password: "secret-pass",
+      }),
+    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+  });
+
+  it("rolls back the password hash when revoke-other-sessions fails in the same unit of work", async () => {
+    const users = new InMemoryUsersRepository();
+    const auth = new InMemoryAuthRepository(users);
+    const failing = new FailingRevokeAuthRepository(auth);
+    const service = new AuthService(
+      failing,
+      new UsersIdentityAdapter(users),
+      new SnapshotAuthUnitOfWork(auth),
+    );
+    const registered = await service.register({
+      email: "ada@example.com",
+      password: "secret-pass",
+      displayName: "Ada",
+    });
+    const other = await service.login({
+      email: "ada@example.com",
+      password: "secret-pass",
+    });
+    const beforeHash = await auth.findPasswordHashByUserId(registered.user.id);
+
+    await expect(
+      service.changePassword(
+        {
+          userId: registered.user.id,
+          sessionId: registered.session.id,
+        },
+        {
+          currentPassword: "secret-pass",
+          newPassword: "new-secret",
+        },
+      ),
+    ).rejects.toThrow(/revoke other sessions failed/);
+
+    expect(await auth.findPasswordHashByUserId(registered.user.id)).toBe(
+      beforeHash,
+    );
+    expect(
+      (await auth.findSessionById(registered.session.id))?.isValid(),
+    ).toBe(true);
+    expect((await auth.findSessionById(other.session.id))?.isValid()).toBe(
+      true,
+    );
+  });
+
+  it("rejects a wrong current password without updating the hash or sessions", async () => {
+    const { service, auth } = createAuthService();
+    const registered = await service.register({
+      email: "ada@example.com",
+      password: "secret-pass",
+      displayName: "Ada",
+    });
+    const other = await service.login({
+      email: "ada@example.com",
+      password: "secret-pass",
+    });
+    const beforeHash = await auth.findPasswordHashByUserId(registered.user.id);
+
+    await expect(
+      service.changePassword(
+        {
+          userId: registered.user.id,
+          sessionId: registered.session.id,
+        },
+        {
+          currentPassword: "wrong-pass",
+          newPassword: "new-secret",
+        },
+      ),
+    ).rejects.toBeInstanceOf(InvalidCurrentPasswordError);
+
+    expect(await auth.findPasswordHashByUserId(registered.user.id)).toBe(
+      beforeHash,
+    );
+    expect(
+      (await auth.findSessionById(registered.session.id))?.isValid(),
+    ).toBe(true);
+    expect((await auth.findSessionById(other.session.id))?.isValid()).toBe(
+      true,
+    );
+  });
+
+  it("rejects new passwords that are too short or equal the current password", async () => {
+    const { service } = createAuthService();
+    const registered = await service.register({
+      email: "ada@example.com",
+      password: "secret-pass",
+      displayName: "Ada",
+    });
+
+    await expect(
+      service.changePassword(
+        {
+          userId: registered.user.id,
+          sessionId: registered.session.id,
+        },
+        {
+          currentPassword: "secret-pass",
+          newPassword: "short",
+        },
+      ),
+    ).rejects.toBeInstanceOf(PasswordPolicyError);
+
+    await expect(
+      service.changePassword(
+        {
+          userId: registered.user.id,
+          sessionId: registered.session.id,
+        },
+        {
+          currentPassword: "secret-pass",
+          newPassword: "secret-pass",
+        },
+      ),
+    ).rejects.toBeInstanceOf(PasswordPolicyError);
   });
 
   it("authenticates a valid session and rejects missing, malformed, expired, and revoked ones", async () => {

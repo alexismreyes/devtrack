@@ -32,8 +32,8 @@ class FailingActivityRepository implements ActivityRepository {
     throw new Error("activity insert failed");
   }
 
-  async listByTaskId(): Promise<TaskActivityEvent[]> {
-    return [];
+  async listPage() {
+    return { items: [], nextCursor: null };
   }
 }
 

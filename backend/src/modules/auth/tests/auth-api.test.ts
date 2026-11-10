@@ -14,7 +14,10 @@ import type { SystemRepository } from "../../system/repository/system-repository
 import { PrismaProjectMembersRepository } from "../../project-members/repository/prisma-project-members-repository";
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { PrismaProjectsRepository } from "../../projects/repository/prisma-projects-repository";
+import { PrismaProjectCoversRepository } from "../../projects/repository/prisma-project-covers-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
 import { PrismaActivityRepository } from "../../tasks/repository/prisma-activity-repository";
 import { PrismaChecklistsRepository } from "../../tasks/repository/prisma-checklists-repository";
 import { PrismaCommentsRepository } from "../../tasks/repository/prisma-comments-repository";
@@ -91,6 +94,8 @@ function createMemoryApp() {
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -276,13 +281,122 @@ describe("auth and users HTTP API", () => {
     const me = await request(app).get("/api/users/me");
     const logout = await request(app).post("/api/auth/logout");
     const probes = await request(app).get("/api/system/probes");
+    const password = await request(app).post("/api/auth/password").send({
+      currentPassword: "secret-pass",
+      newPassword: "new-secret",
+    });
 
     expect(me.status).toBe(401);
     expect(logout.status).toBe(401);
     expect(probes.status).toBe(401);
+    expect(password.status).toBe(401);
     expect(me.body).toMatchObject(envelope("UNAUTHENTICATED"));
     expect(logout.body).toMatchObject(envelope("UNAUTHENTICATED"));
     expect(probes.body).toMatchObject(envelope("UNAUTHENTICATED"));
+    expect(password.body).toMatchObject(envelope("UNAUTHENTICATED"));
+  });
+
+  it("changes password with 204, keeps the current session, and revokes others", async () => {
+    const { app, authRepository } = createMemoryApp();
+    const first = await request(app).post("/api/auth/register").send(registerBody);
+    const second = await request(app).post("/api/auth/login").send({
+      email: registerBody.email,
+      password: registerBody.password,
+    });
+    const cookie1 = cookieHeader(firstSetCookie(first));
+    const cookie2 = cookieHeader(firstSetCookie(second));
+
+    const changed = await request(app)
+      .post("/api/auth/password")
+      .set("Cookie", cookie1)
+      .send({
+        currentPassword: "secret-pass",
+        newPassword: "new-secret",
+      });
+
+    expect(changed.status).toBe(204);
+    expect(changed.text).toBe("");
+    assertNoSecrets(changed.body);
+
+    const stillAuthed = await request(app)
+      .get("/api/users/me")
+      .set("Cookie", cookie1);
+    const otherRevoked = await request(app)
+      .get("/api/users/me")
+      .set("Cookie", cookie2);
+
+    expect(stillAuthed.status).toBe(200);
+    expect(otherRevoked.status).toBe(401);
+
+    const otherSession = await authRepository.findSessionById(
+      cookie2.split("=")[1] ?? "",
+    );
+    expect(otherSession?.isValid()).toBe(false);
+
+    const loginNew = await request(app).post("/api/auth/login").send({
+      email: registerBody.email,
+      password: "new-secret",
+    });
+    const loginOld = await request(app).post("/api/auth/login").send({
+      email: registerBody.email,
+      password: "secret-pass",
+    });
+    expect(loginNew.status).toBe(200);
+    expect(loginOld.status).toBe(401);
+    assertNoSecrets(loginNew.body);
+    assertNoSecrets(loginOld.body);
+  });
+
+  it("rejects a wrong current password with 400 INVALID_CREDENTIALS and leaves the hash unchanged", async () => {
+    const { app, authRepository } = createMemoryApp();
+    const agent = request.agent(app);
+    const registered = await agent.post("/api/auth/register").send(registerBody);
+    const beforeHash = await authRepository.findPasswordHashByUserId(
+      registered.body.id,
+    );
+
+    const response = await agent.post("/api/auth/password").send({
+      currentPassword: "wrong-pass",
+      newPassword: "new-secret",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual(
+      envelope("INVALID_CREDENTIALS", "Invalid credentials"),
+    );
+    assertNoSecrets(response.body);
+    expect(await authRepository.findPasswordHashByUserId(registered.body.id)).toBe(
+      beforeHash,
+    );
+
+    const me = await agent.get("/api/users/me");
+    expect(me.status).toBe(200);
+  });
+
+  it("rejects invalid change-password bodies with 400 VALIDATION_ERROR", async () => {
+    const { app } = createMemoryApp();
+    const agent = request.agent(app);
+    await agent.post("/api/auth/register").send(registerBody);
+
+    const tooShort = await agent.post("/api/auth/password").send({
+      currentPassword: "secret-pass",
+      newPassword: "short",
+    });
+    const sameAsCurrent = await agent.post("/api/auth/password").send({
+      currentPassword: "secret-pass",
+      newPassword: "secret-pass",
+    });
+    const missing = await agent.post("/api/auth/password").send({});
+
+    expect(tooShort.status).toBe(400);
+    expect(sameAsCurrent.status).toBe(400);
+    expect(missing.status).toBe(400);
+    expect(tooShort.body).toMatchObject(envelope("VALIDATION_ERROR"));
+    expect(sameAsCurrent.body).toMatchObject(envelope("VALIDATION_ERROR"));
+    expect(missing.body).toMatchObject(envelope("VALIDATION_ERROR"));
+    assertNoSecrets(tooShort.body);
+    assertNoSecrets(sameAsCurrent.body);
+    assertNoSecrets(missing.body);
   });
 
   it("returns 401 for malformed and unknown session cookies", async () => {
@@ -433,6 +547,7 @@ describe("auth HTTP API persistence", () => {
 
   if (hasDatabaseUrl) {
     process.env.ATTACHMENTS_ROOT ??= "./data/attachments-test";
+    process.env.PROJECT_COVERS_ROOT ??= "./data/project-covers-test";
     prisma = createPrismaClient(loadConfig().databaseUrl);
     const tasksRepository = new PrismaTasksRepository(prisma);
     app = createApp({
@@ -441,6 +556,8 @@ describe("auth HTTP API persistence", () => {
       usersRepository: new PrismaUsersRepository(prisma),
       authRepository: new PrismaAuthRepository(prisma),
       projectsRepository: new PrismaProjectsRepository(prisma),
+      projectCoversRepository: new PrismaProjectCoversRepository(prisma),
+      projectCoverStorage: new InMemoryProjectCoverStorage(),
       tasksRepository,
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),

@@ -8,6 +8,7 @@ import {
   createTask,
   createTaskComment,
   addMember,
+  clearProjectCover,
   deleteTaskComment,
   getDashboard,
   getHealth,
@@ -28,6 +29,7 @@ import {
   deleteTaskChecklist,
   deleteTaskChecklistItem,
   fetchAttachmentContent,
+  fetchProjectCoverContent,
   listLabels,
   listStatuses,
   listTaskActivity,
@@ -35,6 +37,7 @@ import {
   listTaskChecklists,
   listTaskComments,
   listTasks,
+  changePassword,
   login,
   logout,
   register,
@@ -53,6 +56,7 @@ import {
   updateTaskChecklist,
   updateTaskChecklistItem,
   updateTaskComment,
+  uploadProjectCover,
   uploadTaskAttachment,
 } from "./client";
 
@@ -266,6 +270,33 @@ describe("auth and profile API client", () => {
     expectNoTokenStorage();
   });
 
+  it("changes password with POST, credentials included, and empty 204 body", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/auth/password");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(
+        JSON.stringify({
+          currentPassword: "secret-pass",
+          newPassword: "new-secret",
+        }),
+      );
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return emptyResponse(204);
+    });
+
+    await expect(
+      changePassword({
+        currentPassword: "secret-pass",
+        newPassword: "new-secret",
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
   it("patches displayName only with credentials included", async () => {
     const updated = { ...publicUser, displayName: "Ada Lovelace" };
     mockFetch((url, init) => {
@@ -311,6 +342,7 @@ describe("projects API client", () => {
     description: "First project",
     createdAt: "2026-10-27T18:00:00.000Z",
     archivedAt: null as string | null,
+    cover: null as { id: string; contentType: string } | null,
   };
 
   it("creates a project at VITE_API_URL with credentials included and no token storage", async () => {
@@ -433,6 +465,91 @@ describe("projects API client", () => {
       code: "UNAUTHENTICATED",
       message: "Authentication is required",
     });
+    expectNoTokenStorage();
+  });
+
+  it("maps PublicProjectDto.cover summary and never keeps storage paths", async () => {
+    const cover = { id: "cover-1", contentType: "image/png" };
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, {
+        ...project,
+        cover: {
+          ...cover,
+          storageKey: "must-not-be-kept",
+        },
+      });
+    });
+
+    await expect(getProject("proj-1")).resolves.toEqual({
+      ...project,
+      cover,
+    });
+    expectNoTokenStorage();
+  });
+
+  it("uploads project cover multipart with field file and credentials included", async () => {
+    const cover = { id: "cover-1", contentType: "image/png" };
+    const file = new File([new Uint8Array([1, 2, 3])], "cover.png", {
+      type: "image/png",
+    });
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/cover");
+      expect(url).not.toMatch(/\/uploads\b/);
+      expect(init?.method).toBe("PUT");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      expect(init?.body).toBeInstanceOf(FormData);
+      const form = init?.body as FormData;
+      expect(form.get("file")).toBeInstanceOf(File);
+      const headers = init?.headers as Record<string, string> | undefined;
+      expect(headers?.["Content-Type"]).toBeUndefined();
+      return jsonResponse(200, { cover });
+    });
+
+    await expect(uploadProjectCover("proj-1", file)).resolves.toEqual({ cover });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("clears project cover with DELETE and credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects/proj-1/cover");
+      expect(init?.method).toBe("DELETE");
+      expectCredentialsInclude(init);
+      return emptyResponse(204);
+    });
+
+    await expect(clearProjectCover("proj-1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("fetches project cover content with credentials and no public static path", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/cover/content",
+      );
+      expect(url).not.toMatch(/\/uploads\b/);
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "private",
+        },
+      });
+    });
+
+    const result = await fetchProjectCoverContent("proj-1");
+    expect(result.contentType).toBe("image/png");
+    expect(result.blob.size).toBe(4);
+    expect(fetchMock).toHaveBeenCalledOnce();
     expectNoTokenStorage();
   });
 
@@ -1218,14 +1335,38 @@ describe("task comments API client", () => {
             sessionId: "must-not-be-kept",
           },
         ],
+        nextCursor: null,
       });
     });
 
     await expect(listTaskComments("task-1")).resolves.toEqual({
       comments: [comment],
+      nextCursor: null,
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("lists comments with cursor and limit query params", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/comments?cursor=cursor-1&limit=5",
+      );
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, {
+        comments: [comment],
+        nextCursor: "cursor-2",
+      });
+    });
+
+    await expect(
+      listTaskComments("task-1", { cursor: "cursor-1", limit: 5 }),
+    ).resolves.toEqual({
+      comments: [comment],
+      nextCursor: "cursor-2",
+    });
     expectNoTokenStorage();
   });
 
@@ -1499,6 +1640,7 @@ describe("task activity API client", () => {
             passwordHash: "must-not-be-kept",
           },
         ],
+        nextCursor: null,
       });
     });
 
@@ -1515,9 +1657,32 @@ describe("task activity API client", () => {
         attachmentRemovedEvent,
         coverChangedEvent,
       ],
+      nextCursor: null,
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("lists activity with cursor and limit query params", async () => {
+    mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/activity?cursor=cursor-a&limit=5",
+      );
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, {
+        activity: [createdEvent],
+        nextCursor: "cursor-b",
+      });
+    });
+
+    await expect(
+      listTaskActivity("task-1", { cursor: "cursor-a", limit: 5 }),
+    ).resolves.toEqual({
+      activity: [createdEvent],
+      nextCursor: "cursor-b",
+    });
     expectNoTokenStorage();
   });
 
@@ -1909,38 +2074,50 @@ describe("attachments API client", () => {
 
 describe("dashboard API client", () => {
   const dashboard = {
-    projectCount: 2,
-    taskCount: 5,
-    pendingCount: 3,
-    completedCount: 2,
-    overdueCount: 1,
-    projects: [
+    totalProjects: 2,
+    openTasks: 3,
+    teamMembers: 4,
+    dueSoon: 1,
+    projectsPie: [
+      { statusKey: "TODO", label: "To do", count: 2 },
+      { statusKey: "DONE", label: "Done", count: 1 },
+    ],
+    tasksBars: [
       {
-        id: "proj-1",
-        name: "Alpha",
-        taskCount: 3,
-        pendingCount: 2,
-        completedCount: 1,
-        overdueCount: 1,
+        projectId: "proj-1",
+        projectName: "Alpha",
+        checklistCompletionPercent: 50,
       },
       {
-        id: "proj-2",
-        name: "Beta",
-        taskCount: 2,
-        pendingCount: 1,
-        completedCount: 1,
-        overdueCount: 0,
+        projectId: "proj-2",
+        projectName: "Beta",
+        checklistCompletionPercent: 0,
+      },
+    ],
+    progress: [
+      {
+        projectId: "proj-1",
+        projectName: "Alpha",
+        completedTasks: 1,
+        totalTasks: 3,
+      },
+      {
+        projectId: "proj-2",
+        projectName: "Beta",
+        completedTasks: 0,
+        totalTasks: 0,
       },
     ],
   };
 
   const emptyDashboard = {
-    projectCount: 0,
-    taskCount: 0,
-    pendingCount: 0,
-    completedCount: 0,
-    overdueCount: 0,
-    projects: [] as typeof dashboard.projects,
+    totalProjects: 0,
+    openTasks: 0,
+    teamMembers: 0,
+    dueSoon: 0,
+    projectsPie: [] as typeof dashboard.projectsPie,
+    tasksBars: [] as typeof dashboard.tasksBars,
+    progress: [] as typeof dashboard.progress,
   };
 
   it("reads GET /api/dashboard from VITE_API_URL with credentials included and no token storage", async () => {
@@ -1958,10 +2135,16 @@ describe("dashboard API client", () => {
         deletedAt: "must-not-be-kept",
         token: "must-not-be-kept",
         sessionId: "must-not-be-kept",
-        projects: dashboard.projects.map((project) => ({
-          ...project,
-          deletedAt: "must-not-be-kept",
+        projectsPie: dashboard.projectsPie.map((slice) => ({
+          ...slice,
           ownerUserId: "must-not-be-kept",
+        })),
+        tasksBars: dashboard.tasksBars.map((bar) => ({
+          ...bar,
+          deletedAt: "must-not-be-kept",
+        })),
+        progress: dashboard.progress.map((row) => ({
+          ...row,
           archivedAt: "must-not-be-kept",
         })),
       });
@@ -1973,7 +2156,7 @@ describe("dashboard API client", () => {
     expectNoTokenStorage();
   });
 
-  it("returns zeros and an empty project list as success", async () => {
+  it("returns zeros and empty series arrays as success", async () => {
     mockFetch((url, init) => {
       expect(url).toBe("http://localhost:3000/api/dashboard");
       expectCredentialsInclude(init);

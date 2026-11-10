@@ -7,8 +7,10 @@ import {
 } from "../domain/errors";
 import { TaskComment } from "../domain/task-comment";
 import type {
+  CommentsPageResult,
   CommentsRepository,
   CreateCommentInput,
+  ListCommentsPageInput,
 } from "./comments-repository";
 
 const COMMENT_SELECT = {
@@ -131,17 +133,39 @@ export class PrismaCommentsRepository implements CommentsRepository {
     }
   }
 
-  async listByTaskId(taskId: string): Promise<TaskComment[]> {
+  async listPage(input: ListCommentsPageInput): Promise<CommentsPageResult> {
     try {
       const rows = await this.client().taskComment.findMany({
         where: {
-          taskId,
+          taskId: input.taskId,
           deletedAt: null,
+          ...(input.cursor === null
+            ? {}
+            : {
+                OR: [
+                  { createdAt: { lt: input.cursor.createdAt } },
+                  {
+                    createdAt: input.cursor.createdAt,
+                    id: { lt: input.cursor.id },
+                  },
+                ],
+              }),
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: input.limit + 1,
         select: COMMENT_SELECT,
       });
-      return rows.map(toComment);
+      const hasMore = rows.length > input.limit;
+      const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+      const items = pageRows.map(toComment);
+      const last = items[items.length - 1];
+      return {
+        items,
+        nextCursor:
+          hasMore && last !== undefined
+            ? { createdAt: last.createdAt, id: last.id }
+            : null,
+      };
     } catch (err) {
       rethrowMapped(err);
     }

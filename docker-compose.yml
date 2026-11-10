@@ -25,6 +25,7 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN}
       PORT: ${PORT:-3000}
       ATTACHMENTS_ROOT: /data/attachments
+      PROJECT_COVERS_ROOT: /data/project-covers
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
@@ -34,6 +35,7 @@ services:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
       - attachments_data:/data/attachments
+      - project_covers_data:/data/project-covers
 
   frontend:
     build:
@@ -50,3 +52,4 @@ services:
 volumes:
   pgdata:
   attachments_data:
+  project_covers_data:

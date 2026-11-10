@@ -149,11 +149,11 @@ function isTaskListUrl(url: string): boolean {
 }
 
 function isTaskCommentsUrl(url: string): boolean {
-  return /\/api\/tasks\/[^/]+\/comments(?:\/[^/]+)?$/.test(url);
+  return /\/api\/tasks\/[^/]+\/comments(?:\/[^/?]+)?(?:\?.*)?$/.test(url);
 }
 
 function isTaskActivityUrl(url: string): boolean {
-  return /\/api\/tasks\/[^/]+\/activity$/.test(url);
+  return /\/api\/tasks\/[^/]+\/activity(?:\?.*)?$/.test(url);
 }
 
 function isLabelsListUrl(url: string): boolean {
@@ -165,11 +165,11 @@ function isStatusesListUrl(url: string): boolean {
 }
 
 function emptyCommentsResponse(): Response {
-  return jsonResponse(200, { comments: [] });
+  return jsonResponse(200, { comments: [], nextCursor: null });
 }
 
 function emptyActivityResponse(): Response {
-  return jsonResponse(200, { activity: [] });
+  return jsonResponse(200, { activity: [], nextCursor: null });
 }
 
 function emptyLabelsResponse(): Response {
@@ -696,7 +696,7 @@ describe("TasksPanel", () => {
 
     expect(await screen.findByRole("button", { name: /newer todo/i })).toBeInTheDocument();
     const cards = within(taskCards("TODO")).getAllByRole("button");
-    expect(cards.map((card) => card.textContent)).toEqual([
+    expect(cards.map((card) => card.getAttribute("aria-label"))).toEqual([
       "Newer todo",
       "Older todo",
     ]);

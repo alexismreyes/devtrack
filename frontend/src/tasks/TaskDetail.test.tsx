@@ -72,11 +72,15 @@ function mockFetch(
 }
 
 function isCommentsListUrl(url: string): boolean {
-  return url === "http://localhost:3000/api/tasks/task-1/comments";
+  return /^http:\/\/localhost:3000\/api\/tasks\/task-1\/comments(?:\?.*)?$/.test(
+    url,
+  );
 }
 
 function isActivityListUrl(url: string): boolean {
-  return url === "http://localhost:3000/api/tasks/task-1/activity";
+  return /^http:\/\/localhost:3000\/api\/tasks\/task-1\/activity(?:\?.*)?$/.test(
+    url,
+  );
 }
 
 function isLabelsListUrl(url: string): boolean {
@@ -105,10 +109,10 @@ function defaultTaskHandler(
   attachments: unknown[] = [],
 ): Response {
   if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-    return jsonResponse(200, { comments });
+    return jsonResponse(200, { comments, nextCursor: null });
   }
   if (isActivityListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-    return jsonResponse(200, { activity: activityEvents });
+    return jsonResponse(200, { activity: activityEvents, nextCursor: null });
   }
   if (isLabelsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { labels });
@@ -444,7 +448,7 @@ describe("TaskDetail", () => {
             },
           });
         }
-        return jsonResponse(200, { activity: [] });
+        return jsonResponse(200, { activity: [], nextCursor: null });
       }
       return defaultTaskHandler(url, init);
     });
@@ -682,12 +686,196 @@ describe("TaskDetail", () => {
       fetchMock.mock.calls.some(
         ([url, init]) =>
           typeof url === "string" &&
-          url === "http://localhost:3000/api/tasks/task-1/comments" &&
+          isCommentsListUrl(url) &&
           init?.method === "GET" &&
           init.credentials === "include",
       ),
     ).toBe(true);
     expectNoSessionTokenStorage();
+  });
+
+  it("loads first pages with limit 5 and Next replaces the window (AC-002/AC-006)", async () => {
+    const olderComment = {
+      ...ownComment,
+      id: "comment-older",
+      body: "Older page note",
+      createdAt: "2026-11-03T09:00:00.000Z",
+    };
+    const olderActivity = {
+      ...createdActivity,
+      id: "activity-older",
+      createdAt: "2026-11-03T08:00:00.000Z",
+    };
+    const user = userEvent.setup();
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        if (url.includes("cursor=")) {
+          return jsonResponse(200, {
+            comments: [olderComment],
+            nextCursor: null,
+          });
+        }
+        expect(url).toContain("limit=5");
+        return jsonResponse(200, {
+          comments: [ownComment],
+          nextCursor: "comments-cursor-1",
+        });
+      }
+      if (isActivityListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        if (url.includes("cursor=")) {
+          return jsonResponse(200, {
+            activity: [olderActivity],
+            nextCursor: null,
+          });
+        }
+        expect(url).toContain("limit=5");
+        return jsonResponse(200, {
+          activity: [fieldsChangedActivity],
+          nextCursor: "activity-cursor-1",
+        });
+      }
+      return defaultTaskHandler(url, init);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("First note")).toBeInTheDocument();
+    expect(screen.getByText(/fields changed/i)).toBeInTheDocument();
+    expect(screen.queryByText("Older page note")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^previous$/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^next$/i }));
+
+    expect(await screen.findByText("Older page note")).toBeInTheDocument();
+    expect(screen.getByText(/task created/i)).toBeInTheDocument();
+    expect(screen.queryByText("First note")).not.toBeInTheDocument();
+    expect(screen.queryByText(/fields changed/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^next$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^previous$/i })).toBeEnabled();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) =>
+          typeof url === "string" &&
+          isCommentsListUrl(url) &&
+          url.includes("cursor=comments-cursor-1"),
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) =>
+          typeof url === "string" &&
+          isActivityListUrl(url) &&
+          url.includes("cursor=activity-cursor-1"),
+      ),
+    ).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: /^previous$/i }));
+    expect(await screen.findByText("First note")).toBeInTheDocument();
+    expect(screen.getByText(/fields changed/i)).toBeInTheDocument();
+    expect(screen.queryByText("Older page note")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^previous$/i })).toBeDisabled();
+  });
+
+  it("resets to newest window after create (AC-005)", async () => {
+    const olderComment = {
+      ...ownComment,
+      id: "comment-older",
+      body: "Older page note",
+      createdAt: "2026-11-03T09:00:00.000Z",
+    };
+    const created = {
+      ...ownComment,
+      id: "comment-3",
+      body: "Fresh comment",
+      createdAt: "2026-11-04T12:00:00.000Z",
+    };
+    let firstPageComments = [ownComment];
+    let firstPageNextCursor: string | null = "comments-cursor-1";
+    const user = userEvent.setup();
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isCommentsListUrl(url) && init?.method === "POST") {
+        expect(init.body).toBe(JSON.stringify({ body: "Fresh comment" }));
+        firstPageComments = [created, ownComment];
+        firstPageNextCursor = null;
+        return jsonResponse(201, created);
+      }
+      if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        if (url.includes("cursor=")) {
+          return jsonResponse(200, {
+            comments: [olderComment],
+            nextCursor: null,
+          });
+        }
+        expect(url).toContain("limit=5");
+        return jsonResponse(200, {
+          comments: firstPageComments,
+          nextCursor: firstPageNextCursor,
+        });
+      }
+      if (isActivityListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        expect(url).toContain("limit=5");
+        return jsonResponse(200, {
+          activity: [fieldsChangedActivity],
+          nextCursor: null,
+        });
+      }
+      return defaultTaskHandler(url, init);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("First note")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    expect(await screen.findByText("Older page note")).toBeInTheDocument();
+
+    const firstPageGetsBefore = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        !url.includes("cursor=") &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+
+    await user.type(await screen.findByLabelText(/new comment/i), "Fresh comment");
+    await user.click(screen.getByRole("button", { name: /add comment/i }));
+    expect(await screen.findByText(/comment added/i)).toBeInTheDocument();
+    expect(screen.getByText("Fresh comment")).toBeInTheDocument();
+    expect(screen.queryByText("Older page note")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^previous$/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+
+    const firstPageGetsAfter = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        !url.includes("cursor=") &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+    expect(firstPageGetsAfter).toBeGreaterThan(firstPageGetsBefore);
   });
 
   it("lets a writer create a comment and keeps viewer create chrome hidden", async () => {
@@ -697,13 +885,15 @@ describe("TaskDetail", () => {
       body: "Fresh comment",
       createdAt: "2026-11-04T12:00:00.000Z",
     };
+    let listed = [ownComment];
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
       if (isCommentsListUrl(url) && init?.method === "POST") {
         expect(init.body).toBe(JSON.stringify({ body: "Fresh comment" }));
+        listed = [created, ownComment];
         return jsonResponse(201, created);
       }
-      return defaultTaskHandler(url, init, [ownComment]);
+      return defaultTaskHandler(url, init, listed);
     });
     const user = userEvent.setup();
 
@@ -720,6 +910,12 @@ describe("TaskDetail", () => {
       />,
     );
 
+    const commentsGetsBefore = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsBefore = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
@@ -739,12 +935,19 @@ describe("TaskDetail", () => {
           init?.method === "POST",
       ),
     ).toBe(true);
+    const commentsGetsAfter = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsAfter = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
         isActivityListUrl(url) &&
         (init?.method === "GET" || init?.method === undefined),
     ).length;
+    expect(commentsGetsAfter).toBeGreaterThan(commentsGetsBefore);
     expect(activityGetsAfter).toBeGreaterThan(activityGetsBefore);
 
     rerender(
@@ -829,6 +1032,12 @@ describe("TaskDetail", () => {
       within(otherItem as HTMLElement).queryByRole("button", { name: /delete comment/i }),
     ).not.toBeInTheDocument();
 
+    const commentsGetsBeforeEdit = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsBeforeEdit = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
@@ -846,12 +1055,19 @@ describe("TaskDetail", () => {
     await user.click(screen.getByRole("button", { name: /save comment/i }));
     expect(await screen.findByText(/comment updated/i)).toBeInTheDocument();
     expect(screen.getByText("Edited note")).toBeInTheDocument();
+    const commentsGetsAfterEdit = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsAfterEdit = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
         isActivityListUrl(url) &&
         (init?.method === "GET" || init?.method === undefined),
     ).length;
+    expect(commentsGetsAfterEdit).toBeGreaterThan(commentsGetsBeforeEdit);
     expect(activityGetsAfterEdit).toBeGreaterThan(activityGetsBeforeEdit);
 
     await user.click(screen.getByRole("button", { name: /delete comment/i }));
@@ -866,12 +1082,19 @@ describe("TaskDetail", () => {
           init?.method === "DELETE",
       ),
     ).toBe(true);
+    const commentsGetsAfterDelete = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsAfterDelete = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
         isActivityListUrl(url) &&
         (init?.method === "GET" || init?.method === undefined),
     ).length;
+    expect(commentsGetsAfterDelete).toBeGreaterThan(commentsGetsAfterEdit);
     expect(activityGetsAfterDelete).toBeGreaterThan(activityGetsAfterEdit);
     expectNoSessionTokenStorage();
   });
@@ -970,7 +1193,7 @@ describe("TaskDetail", () => {
       fetchMock.mock.calls.some(
         ([url, init]) =>
           typeof url === "string" &&
-          url === "http://localhost:3000/api/tasks/task-1/activity" &&
+          isActivityListUrl(url) &&
           init?.method === "GET" &&
           init.credentials === "include",
       ),
@@ -1077,9 +1300,12 @@ describe("TaskDetail", () => {
       }),
     ).toBeDisabled();
     expect(await screen.findByTestId("checklist-block-checklist-1")).toHaveClass(
-      "bg-card",
+      "bg-eyecandy-surface",
       "border",
     );
+    expect(
+      screen.getByTestId("checklist-block-checklist-1").className,
+    ).not.toMatch(/(^|\s)bg-card(\s|$)/);
     expectNoSessionTokenStorage();
   });
 
@@ -1135,9 +1361,12 @@ describe("TaskDetail", () => {
       screen.getByText((content) => content.startsWith("0%")),
     ).toBeInTheDocument();
     expect(screen.getByTestId("checklist-block-checklist-2")).toHaveClass(
-      "bg-card",
+      "bg-eyecandy-surface",
       "border",
     );
+    expect(
+      screen.getByTestId("checklist-block-checklist-2").className,
+    ).not.toMatch(/(^|\s)bg-card(\s|$)/);
     expect(screen.queryByLabelText(/new checklist name/i)).not.toBeInTheDocument();
     const activityGetsAfter = fetchMock.mock.calls.filter(
       ([url, init]) =>
@@ -1354,6 +1583,7 @@ describe("TaskDetail", () => {
                 },
               },
             ],
+            nextCursor: null,
           });
         }
       }
@@ -1536,6 +1766,7 @@ describe("TaskDetail", () => {
               },
             },
           ],
+          nextCursor: null,
         });
       }
       return defaultTaskHandler(url, init, [], [], [], [], [sampleImageAttachment]);

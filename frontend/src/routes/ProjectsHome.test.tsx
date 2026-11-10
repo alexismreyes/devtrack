@@ -19,6 +19,7 @@ const activeProject = {
   description: "First project",
   createdAt: "2026-10-27T18:00:00.000Z",
   archivedAt: null as string | null,
+  cover: null as { id: string; contentType: string } | null,
 };
 
 const archivedProject = {

@@ -32,3 +32,38 @@ export class DatabaseUnavailableError extends Error {
     this.name = "DatabaseUnavailableError";
   }
 }
+
+export class ProjectCoverNotFoundError extends Error {
+  constructor() {
+    super("Project cover was not found");
+    this.name = "ProjectCoverNotFoundError";
+  }
+}
+
+export class InvalidProjectCoverFilenameError extends Error {
+  constructor() {
+    super("Project cover filename is invalid");
+    this.name = "InvalidProjectCoverFilenameError";
+  }
+}
+
+export class InvalidProjectCoverContentTypeError extends Error {
+  constructor() {
+    super("Project cover content type is not allowed");
+    this.name = "InvalidProjectCoverContentTypeError";
+  }
+}
+
+export class ProjectCoverSizeExceededError extends Error {
+  constructor() {
+    super("Project cover exceeds the maximum allowed size");
+    this.name = "ProjectCoverSizeExceededError";
+  }
+}
+
+export class ProjectCoverStorageError extends Error {
+  constructor(message = "Project cover storage operation failed") {
+    super(message);
+    this.name = "ProjectCoverStorageError";
+  }
+}

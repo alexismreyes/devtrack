@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCompletionByProject,
+  buildProjectsPie,
+  checklistCompletionPercent,
   isCompletedStatus,
   isPendingStatus,
+  isTaskDueSoon,
   isTaskOverdue,
   summarizeDashboard,
 } from "../domain/dashboard-summary";
@@ -15,25 +18,44 @@ const ARCHIVED_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const OTHER_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const CUSTOM_DONE = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 
-const DEFAULT_COMPLETION = buildCompletionByProject([
-  { projectId: ACTIVE_A, key: "TODO", isCompleted: false },
-  { projectId: ACTIVE_A, key: "IN_PROGRESS", isCompleted: false },
-  { projectId: ACTIVE_A, key: "DONE", isCompleted: true },
-  { projectId: ACTIVE_B, key: "TODO", isCompleted: false },
-  { projectId: ACTIVE_B, key: "IN_PROGRESS", isCompleted: false },
-  { projectId: ACTIVE_B, key: "DONE", isCompleted: true },
-  { projectId: ARCHIVED_ID, key: "TODO", isCompleted: false },
-  { projectId: OTHER_ID, key: "TODO", isCompleted: false },
-  { projectId: ACTIVE_A, key: CUSTOM_DONE, isCompleted: true },
-]);
+const CATALOG = [
+  { projectId: ACTIVE_A, key: "TODO", name: "To do", isCompleted: false },
+  {
+    projectId: ACTIVE_A,
+    key: "IN_PROGRESS",
+    name: "In progress",
+    isCompleted: false,
+  },
+  { projectId: ACTIVE_A, key: "DONE", name: "Done", isCompleted: true },
+  { projectId: ACTIVE_B, key: "TODO", name: "To do", isCompleted: false },
+  {
+    projectId: ACTIVE_B,
+    key: "IN_PROGRESS",
+    name: "In progress",
+    isCompleted: false,
+  },
+  { projectId: ACTIVE_B, key: "DONE", name: "Done", isCompleted: true },
+  { projectId: ARCHIVED_ID, key: "TODO", name: "To do", isCompleted: false },
+  { projectId: OTHER_ID, key: "TODO", name: "To do", isCompleted: false },
+  {
+    projectId: ACTIVE_A,
+    key: CUSTOM_DONE,
+    name: "Shipped",
+    isCompleted: true,
+  },
+];
+
+const DEFAULT_COMPLETION = buildCompletionByProject(CATALOG);
 
 function task(input: {
+  id?: string;
   projectId: string;
   status: string;
   dueDate: string | null;
   deletedAt?: Date | null;
 }) {
   return {
+    id: input.id ?? crypto.randomUUID(),
     projectId: input.projectId,
     status: input.status,
     dueDate:
@@ -42,7 +64,7 @@ function task(input: {
   };
 }
 
-describe("dashboard summary counting", () => {
+describe("dashboard overview counting", () => {
   it("treats null due date, due today, and completed flags as never overdue", () => {
     expect(
       isTaskOverdue(
@@ -75,25 +97,58 @@ describe("dashboard summary counting", () => {
     ).toBe(false);
   });
 
-  it("marks a past UTC calendar due date overdue only for non-completed statuses", () => {
-    const past = calendarDateFromString("2026-10-30");
+  it("marks due soon only for incomplete tasks in [today, today+7] UTC", () => {
     expect(
-      isTaskOverdue(
-        { projectId: ACTIVE_A, status: "TODO", dueDate: past },
+      isTaskDueSoon(
+        {
+          projectId: ACTIVE_A,
+          status: "TODO",
+          dueDate: calendarDateFromString("2026-10-31"),
+        },
         NOW,
         DEFAULT_COMPLETION,
       ),
     ).toBe(true);
     expect(
-      isTaskOverdue(
-        { projectId: ACTIVE_A, status: "IN_PROGRESS", dueDate: past },
+      isTaskDueSoon(
+        {
+          projectId: ACTIVE_A,
+          status: "TODO",
+          dueDate: calendarDateFromString("2026-11-07"),
+        },
         NOW,
         DEFAULT_COMPLETION,
       ),
     ).toBe(true);
     expect(
-      isTaskOverdue(
-        { projectId: ACTIVE_A, status: "DONE", dueDate: past },
+      isTaskDueSoon(
+        {
+          projectId: ACTIVE_A,
+          status: "TODO",
+          dueDate: calendarDateFromString("2026-10-30"),
+        },
+        NOW,
+        DEFAULT_COMPLETION,
+      ),
+    ).toBe(false);
+    expect(
+      isTaskDueSoon(
+        {
+          projectId: ACTIVE_A,
+          status: "TODO",
+          dueDate: calendarDateFromString("2026-11-08"),
+        },
+        NOW,
+        DEFAULT_COMPLETION,
+      ),
+    ).toBe(false);
+    expect(
+      isTaskDueSoon(
+        {
+          projectId: ACTIVE_A,
+          status: "DONE",
+          dueDate: calendarDateFromString("2026-11-01"),
+        },
         NOW,
         DEFAULT_COMPLETION,
       ),
@@ -107,65 +162,52 @@ describe("dashboard summary counting", () => {
     );
     expect(isPendingStatus(ACTIVE_A, "DONE", DEFAULT_COMPLETION)).toBe(false);
     expect(isCompletedStatus(ACTIVE_A, "DONE", DEFAULT_COMPLETION)).toBe(true);
-    expect(isCompletedStatus(ACTIVE_A, "TODO", DEFAULT_COMPLETION)).toBe(false);
     expect(isCompletedStatus(ACTIVE_A, CUSTOM_DONE, DEFAULT_COMPLETION)).toBe(
       true,
     );
   });
 
-  it("follows flipped Done isCompleted for classification", () => {
-    const flipped = buildCompletionByProject([
-      { projectId: ACTIVE_A, key: "DONE", isCompleted: false },
-      { projectId: ACTIVE_A, key: "TODO", isCompleted: false },
-    ]);
-    expect(isCompletedStatus(ACTIVE_A, "DONE", flipped)).toBe(false);
-    expect(isPendingStatus(ACTIVE_A, "DONE", flipped)).toBe(true);
-    expect(
-      isTaskOverdue(
-        {
-          projectId: ACTIVE_A,
-          status: "DONE",
-          dueDate: calendarDateFromString("2026-10-01"),
-        },
-        NOW,
-        flipped,
-      ),
-    ).toBe(true);
-  });
-
-  it("returns zeros and an empty project list when there is no authorized data", () => {
-    expect(summarizeDashboard([], [], NOW, DEFAULT_COMPLETION)).toEqual({
-      projectCount: 0,
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [],
+  it("returns zeros and empty series when there is no authorized data", () => {
+    expect(summarizeDashboard([], [], NOW, 0, CATALOG, [])).toEqual({
+      totalProjects: 0,
+      openTasks: 0,
+      teamMembers: 0,
+      dueSoon: 0,
+      projectsPie: [],
+      tasksBars: [],
+      progress: [],
     });
   });
 
-  it("lists an active project with zero live tasks", () => {
+  it("lists an active project with zero live tasks and 0% checklist", () => {
     const summary = summarizeDashboard(
       [{ id: ACTIVE_A, name: "Roadmap", archivedAt: null }],
       [],
       NOW,
-      DEFAULT_COMPLETION,
+      1,
+      CATALOG,
+      [],
     );
 
     expect(summary).toEqual({
-      projectCount: 1,
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [
+      totalProjects: 1,
+      openTasks: 0,
+      teamMembers: 1,
+      dueSoon: 0,
+      projectsPie: [],
+      tasksBars: [
         {
-          id: ACTIVE_A,
-          name: "Roadmap",
-          taskCount: 0,
-          pendingCount: 0,
-          completedCount: 0,
-          overdueCount: 0,
+          projectId: ACTIVE_A,
+          projectName: "Roadmap",
+          checklistCompletionPercent: 0,
+        },
+      ],
+      progress: [
+        {
+          projectId: ACTIVE_A,
+          projectName: "Roadmap",
+          completedTasks: 0,
+          totalTasks: 0,
         },
       ],
     });
@@ -182,62 +224,154 @@ describe("dashboard summary counting", () => {
         },
       ],
       [
-        task({ projectId: ACTIVE_A, status: "TODO", dueDate: "2026-10-30" }),
+        task({
+          id: "t1",
+          projectId: ACTIVE_A,
+          status: "TODO",
+          dueDate: "2026-11-01",
+        }),
         task({
           projectId: ACTIVE_A,
           status: "TODO",
-          dueDate: "2026-10-01",
+          dueDate: "2026-11-01",
           deletedAt: new Date("2026-10-30T12:00:00.000Z"),
         }),
         task({
           projectId: ARCHIVED_ID,
           status: "TODO",
-          dueDate: "2026-10-01",
+          dueDate: "2026-11-01",
         }),
-        task({ projectId: OTHER_ID, status: "TODO", dueDate: "2026-10-01" }),
+        task({ projectId: OTHER_ID, status: "TODO", dueDate: "2026-11-01" }),
       ],
       NOW,
-      DEFAULT_COMPLETION,
+      1,
+      CATALOG,
+      [],
     );
 
-    expect(summary.projectCount).toBe(1);
-    expect(summary.taskCount).toBe(1);
-    expect(summary.pendingCount).toBe(1);
-    expect(summary.overdueCount).toBe(1);
-    expect(summary.projects.map((project) => project.id)).toEqual([ACTIVE_A]);
+    expect(summary.totalProjects).toBe(1);
+    expect(summary.openTasks).toBe(1);
+    expect(summary.dueSoon).toBe(1);
+    expect(summary.progress.map((row) => row.projectId)).toEqual([ACTIVE_A]);
   });
 
-  it("counts pending, completed, and overdue using catalog flags including customs", () => {
+  it("aggregates KPIs, pie by status key, checklist %, and progress", () => {
+    const t1 = "11111111-1111-4111-8111-111111111101";
+    const t2 = "11111111-1111-4111-8111-111111111102";
+    const t3 = "11111111-1111-4111-8111-111111111103";
+    const t4 = "11111111-1111-4111-8111-111111111104";
+    const t5 = "11111111-1111-4111-8111-111111111105";
     const summary = summarizeDashboard(
       [
         { id: ACTIVE_A, name: "Roadmap", archivedAt: null },
         { id: ACTIVE_B, name: "Later", archivedAt: null },
       ],
       [
-        task({ projectId: ACTIVE_A, status: "TODO", dueDate: "2026-10-30" }),
         task({
+          id: t1,
+          projectId: ACTIVE_A,
+          status: "TODO",
+          dueDate: "2026-10-30",
+        }),
+        task({
+          id: t2,
           projectId: ACTIVE_A,
           status: "IN_PROGRESS",
           dueDate: "2026-10-31",
         }),
-        task({ projectId: ACTIVE_A, status: "DONE", dueDate: "2026-10-01" }),
         task({
+          id: t3,
+          projectId: ACTIVE_A,
+          status: "DONE",
+          dueDate: "2026-10-01",
+        }),
+        task({
+          id: t4,
           projectId: ACTIVE_A,
           status: CUSTOM_DONE,
           dueDate: "2026-10-01",
         }),
-        task({ projectId: ACTIVE_B, status: "TODO", dueDate: null }),
+        task({
+          id: t5,
+          projectId: ACTIVE_B,
+          status: "TODO",
+          dueDate: null,
+        }),
       ],
       NOW,
-      DEFAULT_COMPLETION,
+      3,
+      CATALOG,
+      [
+        { taskId: t1, totalItems: 2, checkedItems: 1 },
+        { taskId: t2, totalItems: 2, checkedItems: 1 },
+      ],
     );
 
-    expect(summary.taskCount).toBe(5);
-    expect(summary.pendingCount).toBe(3);
-    expect(summary.completedCount).toBe(2);
-    expect(summary.overdueCount).toBe(1);
-    expect(summary.pendingCount + summary.completedCount).toBe(
-      summary.taskCount,
+    expect(summary.totalProjects).toBe(2);
+    expect(summary.openTasks).toBe(3);
+    expect(summary.teamMembers).toBe(3);
+    expect(summary.dueSoon).toBe(1);
+    expect(summary.projectsPie).toEqual([
+      { statusKey: "DONE", label: "Done", count: 1 },
+      { statusKey: "IN_PROGRESS", label: "In progress", count: 1 },
+      { statusKey: "TODO", label: "To do", count: 2 },
+      { statusKey: CUSTOM_DONE, label: "Shipped", count: 1 },
+    ]);
+    expect(summary.tasksBars).toEqual([
+      {
+        projectId: ACTIVE_A,
+        projectName: "Roadmap",
+        checklistCompletionPercent: 50,
+      },
+      {
+        projectId: ACTIVE_B,
+        projectName: "Later",
+        checklistCompletionPercent: 0,
+      },
+    ]);
+    expect(summary.progress).toEqual([
+      {
+        projectId: ACTIVE_A,
+        projectName: "Roadmap",
+        completedTasks: 2,
+        totalTasks: 4,
+      },
+      {
+        projectId: ACTIVE_B,
+        projectName: "Later",
+        completedTasks: 0,
+        totalTasks: 1,
+      },
+    ]);
+    expect(checklistCompletionPercent(0, 0)).toBe(0);
+  });
+
+  it("uses status key as pie label when catalog names collide across projects", () => {
+    const pie = buildProjectsPie(
+      [
+        task({
+          projectId: ACTIVE_A,
+          status: "TODO",
+          dueDate: null,
+        }),
+        task({
+          projectId: ACTIVE_B,
+          status: "TODO",
+          dueDate: null,
+        }),
+      ],
+      new Set([ACTIVE_A, ACTIVE_B]),
+      [
+        { projectId: ACTIVE_A, key: "TODO", name: "Backlog", isCompleted: false },
+        {
+          projectId: ACTIVE_B,
+          key: "TODO",
+          name: "Inbox",
+          isCompleted: false,
+        },
+      ],
     );
+
+    expect(pie).toEqual([{ statusKey: "TODO", label: "TODO", count: 2 }]);
   });
 });

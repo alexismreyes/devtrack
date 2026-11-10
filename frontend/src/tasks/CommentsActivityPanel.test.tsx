@@ -1,7 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildCommentsActivityTimeline,
+  buildCommentsActivityWindow,
   CommentsActivityPanel,
 } from "./CommentsActivityPanel";
 
@@ -400,5 +402,127 @@ describe("CommentsActivityPanel", () => {
     expect(within(list).getAllByText("cover.png")).toHaveLength(3);
     expect(within(list).getByText(/cover cleared/i)).toBeInTheDocument();
     expect(within(list).queryByText(/comment added/i)).not.toBeInTheDocument();
+  });
+
+  it("caps the visible window at 5 interleaved items (AC-001)", () => {
+    const manyComments = Array.from({ length: 4 }, (_, index) => ({
+      ...newerComment,
+      id: `comment-extra-${index}`,
+      body: `Extra ${index}`,
+      createdAt: `2026-11-05T0${index}:00:00.000Z`,
+    }));
+    const manyActivity = [
+      fieldsChangedActivity,
+      createdActivity,
+      checklistAddedActivity,
+      attachmentAddedActivity,
+    ];
+
+    expect(
+      buildCommentsActivityWindow(
+        [newerComment, olderComment, ...manyComments],
+        manyActivity,
+      ),
+    ).toHaveLength(5);
+
+    render(
+      <CommentsActivityPanel
+        canWrite={false}
+        commentMutationsDisabled={true}
+        comments={[newerComment, olderComment, ...manyComments]}
+        commentsLoadState={{ kind: "success" }}
+        activity={manyActivity}
+        activityLoadState={{ kind: "success" }}
+        commentActionState={{ kind: "idle" }}
+        newCommentBody=""
+        editingCommentId={null}
+        editCommentBody=""
+        onNewCommentBodyChange={vi.fn()}
+        onEditCommentBodyChange={vi.fn()}
+        onCreateComment={vi.fn()}
+        onStartEditComment={vi.fn()}
+        onCancelEditComment={vi.fn()}
+        onSaveComment={vi.fn()}
+        onDeleteComment={vi.fn()}
+        canEditComment={() => false}
+        canSoftDeleteComment={() => false}
+      />,
+    );
+
+    const list = screen.getByRole("list", { name: /comments and activity/i });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(5);
+  });
+
+  it("shows Prev/Next and invokes them; disables at ends (AC-003/AC-004)", async () => {
+    const user = userEvent.setup();
+    const onPrevFeedWindow = vi.fn();
+    const onNextFeedWindow = vi.fn();
+    const { rerender } = render(
+      <CommentsActivityPanel
+        canWrite={false}
+        commentMutationsDisabled={true}
+        comments={[newerComment]}
+        commentsLoadState={{ kind: "success" }}
+        activity={[createdActivity, commentAddedActivity]}
+        activityLoadState={{ kind: "success" }}
+        commentActionState={{ kind: "idle" }}
+        newCommentBody=""
+        editingCommentId={null}
+        editCommentBody=""
+        onNewCommentBodyChange={vi.fn()}
+        onEditCommentBodyChange={vi.fn()}
+        onCreateComment={vi.fn()}
+        onStartEditComment={vi.fn()}
+        onCancelEditComment={vi.fn()}
+        onSaveComment={vi.fn()}
+        onDeleteComment={vi.fn()}
+        canEditComment={() => false}
+        canSoftDeleteComment={() => false}
+        canGoPrev={false}
+        canGoNext={true}
+        feedNavState={{ kind: "idle" }}
+        onPrevFeedWindow={onPrevFeedWindow}
+        onNextFeedWindow={onNextFeedWindow}
+      />,
+    );
+
+    expect(screen.queryByText(/comment added/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^previous$/i })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    expect(onNextFeedWindow).toHaveBeenCalledOnce();
+
+    rerender(
+      <CommentsActivityPanel
+        canWrite={false}
+        commentMutationsDisabled={true}
+        comments={[olderComment]}
+        commentsLoadState={{ kind: "success" }}
+        activity={[createdActivity]}
+        activityLoadState={{ kind: "success" }}
+        commentActionState={{ kind: "idle" }}
+        newCommentBody=""
+        editingCommentId={null}
+        editCommentBody=""
+        onNewCommentBodyChange={vi.fn()}
+        onEditCommentBodyChange={vi.fn()}
+        onCreateComment={vi.fn()}
+        onStartEditComment={vi.fn()}
+        onCancelEditComment={vi.fn()}
+        onSaveComment={vi.fn()}
+        onDeleteComment={vi.fn()}
+        canEditComment={() => false}
+        canSoftDeleteComment={() => false}
+        canGoPrev={true}
+        canGoNext={false}
+        feedNavState={{ kind: "idle" }}
+        onPrevFeedWindow={onPrevFeedWindow}
+        onNextFeedWindow={onNextFeedWindow}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /^next$/i })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /^previous$/i }));
+    expect(onPrevFeedWindow).toHaveBeenCalledOnce();
   });
 });

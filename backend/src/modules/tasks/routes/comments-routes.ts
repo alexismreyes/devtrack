@@ -7,6 +7,7 @@ import {
 } from "../validators/comment-params";
 import { validateCreateCommentBody } from "../validators/create-comment";
 import { validateEmptyTaskActionBody } from "../validators/empty-body";
+import { validateFeedPaginationQuery } from "../validators/feed-pagination-query";
 import { validateUpdateCommentBody } from "../validators/update-comment";
 
 export function createCommentsRouter(
@@ -29,6 +30,7 @@ export function createCommentsRouter(
     "/api/tasks/:taskId/comments",
     requireAuth,
     validateTaskIdForCommentsParam,
+    validateFeedPaginationQuery,
     asyncHandler(async (req, res) => {
       await controller.list(req, res);
     }),

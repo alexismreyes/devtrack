@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +33,7 @@ const activeProject = {
   description: "First project",
   createdAt: "2026-10-27T18:00:00.000Z",
   archivedAt: null as string | null,
+  cover: null as { id: string; contentType: string } | null,
 };
 
 const ownerMember: PublicMemberDto = {
@@ -323,6 +324,44 @@ describe("ProjectDetail", () => {
     expect(screen.getByRole("button", { name: /^labels$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^add task$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add task to todo/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/upload project cover/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /clear cover/i })).not.toBeInTheDocument();
+  });
+
+  it("lets OWNER upload a project cover from the edit dialog", async () => {
+    const cover = { id: "cover-1", contentType: "image/png" };
+    let current = { ...activeProject };
+    mockFetch((url, init) => {
+      if (url.endsWith("/api/projects/proj-1/cover") && init?.method === "PUT") {
+        expect(init.credentials).toBe("include");
+        expect(init.body).toBeInstanceOf(FormData);
+        current = { ...current, cover };
+        return jsonResponse(200, { cover });
+      }
+      const common = respondBoardReads(url, init, { project: current });
+      if (common !== null) {
+        return common;
+      }
+      return jsonResponse(500, {
+        error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
+      });
+    });
+    const user = userEvent.setup();
+    const file = new File([new Uint8Array([1, 2, 3])], "cover.png", {
+      type: "image/png",
+    });
+
+    renderDetail();
+
+    await user.click(await screen.findByRole("button", { name: /edit project/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.upload(
+      within(dialog).getByLabelText(/upload project cover/i),
+      file,
+    );
+    await waitFor(() => {
+      expect(current.cover).toEqual(cover);
+    });
   });
 
   it("updates name and description from the edit dialog with credentials included", async () => {

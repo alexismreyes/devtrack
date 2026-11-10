@@ -14,6 +14,7 @@ import {
 import { ProjectsService } from "../service/projects-service";
 import { ProjectStatusSeedAdapter } from "../../tasks/access/project-status-seed-adapter";
 import { InMemoryStatusesRepository } from "../../tasks/tests/in-memory-statuses-repository";
+import { InMemoryProjectCoversRepository } from "./in-memory-project-covers-repository";
 import { InMemoryProjectsRepository } from "./in-memory-projects-repository";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
@@ -23,6 +24,7 @@ const OTHER_ID = "44444444-4444-4444-8444-444444444444";
 
 function createService() {
   const projects = new InMemoryProjectsRepository();
+  const covers = new InMemoryProjectCoversRepository();
   const members = new InMemoryProjectMembersRepository();
   const statuses = new InMemoryStatusesRepository();
   const snapshots = new ProjectSnapshotAdapter(projects);
@@ -32,8 +34,9 @@ function createService() {
     new OwnerMembershipWriteAdapter(members),
     new ImmediateUnitOfWork(),
     new ProjectStatusSeedAdapter(statuses),
+    covers,
   );
-  return { service, projects, members, statuses };
+  return { service, projects, covers, members, statuses };
 }
 
 describe("ProjectsService", () => {

@@ -26,6 +26,12 @@ export type DeletedChecklistSnapshot = {
   createdAt: Date;
 };
 
+export type ChecklistItemTallyByTask = {
+  taskId: string;
+  totalItems: number;
+  checkedItems: number;
+};
+
 export interface ChecklistsRepository {
   create(input: CreateChecklistInput): Promise<TaskChecklist>;
   listByTaskId(taskId: string): Promise<TaskChecklist[]>;
@@ -47,4 +53,11 @@ export interface ChecklistsRepository {
     input: UpdateChecklistItemInput,
   ): Promise<TaskChecklistItem>;
   deleteItem(itemId: string): Promise<void>;
+  /**
+   * Item tallies for the given task ids.
+   * Tasks with zero items are omitted (caller treats missing as 0/0).
+   */
+  countItemTalliesByTaskIds(
+    taskIds: string[],
+  ): Promise<ChecklistItemTallyByTask[]>;
 }

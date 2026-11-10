@@ -9,7 +9,10 @@ import { PrismaUnitOfWork } from "../../../infrastructure/prisma/prisma-unit-of-
 import { PrismaAuthRepository } from "../../auth/repository/prisma-auth-repository";
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { PrismaProjectsRepository } from "../../projects/repository/prisma-projects-repository";
+import { PrismaProjectCoversRepository } from "../../projects/repository/prisma-project-covers-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
 import { PrismaSystemRepository } from "../../system/repository/prisma-system-repository";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
@@ -79,6 +82,8 @@ function createTasksApp() {
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -793,38 +798,42 @@ function utcCalendarOffset(days: number): string {
 function assertDashboardBody(
   body: unknown,
   expected: {
-    projectCount: number;
-    taskCount: number;
-    pendingCount: number;
-    completedCount: number;
-    overdueCount: number;
-    projects: Array<{
-      id: string;
-      name: string;
-      taskCount: number;
-      pendingCount: number;
-      completedCount: number;
-      overdueCount: number;
+    totalProjects: number;
+    openTasks: number;
+    teamMembers: number;
+    dueSoon: number;
+    projectsPie: Array<{ statusKey: string; label: string; count: number }>;
+    tasksBars: Array<{
+      projectId: string;
+      projectName: string;
+      checklistCompletionPercent: number;
+    }>;
+    progress: Array<{
+      projectId: string;
+      projectName: string;
+      completedTasks: number;
+      totalTasks: number;
     }>;
   },
 ): void {
   expect(body).toEqual(expected);
   expect(body).not.toHaveProperty("deletedAt");
   expect(body).not.toHaveProperty("archivedAt");
-  expect(body).not.toHaveProperty("tasks");
-  const projects = (body as { projects: unknown[] }).projects;
-  for (const row of projects) {
-    expect(row).not.toHaveProperty("deletedAt");
-    expect(row).not.toHaveProperty("archivedAt");
-    expect(row).not.toHaveProperty("description");
+  expect(body).not.toHaveProperty("projectCount");
+  expect(body).not.toHaveProperty("taskCount");
+  expect(body).not.toHaveProperty("pendingCount");
+  expect(body).not.toHaveProperty("completedCount");
+  expect(body).not.toHaveProperty("overdueCount");
+  expect(body).not.toHaveProperty("projects");
+  const bars = (body as { tasksBars: unknown[] }).tasksBars;
+  for (const row of bars) {
     expect(row).not.toHaveProperty("ownerUserId");
-    expect(row).not.toHaveProperty("createdAt");
-    expect(row).not.toHaveProperty("tasks");
+    expect(row).not.toHaveProperty("email");
   }
 }
 
 describe("GET /api/dashboard", () => {
-  it("returns zeros for an authenticated owner with no active projects", async () => {
+  it("returns zeros for an authenticated actor with no active membership projects", async () => {
     const { app } = createTasksApp();
     const { agent } = await registerAgent(app);
 
@@ -832,16 +841,14 @@ describe("GET /api/dashboard", () => {
 
     expect(response.status).toBe(200);
     assertDashboardBody(response.body, {
-      projectCount: 0,
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [],
+      totalProjects: 0,
+      openTasks: 0,
+      teamMembers: 0,
+      dueSoon: 0,
+      projectsPie: [],
+      tasksBars: [],
+      progress: [],
     });
-    expect(response.body.pendingCount + response.body.completedCount).toBe(
-      response.body.taskCount,
-    );
     assertNoSecrets(response.body);
   });
 
@@ -854,25 +861,30 @@ describe("GET /api/dashboard", () => {
 
     expect(response.status).toBe(200);
     assertDashboardBody(response.body, {
-      projectCount: 1,
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [
+      totalProjects: 1,
+      openTasks: 0,
+      teamMembers: 1,
+      dueSoon: 0,
+      projectsPie: [],
+      tasksBars: [
         {
-          id: project.id,
-          name: "Empty board",
-          taskCount: 0,
-          pendingCount: 0,
-          completedCount: 0,
-          overdueCount: 0,
+          projectId: project.id,
+          projectName: "Empty board",
+          checklistCompletionPercent: 0,
+        },
+      ],
+      progress: [
+        {
+          projectId: project.id,
+          projectName: "Empty board",
+          completedTasks: 0,
+          totalTasks: 0,
         },
       ],
     });
   });
 
-  it("aggregates owner-wide and per-project counts and isolates other users", async () => {
+  it("aggregates membership-scoped KPIs and isolates non-members", async () => {
     const { app } = createTasksApp();
     const { agent: owner } = await registerAgent(app);
     const { agent: other } = await registerAgent(
@@ -920,89 +932,111 @@ describe("GET /api/dashboard", () => {
 
     expect(ownerDashboard.status).toBe(200);
     assertDashboardBody(ownerDashboard.body, {
-      projectCount: 2,
-      taskCount: 4,
-      pendingCount: 3,
-      completedCount: 1,
-      overdueCount: 1,
-      projects: [
+      totalProjects: 2,
+      openTasks: 3,
+      teamMembers: 1,
+      dueSoon: 1,
+      projectsPie: [
+        { statusKey: "DONE", label: "Done", count: 1 },
+        { statusKey: "IN_PROGRESS", label: "In progress", count: 1 },
+        { statusKey: "TODO", label: "To do", count: 2 },
+      ],
+      tasksBars: [
         {
-          id: older.id,
-          name: "Older",
-          taskCount: 4,
-          pendingCount: 3,
-          completedCount: 1,
-          overdueCount: 1,
+          projectId: older.id,
+          projectName: "Older",
+          checklistCompletionPercent: 0,
         },
         {
-          id: newer.id,
-          name: "Newer",
-          taskCount: 0,
-          pendingCount: 0,
-          completedCount: 0,
-          overdueCount: 0,
+          projectId: newer.id,
+          projectName: "Newer",
+          checklistCompletionPercent: 0,
+        },
+      ],
+      progress: [
+        {
+          projectId: older.id,
+          projectName: "Older",
+          completedTasks: 1,
+          totalTasks: 4,
+        },
+        {
+          projectId: newer.id,
+          projectName: "Newer",
+          completedTasks: 0,
+          totalTasks: 0,
         },
       ],
     });
-    expect(
-      ownerDashboard.body.pendingCount + ownerDashboard.body.completedCount,
-    ).toBe(ownerDashboard.body.taskCount);
     expect(otherDashboard.status).toBe(200);
     assertDashboardBody(otherDashboard.body, {
-      projectCount: 1,
-      taskCount: 1,
-      pendingCount: 1,
-      completedCount: 0,
-      overdueCount: 1,
-      projects: [
+      totalProjects: 1,
+      openTasks: 1,
+      teamMembers: 1,
+      dueSoon: 0,
+      projectsPie: [{ statusKey: "TODO", label: "To do", count: 1 }],
+      tasksBars: [
         {
-          id: otherProject.id,
-          name: "Secret",
-          taskCount: 1,
-          pendingCount: 1,
-          completedCount: 0,
-          overdueCount: 1,
+          projectId: otherProject.id,
+          projectName: "Secret",
+          checklistCompletionPercent: 0,
+        },
+      ],
+      progress: [
+        {
+          projectId: otherProject.id,
+          projectName: "Secret",
+          completedTasks: 0,
+          totalTasks: 1,
         },
       ],
     });
-    expect(otherDashboard.body.projects[0].id).not.toBe(older.id);
-    expect(otherDashboard.body.projects[0].id).not.toBe(newer.id);
+    expect(otherDashboard.body.progress[0].projectId).not.toBe(older.id);
+    expect(otherDashboard.body.progress[0].projectId).not.toBe(newer.id);
     assertNoSecrets(ownerDashboard.body);
   });
 
-  it("keeps dashboard owner-scoped when the actor is only a member", async () => {
+  it("includes EDITOR and VIEWER membership projects in dashboard aggregates", async () => {
     const { app } = createTasksApp();
     const { agent: owner } = await registerAgent(app);
     const { agent: editor, user: editorUser } = await registerAgent(
       app,
       `editor-${randomUUID()}@example.com`,
     );
+    const { agent: viewer, user: viewerUser } = await registerAgent(
+      app,
+      `viewer-${randomUUID()}@example.com`,
+    );
     const shared = await createOwnedProject(owner, "Shared");
     await owner.post(`/api/projects/${shared.id}/members`).send({
       email: editorUser.email,
       role: "EDITOR",
     });
+    await owner.post(`/api/projects/${shared.id}/members`).send({
+      email: viewerUser.email,
+      role: "VIEWER",
+    });
     await editor.post(`/api/projects/${shared.id}/tasks`).send({
       title: "Shared work",
+      dueDate: utcCalendarOffset(2),
     });
     const editorProjects = await editor.get("/api/projects");
     const editorDashboard = await editor.get("/api/dashboard");
+    const viewerDashboard = await viewer.get("/api/dashboard");
     const ownerDashboard = await owner.get("/api/dashboard");
 
     expect(editorProjects.body.projects).toEqual([
       expect.objectContaining({ id: shared.id }),
     ]);
     expect(editorDashboard.status).toBe(200);
-    assertDashboardBody(editorDashboard.body, {
-      projectCount: 0,
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [],
-    });
-    expect(ownerDashboard.body.projectCount).toBe(1);
-    expect(ownerDashboard.body.taskCount).toBe(1);
+    expect(editorDashboard.body.totalProjects).toBe(1);
+    expect(editorDashboard.body.openTasks).toBe(1);
+    expect(editorDashboard.body.teamMembers).toBe(3);
+    expect(editorDashboard.body.dueSoon).toBe(1);
+    expect(viewerDashboard.body.totalProjects).toBe(1);
+    expect(viewerDashboard.body.openTasks).toBe(1);
+    expect(ownerDashboard.body.totalProjects).toBe(1);
+    expect(ownerDashboard.body.openTasks).toBe(1);
   });
 
   it("omits a soft-deleted task from later dashboard counts", async () => {
@@ -1019,25 +1053,29 @@ describe("GET /api/dashboard", () => {
 
     expect(created.status).toBe(201);
     expect(before.status).toBe(200);
-    expect(before.body.taskCount).toBe(1);
-    expect(before.body.pendingCount).toBe(1);
-    expect(before.body.overdueCount).toBe(1);
+    expect(before.body.openTasks).toBe(1);
+    expect(before.body.dueSoon).toBe(0);
     expect(removed.status).toBe(204);
     expect(after.status).toBe(200);
     assertDashboardBody(after.body, {
-      projectCount: 1,
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [
+      totalProjects: 1,
+      openTasks: 0,
+      teamMembers: 1,
+      dueSoon: 0,
+      projectsPie: [],
+      tasksBars: [
         {
-          id: project.id,
-          name: project.name,
-          taskCount: 0,
-          pendingCount: 0,
-          completedCount: 0,
-          overdueCount: 0,
+          projectId: project.id,
+          projectName: project.name,
+          checklistCompletionPercent: 0,
+        },
+      ],
+      progress: [
+        {
+          projectId: project.id,
+          projectName: project.name,
+          completedTasks: 0,
+          totalTasks: 0,
         },
       ],
     });
@@ -1074,40 +1112,45 @@ describe("GET /api/dashboard", () => {
     expect(listedWithIgnoredFilter.body.projects).toHaveLength(1);
     expect(afterArchive.status).toBe(200);
     assertDashboardBody(afterArchive.body, {
-      projectCount: 1,
-      taskCount: 1,
-      pendingCount: 1,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [
+      totalProjects: 1,
+      openTasks: 1,
+      teamMembers: 1,
+      dueSoon: 0,
+      projectsPie: [{ statusKey: "TODO", label: "To do", count: 1 }],
+      tasksBars: [
         {
-          id: keep.id,
-          name: "Keep",
-          taskCount: 1,
-          pendingCount: 1,
-          completedCount: 0,
-          overdueCount: 0,
+          projectId: keep.id,
+          projectName: "Keep",
+          checklistCompletionPercent: 0,
+        },
+      ],
+      progress: [
+        {
+          projectId: keep.id,
+          projectName: "Keep",
+          completedTasks: 0,
+          totalTasks: 1,
         },
       ],
     });
     expect(unarchived.status).toBe(200);
     expect(afterUnarchive.status).toBe(200);
-    expect(afterUnarchive.body.projectCount).toBe(2);
-    expect(afterUnarchive.body.taskCount).toBe(2);
+    expect(afterUnarchive.body.totalProjects).toBe(2);
+    expect(afterUnarchive.body.openTasks).toBe(2);
     expect(
-      afterUnarchive.body.projects.some(
-        (project: { id: string }) => project.id === hide.id,
+      afterUnarchive.body.progress.some(
+        (row: { projectId: string }) => row.projectId === hide.id,
       ),
     ).toBe(true);
   });
 
-  it("reflects status and due date updates on a later read", async () => {
+  it("reflects status updates on a later read", async () => {
     const { app } = createTasksApp();
     const { agent } = await registerAgent(app);
     const project = await createOwnedProject(agent);
     const created = await agent.post(`/api/projects/${project.id}/tasks`).send({
       title: "Move me",
-      dueDate: utcCalendarOffset(-1),
+      dueDate: utcCalendarOffset(1),
     });
     const before = await agent.get("/api/dashboard");
     const patched = await agent.patch(`/api/tasks/${created.body.id}`).send({
@@ -1116,27 +1159,78 @@ describe("GET /api/dashboard", () => {
     const after = await agent.get("/api/dashboard");
 
     expect(created.status).toBe(201);
-    expect(before.body.pendingCount).toBe(1);
-    expect(before.body.overdueCount).toBe(1);
+    expect(before.body.openTasks).toBe(1);
+    expect(before.body.dueSoon).toBe(1);
     expect(patched.status).toBe(200);
     expect(after.status).toBe(200);
     assertDashboardBody(after.body, {
-      projectCount: 1,
-      taskCount: 1,
-      pendingCount: 0,
-      completedCount: 1,
-      overdueCount: 0,
-      projects: [
+      totalProjects: 1,
+      openTasks: 0,
+      teamMembers: 1,
+      dueSoon: 0,
+      projectsPie: [{ statusKey: "DONE", label: "Done", count: 1 }],
+      tasksBars: [
         {
-          id: project.id,
-          name: project.name,
-          taskCount: 1,
-          pendingCount: 0,
-          completedCount: 1,
-          overdueCount: 0,
+          projectId: project.id,
+          projectName: project.name,
+          checklistCompletionPercent: 0,
+        },
+      ],
+      progress: [
+        {
+          projectId: project.id,
+          projectName: project.name,
+          completedTasks: 1,
+          totalTasks: 1,
         },
       ],
     });
+  });
+
+  it("reports checklist completion percent on tasksBars", async () => {
+    const { app } = createTasksApp();
+    const { agent } = await registerAgent(app);
+    const project = await createOwnedProject(agent, "Checklist board");
+    const created = await agent.post(`/api/projects/${project.id}/tasks`).send({
+      title: "With list",
+    });
+    expect(created.status).toBe(201);
+    const checklist = await agent
+      .post(`/api/tasks/${created.body.id}/checklists`)
+      .send({ name: "Steps" });
+    expect(checklist.status).toBe(201);
+    const itemIds: string[] = [];
+    for (const text of ["A", "B", "C", "D"]) {
+      const item = await agent
+        .post(
+          `/api/tasks/${created.body.id}/checklists/${checklist.body.id}/items`,
+        )
+        .send({ text });
+      expect(item.status).toBe(201);
+      itemIds.push(item.body.id);
+    }
+    const checkA = await agent
+      .patch(
+        `/api/tasks/${created.body.id}/checklists/${checklist.body.id}/items/${itemIds[0]}`,
+      )
+      .send({ checked: true });
+    const checkB = await agent
+      .patch(
+        `/api/tasks/${created.body.id}/checklists/${checklist.body.id}/items/${itemIds[1]}`,
+      )
+      .send({ checked: true });
+    expect(checkA.status).toBe(200);
+    expect(checkB.status).toBe(200);
+
+    const response = await agent.get("/api/dashboard");
+    expect(response.status).toBe(200);
+    expect(response.body.tasksBars).toEqual([
+      {
+        projectId: project.id,
+        projectName: "Checklist board",
+        checklistCompletionPercent: 50,
+      },
+    ]);
   });
 
   it("rejects unknown query fields with 400 VALIDATION_ERROR", async () => {
@@ -1163,6 +1257,7 @@ describe("tasks HTTP API persistence", () => {
 
   if (hasDatabaseUrl) {
     process.env.ATTACHMENTS_ROOT ??= "./data/attachments-test";
+    process.env.PROJECT_COVERS_ROOT ??= "./data/project-covers-test";
     prisma = createPrismaClient(loadConfig().databaseUrl);
     const tasksRepository = new PrismaTasksRepository(prisma);
     app = createApp({
@@ -1171,6 +1266,8 @@ describe("tasks HTTP API persistence", () => {
       usersRepository: new PrismaUsersRepository(prisma),
       authRepository: new PrismaAuthRepository(prisma),
       projectsRepository: new PrismaProjectsRepository(prisma),
+      projectCoversRepository: new PrismaProjectCoversRepository(prisma),
+      projectCoverStorage: new InMemoryProjectCoverStorage(),
       tasksRepository,
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),

@@ -20,6 +20,7 @@ const activeProject = {
   description: "First project",
   createdAt: "2026-10-27T18:00:00.000Z",
   archivedAt: null as string | null,
+  cover: null as { id: string; contentType: string } | null,
 };
 
 const ownerMember = {
@@ -397,19 +398,24 @@ describe("App frontend shell", () => {
 
   it("opens /dashboard in the authenticated shell without replacing projects or composing task lists", async () => {
     const dashboard = {
-      projectCount: 1,
-      taskCount: 3,
-      pendingCount: 2,
-      completedCount: 1,
-      overdueCount: 1,
-      projects: [
+      totalProjects: 1,
+      openTasks: 2,
+      teamMembers: 3,
+      dueSoon: 1,
+      projectsPie: [{ statusKey: "TODO", label: "To do", count: 2 }],
+      tasksBars: [
         {
-          id: "proj-1",
-          name: "Alpha",
-          taskCount: 3,
-          pendingCount: 2,
-          completedCount: 1,
-          overdueCount: 1,
+          projectId: "proj-1",
+          projectName: "Alpha",
+          checklistCompletionPercent: 50,
+        },
+      ],
+      progress: [
+        {
+          projectId: "proj-1",
+          projectName: "Alpha",
+          completedTasks: 1,
+          totalTasks: 3,
         },
       ],
     };
@@ -434,6 +440,10 @@ describe("App frontend shell", () => {
     expect(await screen.findByRole("heading", { name: /^dashboard$/i })).toBeInTheDocument();
     expectCappedAuthenticatedShell();
     expect(expectProductSidebar()).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute(
+      "href",
+      "/projects",
+    );
     expect(screen.getByRole("link", { name: /^dashboard$/i })).toHaveAttribute(
       "href",
       "/dashboard",
@@ -442,13 +452,21 @@ describe("App frontend shell", () => {
       "href",
       "/projects",
     );
-    const totals = await screen.findByRole("list", { name: /owner totals/i });
-    expect(totals).toHaveTextContent(/projects 1/i);
-    expect(totals).toHaveTextContent(/tasks 3/i);
-    expect(totals).toHaveTextContent(/pending 2/i);
-    expect(totals).toHaveTextContent(/completed 1/i);
-    expect(totals).toHaveTextContent(/overdue 1/i);
-    expect(screen.getByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveClass(
+      "cursor-pointer",
+    );
+    expect(screen.getByRole("link", { name: /^dashboard$/i })).toHaveClass(
+      "cursor-pointer",
+    );
+    const kpis = await screen.findByRole("list", { name: /dashboard kpis/i });
+    expect(kpis).toHaveTextContent(/total projects/i);
+    expect(screen.getByLabelText(/total projects 1/i)).toHaveTextContent("1");
+    expect(screen.getByLabelText(/open tasks 2/i)).toHaveTextContent("2");
+    expect(screen.getByLabelText(/team members 3/i)).toHaveTextContent("3");
+    expect(screen.getByLabelText(/due soon 1/i)).toHaveTextContent("1");
+    expect(screen.getByTestId("dashboard-projects-pie-card")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-tasks-bars-card")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-progress-card")).toBeInTheDocument();
     expectNoProjectsHomeMain();
     expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
@@ -460,7 +478,7 @@ describe("App frontend shell", () => {
     expectAllCredentialsIncluded(fetchMock);
     expectNoSessionTokenStorage();
 
-    await user.click(screen.getByRole("link", { name: /^devtrack$/i }));
+    await user.click(screen.getByRole("link", { name: /^projects$/i }));
     expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
     expectProjectsHomeMain();
     expect(await screen.findByRole("list", { name: /project cards/i })).toBeInTheDocument();
@@ -470,6 +488,10 @@ describe("App frontend shell", () => {
     expect(await screen.findByRole("heading", { name: /^dashboard$/i })).toBeInTheDocument();
     expectNoProjectsHomeMain();
     expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: /^devtrack$/i }));
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
   });
 
   it("keeps the sidebar on projects, project detail, and profile destinations", async () => {
@@ -531,6 +553,10 @@ describe("App frontend shell", () => {
     expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
     expectNoProjectsHomeMain();
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute(
+      "href",
+      "/projects",
+    );
     expect(screen.getByRole("link", { name: /^dashboard$/i })).toHaveAttribute(
       "href",
       "/dashboard",
@@ -714,6 +740,10 @@ describe("App frontend shell", () => {
     expectProjectsHomeMain();
     expect(expectProductSidebar()).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^dashboard$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute(
+      "href",
+      "/projects",
+    );
     expect(screen.getByRole("link", { name: /^dashboard$/i })).toHaveAttribute(
       "href",
       "/dashboard",
@@ -802,6 +832,10 @@ describe("App frontend shell", () => {
     expectCappedAuthenticatedShell();
     expect(screen.getByRole("heading", { name: /^devtrack$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^devtrack$/i })).toHaveAttribute(
+      "href",
+      "/projects",
+    );
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute(
       "href",
       "/projects",
     );

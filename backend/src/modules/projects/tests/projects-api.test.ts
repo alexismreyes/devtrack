@@ -33,7 +33,10 @@ import { InMemoryLabelsRepository } from "../../tasks/tests/in-memory-labels-rep
 import { InMemoryStatusesRepository } from "../../tasks/tests/in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "../../tasks/tests/in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
+import { PrismaProjectCoversRepository } from "../repository/prisma-project-covers-repository";
 import { PrismaProjectsRepository } from "../repository/prisma-projects-repository";
+import { InMemoryProjectCoverStorage } from "./in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "./in-memory-project-covers-repository";
 import { InMemoryProjectsRepository } from "./in-memory-projects-repository";
 
 class FakeSystemRepository implements SystemRepository {
@@ -79,6 +82,8 @@ function createProjectsApp() {
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -155,6 +160,7 @@ function assertPublicProject(
     description: expected.description,
     createdAt: expect.any(String),
     archivedAt: expected.archived ? expect.any(String) : null,
+    cover: null,
   });
   const project = body as {
     id: string;
@@ -163,6 +169,7 @@ function assertPublicProject(
     description: string | null;
     createdAt: string;
     archivedAt: string | null;
+    cover: null;
   };
   expect(project.id).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
@@ -675,6 +682,7 @@ describe("projects HTTP API persistence", () => {
 
   if (hasDatabaseUrl) {
     process.env.ATTACHMENTS_ROOT ??= "./data/attachments-test";
+    process.env.PROJECT_COVERS_ROOT ??= "./data/project-covers-test";
     prisma = createPrismaClient(loadConfig().databaseUrl);
     app = createApp({
       corsOrigin: process.env.CORS_ORIGIN,
@@ -682,6 +690,8 @@ describe("projects HTTP API persistence", () => {
       usersRepository: new PrismaUsersRepository(prisma),
       authRepository: new PrismaAuthRepository(prisma),
       projectsRepository: new PrismaProjectsRepository(prisma),
+      projectCoversRepository: new PrismaProjectCoversRepository(prisma),
+      projectCoverStorage: new InMemoryProjectCoverStorage(),
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),

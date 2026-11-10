@@ -23,6 +23,24 @@ export class ProjectMembershipAccessAdapter
     return [...new Set([...ownedIds, ...memberActiveIds])];
   }
 
+  async listDistinctMemberUserIdsForProjectIds(
+    projectIds: string[],
+  ): Promise<string[]> {
+    if (projectIds.length === 0) {
+      return [];
+    }
+    const fromMembers =
+      await this.members.listDistinctUserIdsByProjectIds(projectIds);
+    const owners = new Set<string>(fromMembers);
+    for (const projectId of projectIds) {
+      const snapshot = await this.projects.findById(projectId);
+      if (snapshot !== null) {
+        owners.add(snapshot.ownerUserId);
+      }
+    }
+    return [...owners];
+  }
+
   async assertAuthorized(
     actorId: string,
     project: ProjectAuthorizationSnapshot,

@@ -5,7 +5,9 @@ import { createPrismaClient } from "./infrastructure/prisma/client";
 import { PrismaUnitOfWork } from "./infrastructure/prisma/prisma-unit-of-work";
 import { PrismaAuthRepository } from "./modules/auth/repository/prisma-auth-repository";
 import { PrismaProjectMembersRepository } from "./modules/project-members/repository/prisma-project-members-repository";
+import { PrismaProjectCoversRepository } from "./modules/projects/repository/prisma-project-covers-repository";
 import { PrismaProjectsRepository } from "./modules/projects/repository/prisma-projects-repository";
+import { FilesystemProjectCoverStorage } from "./modules/projects/storage/filesystem-project-cover-storage";
 import { PrismaSystemRepository } from "./modules/system/repository/prisma-system-repository";
 import { PrismaActivityRepository } from "./modules/tasks/repository/prisma-activity-repository";
 import { PrismaAttachmentsRepository } from "./modules/tasks/repository/prisma-attachments-repository";
@@ -26,6 +28,10 @@ const systemRepository = new PrismaSystemRepository(prisma);
 const usersRepository = new PrismaUsersRepository(prisma);
 const authRepository = new PrismaAuthRepository(prisma);
 const projectsRepository = new PrismaProjectsRepository(prisma);
+const projectCoversRepository = new PrismaProjectCoversRepository(prisma);
+const projectCoverStorage = new FilesystemProjectCoverStorage(
+  config.projectCoversRoot,
+);
 const tasksRepository = new PrismaTasksRepository(prisma);
 const commentsRepository = new PrismaCommentsRepository(prisma);
 const activityRepository = new PrismaActivityRepository(prisma);
@@ -44,6 +50,8 @@ const app = createApp({
   usersRepository,
   authRepository,
   projectsRepository,
+  projectCoversRepository,
+  projectCoverStorage,
   tasksRepository,
   commentsRepository,
   activityRepository,

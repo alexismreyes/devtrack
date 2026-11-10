@@ -11,6 +11,7 @@ import {
   TaskChecklistItem,
 } from "../domain/task-checklist";
 import type {
+  ChecklistItemTallyByTask,
   ChecklistsRepository,
   CreateChecklistInput,
   CreateChecklistItemInput,
@@ -334,6 +335,48 @@ export class PrismaChecklistsRepository implements ChecklistsRepository {
       await this.client().taskChecklistItem.delete({
         where: { id: itemId },
       });
+    } catch (err) {
+      rethrowMapped(err);
+    }
+  }
+
+  async countItemTalliesByTaskIds(
+    taskIds: string[],
+  ): Promise<ChecklistItemTallyByTask[]> {
+    if (taskIds.length === 0) {
+      return [];
+    }
+    try {
+      const rows = await this.client().taskChecklistItem.findMany({
+        where: {
+          checklist: { taskId: { in: taskIds } },
+        },
+        select: {
+          checked: true,
+          checklist: { select: { taskId: true } },
+        },
+      });
+      const byTask = new Map<
+        string,
+        { totalItems: number; checkedItems: number }
+      >();
+      for (const row of rows) {
+        const taskId = row.checklist.taskId;
+        const tally = byTask.get(taskId) ?? {
+          totalItems: 0,
+          checkedItems: 0,
+        };
+        tally.totalItems += 1;
+        if (row.checked) {
+          tally.checkedItems += 1;
+        }
+        byTask.set(taskId, tally);
+      }
+      return [...byTask.entries()].map(([taskId, tally]) => ({
+        taskId,
+        totalItems: tally.totalItems,
+        checkedItems: tally.checkedItems,
+      }));
     } catch (err) {
       rethrowMapped(err);
     }

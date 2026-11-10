@@ -67,4 +67,17 @@ describe("UiPaletteProvider", () => {
     expect(window.sessionStorage.length).toBe(0);
     expectNoSessionTokenStorage();
   });
+
+  it("persists Q-177 dark palette Obsidian under devtrack.uiPalette (AC-003)", async () => {
+    const user = userEvent.setup();
+    renderSelector();
+    await user.click(screen.getByRole("button", { name: /color palette/i }));
+    await user.click(
+      within(screen.getByTestId("ui-palette-picker")).getByRole("radio", {
+        name: /^Obsidian$/i,
+      }),
+    );
+    expect(document.documentElement.dataset.palette).toBe("Obsidian");
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Obsidian");
+  });
 });

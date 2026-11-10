@@ -17,6 +17,7 @@ export interface ProjectMembersRepository {
     userId: string,
   ): Promise<ProjectMember | null>;
   listProjectIdsByUserId(userId: string): Promise<string[]>;
+  listDistinctUserIdsByProjectIds(projectIds: string[]): Promise<string[]>;
   deleteByProjectAndUser(projectId: string, userId: string): Promise<void>;
   updateRole(
     projectId: string,

@@ -9,6 +9,7 @@ import {
   TaskChecklistItem,
 } from "../domain/task-checklist";
 import type {
+  ChecklistItemTallyByTask,
   ChecklistsRepository,
   CreateChecklistInput,
   CreateChecklistItemInput,
@@ -125,6 +126,45 @@ export class InMemoryChecklistsRepository implements ChecklistsRepository {
       throw new ChecklistItemNotFoundError();
     }
     this.itemsById.delete(itemId);
+  }
+
+  async countItemTalliesByTaskIds(
+    taskIds: string[],
+  ): Promise<ChecklistItemTallyByTask[]> {
+    if (taskIds.length === 0) {
+      return [];
+    }
+    const idSet = new Set(taskIds);
+    const byTask = new Map<
+      string,
+      { totalItems: number; checkedItems: number }
+    >();
+    for (const checklist of this.checklistsById.values()) {
+      if (!idSet.has(checklist.taskId)) {
+        continue;
+      }
+      const tally = byTask.get(checklist.taskId) ?? {
+        totalItems: 0,
+        checkedItems: 0,
+      };
+      for (const item of this.itemsById.values()) {
+        if (item.checklistId !== checklist.id) {
+          continue;
+        }
+        tally.totalItems += 1;
+        if (item.checked) {
+          tally.checkedItems += 1;
+        }
+      }
+      byTask.set(checklist.taskId, tally);
+    }
+    return [...byTask.entries()]
+      .filter(([, tally]) => tally.totalItems > 0)
+      .map(([taskId, tally]) => ({
+        taskId,
+        totalItems: tally.totalItems,
+        checkedItems: tally.checkedItems,
+      }));
   }
 
   private itemsForChecklist(checklistId: string): TaskChecklistItem[] {

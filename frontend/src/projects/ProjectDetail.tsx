@@ -344,6 +344,10 @@ export function ProjectDetail({
             onSubmit={(input) => {
               void onSave(input);
             }}
+            onCoverChange={(cover) => {
+              applyProject({ ...project, cover });
+            }}
+            onUnauthenticated={onUnauthenticated}
           />
           <MembersDialog
             open={membersOpen}

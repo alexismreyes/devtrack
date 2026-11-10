@@ -50,9 +50,10 @@ describe("Q-028/Q-029 frontend dependencies and copied UI", () => {
     expect(all["react-dnd"]).toBeUndefined();
     expect(all["vue-router"]).toBeUndefined();
     expect(all["next-themes"]).toBeUndefined();
-    expect(all.recharts).toBeUndefined();
+    expect(all.recharts).toBeDefined();
     expect(all["chart.js"]).toBeUndefined();
     expect(all["react-chartjs-2"]).toBeUndefined();
+    expect(all["@nivo/core"]).toBeUndefined();
     expect(all.nodemailer).toBeUndefined();
     expect(all.resend).toBeUndefined();
     expect(all["@sendgrid/mail"]).toBeUndefined();

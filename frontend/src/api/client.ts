@@ -20,9 +20,12 @@ import type {
   CreateProjectRequestDto,
   CreateStatusRequestDto,
   CreateTaskRequestDto,
-  DashboardProjectSummaryDto,
-  DashboardSummaryResponseDto,
+  DashboardOverviewResponseDto,
+  DashboardPieSliceDto,
+  DashboardProgressRowDto,
+  DashboardTasksBarDto,
   ErrorEnvelope,
+  FeedPaginationQueryDto,
   HealthResponseDto,
   LabelColor,
   LabelListResponseDto,
@@ -31,6 +34,7 @@ import type {
   MemberListResponseDto,
   ProbeListResponseDto,
   ProbeResponseDto,
+  ProjectCoverResponseDto,
   ProjectListResponseDto,
   ProjectMemberRole,
   PublicActivityDto,
@@ -41,6 +45,7 @@ import type {
   PublicCoverSummaryDto,
   PublicLabelDto,
   PublicMemberDto,
+  PublicProjectCoverSummaryDto,
   PublicProjectDto,
   PublicProjectStatusDto,
   PublicTaskDto,
@@ -65,6 +70,7 @@ import type {
   UpdateCommentRequestDto,
   UpdateLabelRequestDto,
   UpdateMemberRequestDto,
+  ChangePasswordRequestDto,
   UpdateProfileRequestDto,
   UpdateProjectRequestDto,
   UpdateStatusRequestDto,
@@ -170,6 +176,12 @@ export async function updateProfile(
   return requirePublicUser(body, "Unexpected profile response");
 }
 
+export async function changePassword(
+  input: ChangePasswordRequestDto,
+): Promise<void> {
+  await request("POST", "/api/auth/password", input);
+}
+
 export async function listProjects(): Promise<ProjectListResponseDto> {
   const body = await request("GET", "/api/projects");
   if (!isProjectListResponse(body)) {
@@ -208,6 +220,65 @@ export async function archiveProject(id: string): Promise<PublicProjectDto> {
 export async function unarchiveProject(id: string): Promise<PublicProjectDto> {
   const body = await request("POST", `/api/projects/${id}/unarchive`, {});
   return requirePublicProject(body, "Unexpected project response");
+}
+
+export async function uploadProjectCover(
+  projectId: string,
+  file: File,
+): Promise<ProjectCoverResponseDto> {
+  const form = new FormData();
+  form.append("file", file);
+  const body = await requestMultipart("PUT", projectCoverPath(projectId), form);
+  if (!isProjectCoverResponse(body)) {
+    throw new ApiError(500, "INTERNAL_ERROR", "Unexpected project cover response");
+  }
+  return {
+    cover: body.cover === null ? null : toPublicProjectCoverSummary(body.cover),
+  };
+}
+
+export async function clearProjectCover(projectId: string): Promise<void> {
+  await request("DELETE", projectCoverPath(projectId));
+}
+
+export function projectCoverContentUrl(projectId: string): string {
+  return `${getApiBaseUrl()}${projectCoverContentPath(projectId)}`;
+}
+
+export async function fetchProjectCoverContent(
+  projectId: string,
+): Promise<{ blob: Blob; contentType: string }> {
+  const url = projectCoverContentUrl(projectId);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "*/*" },
+    });
+  } catch (err) {
+    throw new ApiError(0, "INTERNAL_ERROR", toUserMessage(err));
+  }
+
+  if (!response.ok) {
+    const parsed = await parseJson(response);
+    if (isErrorEnvelope(parsed)) {
+      throw new ApiError(
+        response.status,
+        parsed.error.code,
+        parsed.error.message,
+      );
+    }
+    throw new ApiError(response.status, "INTERNAL_ERROR", "Request failed");
+  }
+
+  const contentTypeHeader = response.headers.get("Content-Type");
+  const contentType =
+    contentTypeHeader === null || contentTypeHeader.trim() === ""
+      ? "application/octet-stream"
+      : contentTypeHeader.split(";")[0]!.trim();
+  const blob = await response.blob();
+  return { blob, contentType };
 }
 
 export async function listTasks(
@@ -372,20 +443,23 @@ export async function reorderStatuses(
 
 export async function listTaskComments(
   taskId: string,
+  query: FeedPaginationQueryDto = {},
 ): Promise<CommentListResponseDto> {
-  const body = await request("GET", commentsCollectionPath(taskId));
+  const body = await request("GET", commentsCollectionPath(taskId, query));
   if (!isCommentListResponse(body)) {
     throw new ApiError(500, "INTERNAL_ERROR", "Unexpected comment list response");
   }
   return {
     comments: body.comments.map(toPublicComment),
+    nextCursor: body.nextCursor,
   };
 }
 
 export async function listTaskActivity(
   taskId: string,
+  query: FeedPaginationQueryDto = {},
 ): Promise<ActivityListResponseDto> {
-  const body = await request("GET", activityCollectionPath(taskId));
+  const body = await request("GET", activityCollectionPath(taskId, query));
   if (!isActivityListResponse(body)) {
     throw new ApiError(
       500,
@@ -395,6 +469,7 @@ export async function listTaskActivity(
   }
   return {
     activity: body.activity.map(toPublicActivity),
+    nextCursor: body.nextCursor,
   };
 }
 
@@ -612,12 +687,12 @@ export async function clearTaskCover(taskId: string): Promise<CoverResponseDto> 
   };
 }
 
-export async function getDashboard(): Promise<DashboardSummaryResponseDto> {
+export async function getDashboard(): Promise<DashboardOverviewResponseDto> {
   const body = await request("GET", "/api/dashboard");
-  if (!isDashboardSummaryResponse(body)) {
+  if (!isDashboardOverviewResponse(body)) {
     throw new ApiError(500, "INTERNAL_ERROR", "Unexpected dashboard response");
   }
-  return toDashboardSummary(body);
+  return toDashboardOverview(body);
 }
 
 export async function listMembers(
@@ -699,7 +774,7 @@ async function request(
 }
 
 async function requestMultipart(
-  method: "POST",
+  method: "POST" | "PUT",
   path: string,
   form: FormData,
 ): Promise<unknown> {
@@ -816,6 +891,7 @@ function toPublicProject(value: PublicProjectDto): PublicProjectDto {
     description: value.description,
     createdAt: value.createdAt,
     archivedAt: value.archivedAt,
+    cover: value.cover === null ? null : toPublicProjectCoverSummary(value.cover),
   };
 }
 
@@ -830,6 +906,7 @@ function isPublicProject(value: unknown): value is PublicProjectDto {
     description?: unknown;
     createdAt?: unknown;
     archivedAt?: unknown;
+    cover?: unknown;
   };
   return (
     typeof project.id === "string" &&
@@ -837,8 +914,43 @@ function isPublicProject(value: unknown): value is PublicProjectDto {
     typeof project.name === "string" &&
     (typeof project.description === "string" || project.description === null) &&
     typeof project.createdAt === "string" &&
-    (typeof project.archivedAt === "string" || project.archivedAt === null)
+    (typeof project.archivedAt === "string" || project.archivedAt === null) &&
+    (project.cover === null || isPublicProjectCoverSummary(project.cover))
   );
+}
+
+function toPublicProjectCoverSummary(
+  value: PublicProjectCoverSummaryDto,
+): PublicProjectCoverSummaryDto {
+  return {
+    id: value.id,
+    contentType: value.contentType,
+  };
+}
+
+function isPublicProjectCoverSummary(
+  value: unknown,
+): value is PublicProjectCoverSummaryDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const cover = value as {
+    id?: unknown;
+    contentType?: unknown;
+  };
+  return (
+    typeof cover.id === "string" && typeof cover.contentType === "string"
+  );
+}
+
+function isProjectCoverResponse(
+  value: unknown,
+): value is ProjectCoverResponseDto {
+  if (typeof value !== "object" || value === null || !("cover" in value)) {
+    return false;
+  }
+  const cover = (value as { cover: unknown }).cover;
+  return cover === null || isPublicProjectCoverSummary(cover);
 }
 
 function isProjectListResponse(value: unknown): value is ProjectListResponseDto {
@@ -1139,29 +1251,44 @@ function isTaskListResponse(value: unknown): value is TaskListResponseDto {
   return Array.isArray(tasks) && tasks.every(isPublicTask);
 }
 
-function toDashboardSummary(
-  value: DashboardSummaryResponseDto,
-): DashboardSummaryResponseDto {
+function toDashboardOverview(
+  value: DashboardOverviewResponseDto,
+): DashboardOverviewResponseDto {
   return {
-    projectCount: value.projectCount,
-    taskCount: value.taskCount,
-    pendingCount: value.pendingCount,
-    completedCount: value.completedCount,
-    overdueCount: value.overdueCount,
-    projects: value.projects.map(toDashboardProjectSummary),
+    totalProjects: value.totalProjects,
+    openTasks: value.openTasks,
+    teamMembers: value.teamMembers,
+    dueSoon: value.dueSoon,
+    projectsPie: value.projectsPie.map(toDashboardPieSlice),
+    tasksBars: value.tasksBars.map(toDashboardTasksBar),
+    progress: value.progress.map(toDashboardProgressRow),
   };
 }
 
-function toDashboardProjectSummary(
-  value: DashboardProjectSummaryDto,
-): DashboardProjectSummaryDto {
+function toDashboardPieSlice(value: DashboardPieSliceDto): DashboardPieSliceDto {
   return {
-    id: value.id,
-    name: value.name,
-    taskCount: value.taskCount,
-    pendingCount: value.pendingCount,
-    completedCount: value.completedCount,
-    overdueCount: value.overdueCount,
+    statusKey: value.statusKey,
+    label: value.label,
+    count: value.count,
+  };
+}
+
+function toDashboardTasksBar(value: DashboardTasksBarDto): DashboardTasksBarDto {
+  return {
+    projectId: value.projectId,
+    projectName: value.projectName,
+    checklistCompletionPercent: value.checklistCompletionPercent,
+  };
+}
+
+function toDashboardProgressRow(
+  value: DashboardProgressRowDto,
+): DashboardProgressRowDto {
+  return {
+    projectId: value.projectId,
+    projectName: value.projectName,
+    completedTasks: value.completedTasks,
+    totalTasks: value.totalTasks,
   };
 }
 
@@ -1169,52 +1296,84 @@ function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
-function isDashboardProjectSummary(
-  value: unknown,
-): value is DashboardProjectSummaryDto {
+function isDashboardPieSlice(value: unknown): value is DashboardPieSliceDto {
   if (typeof value !== "object" || value === null) {
     return false;
   }
-  const project = value as {
-    id?: unknown;
-    name?: unknown;
-    taskCount?: unknown;
-    pendingCount?: unknown;
-    completedCount?: unknown;
-    overdueCount?: unknown;
+  const slice = value as {
+    statusKey?: unknown;
+    label?: unknown;
+    count?: unknown;
   };
   return (
-    typeof project.id === "string" &&
-    typeof project.name === "string" &&
-    isNonNegativeInteger(project.taskCount) &&
-    isNonNegativeInteger(project.pendingCount) &&
-    isNonNegativeInteger(project.completedCount) &&
-    isNonNegativeInteger(project.overdueCount)
+    typeof slice.statusKey === "string" &&
+    typeof slice.label === "string" &&
+    isNonNegativeInteger(slice.count)
   );
 }
 
-function isDashboardSummaryResponse(
+function isDashboardTasksBar(value: unknown): value is DashboardTasksBarDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const bar = value as {
+    projectId?: unknown;
+    projectName?: unknown;
+    checklistCompletionPercent?: unknown;
+  };
+  return (
+    typeof bar.projectId === "string" &&
+    typeof bar.projectName === "string" &&
+    isNonNegativeInteger(bar.checklistCompletionPercent)
+  );
+}
+
+function isDashboardProgressRow(
   value: unknown,
-): value is DashboardSummaryResponseDto {
+): value is DashboardProgressRowDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const row = value as {
+    projectId?: unknown;
+    projectName?: unknown;
+    completedTasks?: unknown;
+    totalTasks?: unknown;
+  };
+  return (
+    typeof row.projectId === "string" &&
+    typeof row.projectName === "string" &&
+    isNonNegativeInteger(row.completedTasks) &&
+    isNonNegativeInteger(row.totalTasks)
+  );
+}
+
+function isDashboardOverviewResponse(
+  value: unknown,
+): value is DashboardOverviewResponseDto {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const summary = value as {
-    projectCount?: unknown;
-    taskCount?: unknown;
-    pendingCount?: unknown;
-    completedCount?: unknown;
-    overdueCount?: unknown;
-    projects?: unknown;
+    totalProjects?: unknown;
+    openTasks?: unknown;
+    teamMembers?: unknown;
+    dueSoon?: unknown;
+    projectsPie?: unknown;
+    tasksBars?: unknown;
+    progress?: unknown;
   };
   return (
-    isNonNegativeInteger(summary.projectCount) &&
-    isNonNegativeInteger(summary.taskCount) &&
-    isNonNegativeInteger(summary.pendingCount) &&
-    isNonNegativeInteger(summary.completedCount) &&
-    isNonNegativeInteger(summary.overdueCount) &&
-    Array.isArray(summary.projects) &&
-    summary.projects.every(isDashboardProjectSummary)
+    isNonNegativeInteger(summary.totalProjects) &&
+    isNonNegativeInteger(summary.openTasks) &&
+    isNonNegativeInteger(summary.teamMembers) &&
+    isNonNegativeInteger(summary.dueSoon) &&
+    Array.isArray(summary.projectsPie) &&
+    summary.projectsPie.every(isDashboardPieSlice) &&
+    Array.isArray(summary.tasksBars) &&
+    summary.tasksBars.every(isDashboardTasksBar) &&
+    Array.isArray(summary.progress) &&
+    summary.progress.every(isDashboardProgressRow)
   );
 }
 
@@ -1278,16 +1437,37 @@ function isMemberListResponse(value: unknown): value is MemberListResponseDto {
   return Array.isArray(members) && members.every(isPublicMember);
 }
 
-function commentsCollectionPath(taskId: string): string {
-  return `/api/tasks/${taskId}/comments`;
+function commentsCollectionPath(
+  taskId: string,
+  query: FeedPaginationQueryDto = {},
+): string {
+  return withFeedPaginationQuery(`/api/tasks/${taskId}/comments`, query);
 }
 
 function commentItemPath(taskId: string, commentId: string): string {
-  return `${commentsCollectionPath(taskId)}/${commentId}`;
+  return `/api/tasks/${taskId}/comments/${commentId}`;
 }
 
-function activityCollectionPath(taskId: string): string {
-  return `/api/tasks/${taskId}/activity`;
+function activityCollectionPath(
+  taskId: string,
+  query: FeedPaginationQueryDto = {},
+): string {
+  return withFeedPaginationQuery(`/api/tasks/${taskId}/activity`, query);
+}
+
+function withFeedPaginationQuery(
+  base: string,
+  query: FeedPaginationQueryDto,
+): string {
+  const params = new URLSearchParams();
+  if (query.cursor !== undefined) {
+    params.set("cursor", query.cursor);
+  }
+  if (query.limit !== undefined) {
+    params.set("limit", String(query.limit));
+  }
+  const encoded = params.toString();
+  return encoded === "" ? base : `${base}?${encoded}`;
 }
 
 function checklistsCollectionPath(taskId: string): string {
@@ -1341,6 +1521,14 @@ function attachmentContentPath(taskId: string, attachmentId: string): string {
 
 function taskCoverPath(taskId: string): string {
   return `/api/tasks/${taskId}/cover`;
+}
+
+function projectCoverPath(projectId: string): string {
+  return `/api/projects/${projectId}/cover`;
+}
+
+function projectCoverContentPath(projectId: string): string {
+  return `${projectCoverPath(projectId)}/content`;
 }
 
 function requirePublicAttachment(
@@ -1709,8 +1897,12 @@ function isActivityListResponse(
   if (typeof value !== "object" || value === null || !("activity" in value)) {
     return false;
   }
-  const activity = (value as { activity: unknown }).activity;
-  return Array.isArray(activity) && activity.every(isPublicActivity);
+  const record = value as { activity: unknown; nextCursor?: unknown };
+  return (
+    Array.isArray(record.activity) &&
+    record.activity.every(isPublicActivity) &&
+    isFeedNextCursor(record.nextCursor)
+  );
 }
 
 function requirePublicComment(
@@ -1762,6 +1954,14 @@ function isCommentListResponse(
   if (typeof value !== "object" || value === null || !("comments" in value)) {
     return false;
   }
-  const comments = (value as { comments: unknown }).comments;
-  return Array.isArray(comments) && comments.every(isPublicComment);
+  const record = value as { comments: unknown; nextCursor?: unknown };
+  return (
+    Array.isArray(record.comments) &&
+    record.comments.every(isPublicComment) &&
+    isFeedNextCursor(record.nextCursor)
+  );
+}
+
+function isFeedNextCursor(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
 }
