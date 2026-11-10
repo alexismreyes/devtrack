@@ -101,7 +101,7 @@ export function CreateProjectDialog({
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif"
               disabled={creating}
-              className="max-w-xs"
+              className="max-w-xs cursor-pointer file:cursor-pointer"
               aria-label="Optional project cover"
               onChange={(event) => {
                 const file = event.target.files?.[0];

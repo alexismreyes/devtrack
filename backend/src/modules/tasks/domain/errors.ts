@@ -110,6 +110,22 @@ export class InvalidTaskDueDateError extends Error {
   }
 }
 
+export class InvalidTaskReorderError extends Error {
+  constructor() {
+    super(
+      "Task reorder must include each live task id for the status exactly once",
+    );
+    this.name = "InvalidTaskReorderError";
+  }
+}
+
+export class InvalidTaskPositionError extends Error {
+  constructor() {
+    super("Task position must be a non-negative integer");
+    this.name = "InvalidTaskPositionError";
+  }
+}
+
 export class DatabaseUnavailableError extends Error {
   constructor() {
     super("Database is unavailable");

@@ -14,6 +14,7 @@ const task = {
   priority: "MEDIUM" as const,
   dueDate: "2026-11-01" as string | null,
   createdAt: "2026-10-29T18:00:00.000Z",
+  position: 0,
   labels: [] as Array<{ id: string; name: string; color: "RED" | "BLUE" }>,
   cover: null as { attachmentId: string; contentType: string } | null,
 };

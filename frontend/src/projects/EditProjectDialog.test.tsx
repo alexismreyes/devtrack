@@ -78,6 +78,7 @@ describe("EditProjectDialog cover controls", () => {
       within(dialog).getByTestId("project-cover-preview-empty"),
     ).toBeInTheDocument();
     const input = within(dialog).getByLabelText(/upload project cover/i);
+    expect(input).toHaveClass("cursor-pointer", "file:cursor-pointer");
     await user.upload(input, file);
 
     await waitFor(() => {
@@ -133,6 +134,25 @@ describe("EditProjectDialog cover controls", () => {
     await waitFor(() => {
       expect(onCoverChange).toHaveBeenCalledWith(null);
     });
+  });
+
+  it("keeps cover file input disabled while save or cover action is busy", () => {
+    render(
+      <EditProjectDialog
+        open
+        onOpenChange={vi.fn()}
+        project={baseProject}
+        saving
+        onSubmit={vi.fn()}
+        onCoverChange={vi.fn()}
+      />,
+    );
+
+    const input = within(screen.getByRole("dialog")).getByLabelText(
+      /upload project cover/i,
+    );
+    expect(input).toBeDisabled();
+    expect(input).toHaveClass("cursor-pointer", "file:cursor-pointer");
   });
 
   it("rejects disallowed client-side file types before upload", async () => {

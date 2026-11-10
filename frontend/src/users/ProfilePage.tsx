@@ -6,6 +6,7 @@ import {
   updateProfile,
 } from "../api/client";
 import type { PublicUserDto } from "../api/types";
+import { PasswordInput } from "../auth/PasswordInput";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -171,10 +172,10 @@ export function ProfilePage({
             </h3>
             <Label className="grid gap-2">
               Current password
-              <Input
-                type="password"
+              <PasswordInput
                 name="currentPassword"
                 autoComplete="current-password"
+                toggleNoun="current password"
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 disabled={passwordState.kind === "saving"}
@@ -182,10 +183,10 @@ export function ProfilePage({
             </Label>
             <Label className="grid gap-2">
               New password
-              <Input
-                type="password"
+              <PasswordInput
                 name="newPassword"
                 autoComplete="new-password"
+                toggleNoun="new password"
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
                 disabled={passwordState.kind === "saving"}
@@ -193,10 +194,10 @@ export function ProfilePage({
             </Label>
             <Label className="grid gap-2">
               Confirm new password
-              <Input
-                type="password"
+              <PasswordInput
                 name="confirmPassword"
                 autoComplete="new-password"
+                toggleNoun="confirm new password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 disabled={passwordState.kind === "saving"}

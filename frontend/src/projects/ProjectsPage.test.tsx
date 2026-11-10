@@ -144,9 +144,9 @@ describe("ProjectsPage", () => {
     expect(screen.queryByLabelText(/^name$/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /create project/i }));
     const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByLabelText(/optional project cover/i),
-    ).toBeInTheDocument();
+    const coverInput = within(dialog).getByLabelText(/optional project cover/i);
+    expect(coverInput).toBeInTheDocument();
+    expect(coverInput).toHaveClass("cursor-pointer", "file:cursor-pointer");
     await user.type(within(dialog).getByLabelText(/^name$/i), "Alpha");
     await user.type(within(dialog).getByLabelText(/^description$/i), "First project");
     await user.click(within(dialog).getByRole("button", { name: /create project/i }));
@@ -356,6 +356,7 @@ describe("ProjectsPage", () => {
     expect(
       within(dialog).getByRole("button", { name: /creating/i }),
     ).toBeDisabled();
+    expect(within(dialog).getByLabelText(/optional project cover/i)).toBeDisabled();
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 

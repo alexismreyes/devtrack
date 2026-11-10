@@ -4,7 +4,11 @@ import {
   MembershipProjectNotFoundError,
 } from "../../project-members/domain/errors";
 import { ImmediateUnitOfWork } from "../../projects/access/unit-of-work";
-import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
+import {
+  InvalidTaskReorderError,
+  TaskNotFoundError,
+  TaskParentArchivedError,
+} from "../domain/errors";
 import { calendarDateFromString, Task } from "../domain/task";
 import { TasksService } from "../service/tasks-service";
 import { FakeProjectAccessPort } from "./fake-project-access-port";
@@ -228,7 +232,7 @@ describe("TasksService", () => {
     expect(tasks.tasksById.get(created.id)?.deletedAt).not.toBeNull();
   });
 
-  it("lists only that project's non-deleted tasks, newest first, with optional filters", async () => {
+  it("lists only that project's non-deleted tasks by position ascending, with optional filters", async () => {
     const { service, tasks } = await createService();
     const older = Task.create(
       PROJECT_ID,
@@ -238,6 +242,7 @@ describe("TasksService", () => {
       "LOW",
       null,
       new Date("2026-10-28T12:00:00.000Z"),
+      0,
     );
     const newer = Task.create(
       PROJECT_ID,
@@ -247,6 +252,7 @@ describe("TasksService", () => {
       "HIGH",
       null,
       new Date("2026-10-29T12:00:00.000Z"),
+      0,
     );
     tasks.tasksById.set(older.id, older);
     tasks.tasksById.set(newer.id, newer);
@@ -270,6 +276,72 @@ describe("TasksService", () => {
     expect(filtered.map((task) => task.id)).toEqual([newer.id]);
     expect(emptyMatch).toEqual([]);
     expect(listed.some((task) => task.id === other.id)).toBe(false);
+  });
+
+  it("appends on create/status change, reorders without activity, and densifies after soft-delete", async () => {
+    const { service, activity, authorization } = await createService();
+    authorization.addMember(PROJECT_ID, VIEWER_ID, "VIEWER");
+    const first = await service.create(OWNER_ID, PROJECT_ID, {
+      title: "A",
+      description: null,
+      status: "TODO",
+      dueDate: null,
+    });
+    const second = await service.create(OWNER_ID, PROJECT_ID, {
+      title: "B",
+      description: null,
+      status: "TODO",
+      dueDate: null,
+    });
+    const third = await service.create(OWNER_ID, PROJECT_ID, {
+      title: "C",
+      description: null,
+      status: "TODO",
+      dueDate: null,
+    });
+
+    expect([first.position, second.position, third.position]).toEqual([0, 1, 2]);
+
+    const reordered = await service.reorderInStatus(OWNER_ID, PROJECT_ID, "TODO", [
+      third.id,
+      first.id,
+      second.id,
+    ]);
+    expect(reordered.map((task) => task.id)).toEqual([
+      third.id,
+      first.id,
+      second.id,
+    ]);
+    expect(reordered.map((task) => task.position)).toEqual([0, 1, 2]);
+    expect(
+      [...activity.eventsById.values()].some(
+        (event) => event.kind === "TASK_FIELDS_CHANGED",
+      ),
+    ).toBe(false);
+
+    const moved = await service.update(OWNER_ID, first.id, { status: "DONE" });
+    expect(moved.status).toBe("DONE");
+    expect(moved.position).toBe(0);
+
+    const todoLeft = await service.listByProject(OWNER_ID, PROJECT_ID, {
+      status: "TODO",
+    });
+    expect(todoLeft.map((task) => task.id)).toEqual([third.id, second.id]);
+    expect(todoLeft.map((task) => task.position)).toEqual([0, 1]);
+
+    await service.softDelete(OWNER_ID, third.id);
+    const afterDelete = await service.listByProject(OWNER_ID, PROJECT_ID, {
+      status: "TODO",
+    });
+    expect(afterDelete.map((task) => task.id)).toEqual([second.id]);
+    expect(afterDelete[0]!.position).toBe(0);
+
+    await expect(
+      service.reorderInStatus(VIEWER_ID, PROJECT_ID, "TODO", [second.id]),
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
+    await expect(
+      service.reorderInStatus(OWNER_ID, PROJECT_ID, "TODO", [first.id]),
+    ).rejects.toBeInstanceOf(InvalidTaskReorderError);
   });
 
   it("updates allowed fields without changing identity or projectId", async () => {

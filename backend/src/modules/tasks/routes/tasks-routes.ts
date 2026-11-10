@@ -6,6 +6,7 @@ import { validateDashboardQuery } from "../validators/dashboard-query";
 import { validateEmptyTaskActionBody } from "../validators/empty-body";
 import { validateListTasksQuery } from "../validators/list-tasks-query";
 import { validateTaskProjectIdParam } from "../validators/project-id";
+import { validateReorderTasksBody } from "../validators/reorder-tasks";
 import { validateTaskIdParam } from "../validators/task-id";
 import { validateUpdateTaskBody } from "../validators/update-task";
 
@@ -41,6 +42,16 @@ export function createTasksRouter(
     validateListTasksQuery,
     asyncHandler(async (req, res) => {
       await controller.list(req, res);
+    }),
+  );
+
+  router.put(
+    "/api/projects/:projectId/tasks/reorder",
+    requireAuth,
+    validateTaskProjectIdParam,
+    validateReorderTasksBody,
+    asyncHandler(async (req, res) => {
+      await controller.reorder(req, res);
     }),
   );
 

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { expectNoSessionTokenStorage } from "../test/storage";
 import { UiPaletteProvider } from "./UiPaletteProvider";
 import { UiPaletteSelector } from "./UiPaletteSelector";
-import { UI_PALETTE_IDS, UI_PALETTE_STORAGE_KEY } from "./uiPalettes";
+import { UI_PALETTES, UI_PALETTE_STORAGE_KEY } from "./uiPalettes";
 
 afterEach(() => {
   window.localStorage.clear();
@@ -54,11 +54,13 @@ describe("UiPaletteProvider", () => {
     expect(trigger).toHaveAccessibleName(/color palette/i);
     await user.click(trigger);
     const picker = screen.getByTestId("ui-palette-picker");
-    for (const id of UI_PALETTE_IDS) {
-      const option = within(picker).getByRole("radio", { name: new RegExp(`^${id}`) });
+    for (const item of UI_PALETTES) {
+      const option = within(picker).getByRole("radio", {
+        name: new RegExp(`^${item.label}(, selected)?$`),
+      });
       expect(option).toBeInTheDocument();
       expect(
-        option.querySelector(`.ui-palette-preview[data-preview-palette="${id}"]`),
+        option.querySelector(`.ui-palette-preview[data-preview-palette="${item.id}"]`),
       ).not.toBeNull();
     }
     await user.click(within(picker).getByRole("radio", { name: /^Ocean$/i }));
@@ -79,5 +81,21 @@ describe("UiPaletteProvider", () => {
     );
     expect(document.documentElement.dataset.palette).toBe("Obsidian");
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Obsidian");
+  });
+
+  it("persists 033 Violet Night under catalog id VioletNight (AC-001/AC-004)", async () => {
+    const user = userEvent.setup();
+    renderSelector();
+    await user.click(screen.getByRole("button", { name: /color palette/i }));
+    await user.click(
+      within(screen.getByTestId("ui-palette-picker")).getByRole("radio", {
+        name: /^Violet Night$/i,
+      }),
+    );
+    expect(document.documentElement.dataset.palette).toBe("VioletNight");
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("VioletNight");
+    expect(screen.getByRole("button", { name: /color palette/i })).toHaveTextContent(
+      "Violet Night",
+    );
   });
 });

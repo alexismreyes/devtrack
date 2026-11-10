@@ -57,6 +57,7 @@ export type TaskView = {
   dueDate: Date | null;
   createdAt: Date;
   deletedAt: Date | null;
+  position: number;
   labels: TaskLabelSummary[];
   cover: TaskCoverSummary | null;
 };
@@ -213,6 +214,30 @@ export class TasksService {
     });
   }
 
+  /**
+   * Full-list within-column reorder. No activity emit for position-only changes (Q-199).
+   */
+  async reorderInStatus(
+    actorId: string,
+    projectId: string,
+    status: string,
+    orderedIds: string[],
+  ): Promise<TaskView[]> {
+    const snapshot = await this.authorization.requireTaskWrite(
+      actorId,
+      projectId,
+    );
+    this.assertParentWritable(snapshot.archivedAt);
+    const catalog = await this.statuses.listByProjectId(projectId);
+    const resolved = assertStatusKeyInCatalog(catalog, projectId, status);
+    const reordered = await this.tasks.reorderInStatus(
+      projectId,
+      resolved.key,
+      orderedIds,
+    );
+    return this.toViews(reordered);
+  }
+
   private async requireLiveTask(taskId: string): Promise<Task> {
     const task = await this.tasks.findById(taskId);
     if (task === null || task.deletedAt !== null) {
@@ -285,6 +310,7 @@ export class TasksService {
       dueDate: task.dueDate,
       createdAt: task.createdAt,
       deletedAt: task.deletedAt,
+      position: task.position,
       labels: labels.map((label) => ({
         id: label.id,
         name: label.name,

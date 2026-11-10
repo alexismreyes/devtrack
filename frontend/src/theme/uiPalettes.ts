@@ -9,6 +9,9 @@ export const UI_PALETTE_IDS = [
   "Obsidian",
   "Noir",
   "Dusk",
+  "VioletNight",
+  "CyanEdge",
+  "Graphite",
   "Aurora",
   "Ember",
   "Lagoon",
@@ -26,7 +29,8 @@ export type UiPaletteKind = "solid" | "gradient";
 
 export type UiPaletteDefinition = {
   id: UiPaletteId;
-  label: UiPaletteId;
+  /** Display label; may differ from id (033 Q-206). */
+  label: string;
   kind: UiPaletteKind;
 };
 
@@ -39,6 +43,9 @@ export const UI_PALETTES: readonly UiPaletteDefinition[] = [
   { id: "Obsidian", label: "Obsidian", kind: "solid" },
   { id: "Noir", label: "Noir", kind: "solid" },
   { id: "Dusk", label: "Dusk", kind: "solid" },
+  { id: "VioletNight", label: "Violet Night", kind: "solid" },
+  { id: "CyanEdge", label: "Cyan Edge", kind: "solid" },
+  { id: "Graphite", label: "Graphite", kind: "solid" },
   { id: "Aurora", label: "Aurora", kind: "gradient" },
   { id: "Ember", label: "Ember", kind: "gradient" },
   { id: "Lagoon", label: "Lagoon", kind: "gradient" },

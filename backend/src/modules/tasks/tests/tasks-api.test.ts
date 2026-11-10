@@ -176,17 +176,21 @@ function assertPublicTask(
     priority: expected.priority,
     dueDate: expected.dueDate,
     createdAt: expect.any(String),
+    position: expect.any(Number),
     labels: [],
     cover: null,
   });
   const task = body as {
     id: string;
     createdAt: string;
+    position: number;
   };
   expect(task.id).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   );
   expect(Number.isNaN(Date.parse(task.createdAt))).toBe(false);
+  expect(Number.isInteger(task.position)).toBe(true);
+  expect(task.position).toBeGreaterThanOrEqual(0);
   expect(body).not.toHaveProperty("deletedAt");
 }
 
@@ -471,9 +475,14 @@ describe("tasks HTTP API", () => {
       expect.objectContaining({ id: created.body.id }),
     ]);
     expect(found.status).toBe(200);
+    const viewerReorder = await viewer
+      .put(`/api/projects/${project.id}/tasks/reorder`)
+      .send({ status: "IN_PROGRESS", taskIds: [created.body.id] });
+
     expect(viewerCreate.status).toBe(403);
     expect(viewerPatch.status).toBe(403);
     expect(viewerDelete.status).toBe(403);
+    expect(viewerReorder.status).toBe(403);
     assertNoSecrets(created.body);
   });
 
@@ -1313,13 +1322,18 @@ describe("tasks HTTP API persistence", () => {
       expect(first.body.projectId).toBe(project.id);
       expect(first.body.status).toBe("TODO");
       expect(first.body.priority).toBe("MEDIUM");
+      expect(first.body.position).toBe(0);
       expect(second.status).toBe(201);
+      expect(second.body.position).toBe(1);
       expect(removed.status).toBe(204);
       expect(
         listed.body.tasks.some(
           (task: { id: string }) => task.id === first.body.id,
         ),
       ).toBe(false);
+      expect(listed.body.tasks).toEqual([
+        expect.objectContaining({ id: second.body.id, position: 0 }),
+      ]);
       expect(found.status).toBe(404);
       expect(row).not.toBeNull();
       expect(row?.deletedAt).not.toBeNull();
@@ -1327,4 +1341,79 @@ describe("tasks HTTP API persistence", () => {
       assertNoSecrets(first.body);
     },
   );
+});
+
+describe("tasks within-column reorder HTTP API (031)", () => {
+  it("reorders live tasks in a status, lists by position, appends create/status, and stays silent on activity", async () => {
+    const { app } = createTasksApp();
+    const { agent } = await registerAgent(app);
+    const project = await createOwnedProject(agent);
+    const path = `/api/projects/${project.id}/tasks`;
+
+    const first = await agent.post(path).send({ title: "First", status: "TODO" });
+    const second = await agent
+      .post(path)
+      .send({ title: "Second", status: "TODO" });
+    const third = await agent.post(path).send({ title: "Third", status: "TODO" });
+
+    expect(first.body.position).toBe(0);
+    expect(second.body.position).toBe(1);
+    expect(third.body.position).toBe(2);
+
+    const reordered = await agent.put(`${path}/reorder`).send({
+      status: "TODO",
+      taskIds: [third.body.id, first.body.id, second.body.id],
+    });
+    expect(reordered.status).toBe(200);
+    expect(reordered.body.tasks.map((t: { id: string }) => t.id)).toEqual([
+      third.body.id,
+      first.body.id,
+      second.body.id,
+    ]);
+    expect(
+      reordered.body.tasks.map((t: { position: number }) => t.position),
+    ).toEqual([0, 1, 2]);
+
+    const listed = await agent.get(path);
+    expect(listed.body.tasks.map((t: { id: string }) => t.id)).toEqual([
+      third.body.id,
+      first.body.id,
+      second.body.id,
+    ]);
+
+    const activity = await agent.get(`/api/tasks/${first.body.id}/activity`);
+    expect(activity.status).toBe(200);
+    expect(
+      activity.body.activity.some(
+        (event: { kind: string }) => event.kind === "TASK_FIELDS_CHANGED",
+      ),
+    ).toBe(false);
+
+    const incomplete = await agent.put(`${path}/reorder`).send({
+      status: "TODO",
+      taskIds: [first.body.id],
+    });
+    expect(incomplete.status).toBe(400);
+
+    const moved = await agent.patch(`/api/tasks/${first.body.id}`).send({
+      status: "DONE",
+    });
+    expect(moved.status).toBe(200);
+    expect(moved.body.status).toBe("DONE");
+    expect(moved.body.position).toBe(0);
+
+    const targetSecond = await agent
+      .post(path)
+      .send({ title: "Done two", status: "DONE" });
+    expect(targetSecond.body.position).toBe(1);
+
+    const todoAfterMove = await agent.get(`${path}?status=TODO`);
+    expect(todoAfterMove.body.tasks.map((t: { id: string }) => t.id)).toEqual([
+      third.body.id,
+      second.body.id,
+    ]);
+    expect(
+      todoAfterMove.body.tasks.map((t: { position: number }) => t.position),
+    ).toEqual([0, 1]);
+  });
 });

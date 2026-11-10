@@ -2,7 +2,11 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PublicTaskDto } from "../api/types";
-import { keyboardDropOnColumn, stubKanbanRects } from "../test/kanban-dnd";
+import {
+  keyboardDropOnColumn,
+  keyboardReorderCard,
+  stubKanbanRects,
+} from "../test/kanban-dnd";
 import { expectNoSessionTokenStorage } from "../test/storage";
 import { DEFAULT_PROJECT_STATUSES } from "../test/statuses";
 import { TasksPanel } from "./TasksPanel";
@@ -16,6 +20,7 @@ const task = {
   priority: "MEDIUM" as const,
   dueDate: "2026-11-01" as string | null,
   createdAt: "2026-10-29T18:00:00.000Z",
+  position: 0,
   labels: [] as Array<{ id: string; name: string; color: "RED" | "BLUE" }>,
   cover: null as { attachmentId: string; contentType: string } | null,
 };
@@ -671,20 +676,22 @@ describe("TasksPanel", () => {
     expect(screen.queryByRole("button", { name: /write tests/i })).not.toBeInTheDocument();
   });
 
-  it("keeps within-column order as the listed newest-first order", async () => {
-    const newerTodo = {
+  it("keeps within-column order by position ascending (AC-007)", async () => {
+    const firstTodo = {
       ...task,
-      id: "task-newer",
-      title: "Newer todo",
-      createdAt: "2026-10-30T18:00:00.000Z",
-    };
-    const olderTodo = {
-      ...task,
-      id: "task-older",
-      title: "Older todo",
+      id: "task-first",
+      title: "First todo",
+      position: 0,
       createdAt: "2026-10-28T18:00:00.000Z",
     };
-    mockFetch(() => jsonResponse(200, { tasks: [newerTodo, olderTodo] }));
+    const secondTodo = {
+      ...task,
+      id: "task-second",
+      title: "Second todo",
+      position: 1,
+      createdAt: "2026-10-30T18:00:00.000Z",
+    };
+    mockFetch(() => jsonResponse(200, { tasks: [secondTodo, firstTodo] }));
 
     render(
       <TasksPanel
@@ -694,11 +701,11 @@ describe("TasksPanel", () => {
       />,
     );
 
-    expect(await screen.findByRole("button", { name: /newer todo/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /first todo/i })).toBeInTheDocument();
     const cards = within(taskCards("TODO")).getAllByRole("button");
     expect(cards.map((card) => card.getAttribute("aria-label"))).toEqual([
-      "Newer todo",
-      "Older todo",
+      "First todo",
+      "Second todo",
     ]);
   });
 
@@ -918,12 +925,32 @@ describe("TasksPanel", () => {
     expectNoSessionTokenStorage();
   });
 
-  it("does not PATCH or send rank on a same-column drop", async () => {
+  it("persists within-column reorder with PUT tasks/reorder (AC-001 / AC-002)", async () => {
     stubKanbanRects();
+    const second = {
+      ...task,
+      id: "task-2",
+      title: "Second card",
+      position: 1,
+    };
+    let listed: PublicTaskDto[] = [{ ...task }, second];
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
+      if (
+        url === "http://localhost:3000/api/projects/proj-1/tasks/reorder" &&
+        init?.method === "PUT"
+      ) {
+        expect(init.body).toBe(
+          JSON.stringify({ status: "TODO", taskIds: ["task-2", "task-1"] }),
+        );
+        listed = [
+          { ...second, position: 0 },
+          { ...task, position: 1 },
+        ];
+        return jsonResponse(200, { tasks: listed });
+      }
       if (isTaskListUrl(url)) {
-        return jsonResponse(200, { tasks: [task] });
+        return jsonResponse(200, { tasks: listed });
       }
       const common = respondCommonReads(url, init);
       if (common !== null) {
@@ -945,17 +972,135 @@ describe("TasksPanel", () => {
     expect(await screen.findByRole("button", { name: /write tests/i })).toBeInTheDocument();
     const card = document.querySelector('[data-kanban-card="task-1"]');
     expect(card).toBeInstanceOf(HTMLElement);
-    await keyboardDropOnColumn(card as HTMLElement, "TODO", "TODO");
+    await keyboardReorderCard(card as HTMLElement, 1);
 
+    await waitFor(() => {
+      const cards = within(taskCards("TODO")).getAllByRole("button");
+      expect(cards.map((item) => item.getAttribute("aria-label"))).toEqual([
+        "Second card",
+        "Write tests",
+      ]);
+    });
     expect(
-      within(columnSection("TODO")).getByRole("button", { name: /write tests/i }),
-    ).toBeInTheDocument();
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url === "http://localhost:3000/api/projects/proj-1/tasks/reorder" &&
+          init?.method === "PUT" &&
+          init.body ===
+            JSON.stringify({ status: "TODO", taskIds: ["task-2", "task-1"] }) &&
+          init.credentials === "include",
+      ),
+    ).toBe(true);
     expect(
       fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH"),
     ).toBe(false);
+    expectNoSessionTokenStorage();
+  });
+
+  it("does not offer within-column reorder for VIEWER boards (AC-005)", async () => {
+    mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isTaskListUrl(url)) {
+        return jsonResponse(200, {
+          tasks: [
+            { ...task },
+            { ...task, id: "task-2", title: "Second", position: 1 },
+          ],
+        });
+      }
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
+      }
+      return jsonResponse(500, {
+        error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
+      });
+    });
+
+    render(
+      <TasksPanel
+        projectId="proj-1"
+        archived={false}
+        canWriteTasks={false}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /write tests/i })).toBeInTheDocument();
+    expect(document.querySelector("[data-kanban-card-sortable]")).toBeNull();
+    expect(document.querySelector("[data-kanban-column-handle]")).toBeNull();
+  });
+
+  it("omits within-column reorder under priority or label filters (full-set guard)", async () => {
+    const second = {
+      ...task,
+      id: "task-2",
+      title: "Second card",
+      position: 1,
+      priority: "HIGH" as const,
+    };
+    const labeled = {
+      ...task,
+      labels: [{ id: "label-1", name: "Bug", color: "RED" as const }],
+    };
+    mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isLabelsListUrl(url)) {
+        return jsonResponse(200, { labels: [bugLabel] });
+      }
+      if (typeof url === "string" && url.includes("priority=MEDIUM")) {
+        return jsonResponse(200, { tasks: [{ ...task }] });
+      }
+      if (typeof url === "string" && url.includes("labelId=label-1")) {
+        return jsonResponse(200, { tasks: [labeled] });
+      }
+      if (isTaskListUrl(url)) {
+        return jsonResponse(200, { tasks: [{ ...task }, second] });
+      }
+      const common = respondCommonReads(url, init);
+      if (common !== null) {
+        return common;
+      }
+      return jsonResponse(500, {
+        error: { code: "INTERNAL_ERROR", message: "Unexpected request" },
+      });
+    });
+    const user = userEvent.setup();
+
+    render(
+      <TasksPanel
+        projectId="proj-1"
+        archived={false}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /write tests/i })).toBeInTheDocument();
     expect(
-      JSON.stringify(fetchMock.mock.calls),
-    ).not.toMatch(/"rank"|"position"/);
+      document.querySelector('[data-kanban-card-sortable="task-1"]'),
+    ).not.toBeNull();
+
+    await user.selectOptions(screen.getByLabelText(/filter by priority/i), "MEDIUM");
+    expect(
+      await screen.findByRole("button", { name: /write tests/i }),
+    ).toBeInTheDocument();
+    expect(document.querySelector("[data-kanban-card-sortable]")).toBeNull();
+    expect(document.querySelector("[data-kanban-column-handle]")).not.toBeNull();
+
+    await user.selectOptions(screen.getByLabelText(/filter by priority/i), "");
+    expect(
+      await screen.findByRole("button", { name: /second card/i }),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector('[data-kanban-card-sortable="task-1"]'),
+    ).not.toBeNull();
+
+    await user.selectOptions(screen.getByLabelText(/filter by label/i), "label-1");
+    expect(
+      await screen.findByRole("button", { name: /write tests/i }),
+    ).toBeInTheDocument();
+    expect(document.querySelector("[data-kanban-card-sortable]")).toBeNull();
   });
 
   it("keeps the persisted column when a drop PATCH returns archived 409", async () => {

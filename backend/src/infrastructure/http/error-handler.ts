@@ -135,6 +135,8 @@ export function errorHandler(
       case "InvalidStatusColorError":
       case "InvalidStatusKeyError":
       case "InvalidStatusReorderError":
+      case "InvalidTaskReorderError":
+      case "InvalidTaskPositionError":
       case "InvalidChecklistNameError":
       case "InvalidChecklistItemTextError":
       case "InvalidAttachmentFilenameError":

@@ -28,6 +28,9 @@ describe("Q-041 UI palette catalog", () => {
       "Obsidian",
       "Noir",
       "Dusk",
+      "VioletNight",
+      "CyanEdge",
+      "Graphite",
       "Aurora",
       "Ember",
       "Lagoon",
@@ -46,6 +49,9 @@ describe("Q-041 UI palette catalog", () => {
       "Obsidian",
       "Noir",
       "Dusk",
+      "VioletNight",
+      "CyanEdge",
+      "Graphite",
     ]);
     expect(UI_PALETTES.filter((item) => item.kind === "gradient").map((item) => item.id)).toEqual([
       "Aurora",
@@ -65,6 +71,27 @@ describe("Q-041 UI palette catalog", () => {
     expect(isUiPaletteId("Obsidian")).toBe(true);
     expect(isUiPaletteId("Noir")).toBe(true);
     expect(isUiPaletteId("Dusk")).toBe(true);
+  });
+
+  it("includes Q-205/Q-206 dark palette ids with spaced display labels (033)", () => {
+    expect(UI_PALETTE_IDS).toEqual(
+      expect.arrayContaining(["VioletNight", "CyanEdge", "Graphite"]),
+    );
+    expect(UI_PALETTES.find((item) => item.id === "VioletNight")).toEqual({
+      id: "VioletNight",
+      label: "Violet Night",
+      kind: "solid",
+    });
+    expect(UI_PALETTES.find((item) => item.id === "CyanEdge")).toEqual({
+      id: "CyanEdge",
+      label: "Cyan Edge",
+      kind: "solid",
+    });
+    expect(UI_PALETTES.find((item) => item.id === "Graphite")).toEqual({
+      id: "Graphite",
+      label: "Graphite",
+      kind: "solid",
+    });
   });
 
   it("treats missing or unknown stored ids as Forest without writing", () => {

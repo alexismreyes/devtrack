@@ -156,6 +156,53 @@ describe("ProfilePage", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("toggles change-password visibility independently without clearing values", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ProfilePage
+        user={currentUser}
+        onUpdated={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const current = screen.getByLabelText(/^current password$/i);
+    const next = screen.getByLabelText(/^new password$/i);
+    const confirm = screen.getByLabelText(/^confirm new password$/i);
+
+    await user.type(current, "secret-pass");
+    await user.type(next, "new-secret");
+    await user.type(confirm, "new-secret");
+
+    await user.click(
+      screen.getByRole("button", { name: /^show current password$/i }),
+    );
+    expect(current).toHaveAttribute("type", "text");
+    expect(current).toHaveValue("secret-pass");
+    expect(next).toHaveAttribute("type", "password");
+    expect(confirm).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: /^show new password$/i }));
+    expect(next).toHaveAttribute("type", "text");
+    expect(next).toHaveValue("new-secret");
+    expect(confirm).toHaveAttribute("type", "password");
+
+    await user.click(
+      screen.getByRole("button", { name: /^show confirm new password$/i }),
+    );
+    expect(confirm).toHaveAttribute("type", "text");
+    expect(confirm).toHaveValue("new-secret");
+
+    await user.click(
+      screen.getByRole("button", { name: /^hide current password$/i }),
+    );
+    expect(current).toHaveAttribute("type", "password");
+    expect(current).toHaveValue("secret-pass");
+    expect(next).toHaveAttribute("type", "text");
+    expect(confirm).toHaveAttribute("type", "text");
+  });
+
   it("validates confirm password locally without calling the API", async () => {
     const fetchMock = mockFetch(() => {
       throw new Error("change password should not be requested");

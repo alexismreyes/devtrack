@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
   InvalidTaskDueDateError,
+  InvalidTaskPositionError,
   InvalidTaskPriorityError,
+  InvalidTaskReorderError,
   InvalidTaskStatusError,
   InvalidTaskTitleError,
 } from "./errors";
@@ -100,6 +102,69 @@ function normalizeDueDate(dueDate: Date | null | undefined): Date | null {
   );
 }
 
+function normalizePosition(position: number): number {
+  if (!Number.isInteger(position) || position < 0) {
+    throw new InvalidTaskPositionError();
+  }
+  return position;
+}
+
+export function sortTasksByPositionAsc(tasks: readonly Task[]): Task[] {
+  return [...tasks].sort(
+    (a, b) => a.position - b.position || a.id.localeCompare(b.id),
+  );
+}
+
+/** Append position for a live column: max(position)+1, or 0 when empty. */
+export function nextTaskPosition(tasks: readonly Task[]): number {
+  if (tasks.length === 0) {
+    return 0;
+  }
+  return Math.max(...tasks.map((task) => task.position)) + 1;
+}
+
+/** Rewrite dense 0..n-1 preserving relative order (position, then id). */
+export function densifyLiveTasks(tasks: readonly Task[]): Task[] {
+  return sortTasksByPositionAsc(tasks).map((task, position) =>
+    task.withPosition(position),
+  );
+}
+
+export function assertReorderTaskIds(
+  tasks: readonly Task[],
+  orderedIds: readonly string[],
+): void {
+  if (orderedIds.length !== tasks.length) {
+    throw new InvalidTaskReorderError();
+  }
+  const expected = new Set(tasks.map((task) => task.id));
+  const seen = new Set<string>();
+  for (const id of orderedIds) {
+    if (!expected.has(id) || seen.has(id)) {
+      throw new InvalidTaskReorderError();
+    }
+    seen.add(id);
+  }
+  if (seen.size !== expected.size) {
+    throw new InvalidTaskReorderError();
+  }
+}
+
+export function applyTaskReorder(
+  tasks: readonly Task[],
+  orderedIds: readonly string[],
+): Task[] {
+  assertReorderTaskIds(tasks, orderedIds);
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  return orderedIds.map((id, position) => {
+    const existing = byId.get(id);
+    if (existing === undefined) {
+      throw new InvalidTaskReorderError();
+    }
+    return existing.withPosition(position);
+  });
+}
+
 export class Task {
   readonly id: string;
   readonly projectId: string;
@@ -110,6 +175,8 @@ export class Task {
   readonly dueDate: Date | null;
   readonly createdAt: Date;
   readonly deletedAt: Date | null;
+  /** Dense rank within live (projectId, status); soft-deleted excluded from live unique. */
+  readonly position: number;
   /** Nullable pointer to an image attachment on this task (Q-138). */
   readonly coverAttachmentId: string | null;
 
@@ -123,6 +190,7 @@ export class Task {
     dueDate: Date | null,
     createdAt: Date,
     deletedAt: Date | null,
+    position: number,
     coverAttachmentId: string | null,
   ) {
     if (!UUID_PATTERN.test(id)) {
@@ -154,6 +222,7 @@ export class Task {
     this.createdAt = new Date(createdAt.getTime());
     this.deletedAt =
       deletedAt === null ? null : new Date(deletedAt.getTime());
+    this.position = normalizePosition(position);
     this.coverAttachmentId = coverAttachmentId;
     Object.freeze(this);
   }
@@ -166,6 +235,7 @@ export class Task {
     priority: TaskPriority | undefined = undefined,
     dueDate: Date | null | undefined = null,
     now: Date = new Date(),
+    position: number = 0,
   ): Task {
     return new Task(
       randomUUID(),
@@ -179,6 +249,7 @@ export class Task {
       normalizeDueDate(dueDate),
       now,
       null,
+      position,
       null,
     );
   }
@@ -193,6 +264,7 @@ export class Task {
     dueDate: Date | null,
     createdAt: Date,
     deletedAt: Date | null,
+    position: number,
     coverAttachmentId: string | null = null,
   ): Task {
     return new Task(
@@ -205,6 +277,7 @@ export class Task {
       normalizeDueDate(dueDate),
       createdAt,
       deletedAt,
+      position,
       coverAttachmentId,
     );
   }
@@ -232,6 +305,23 @@ export class Task {
         : this.dueDate,
       this.createdAt,
       this.deletedAt,
+      this.position,
+      this.coverAttachmentId,
+    );
+  }
+
+  withPosition(position: number): Task {
+    return new Task(
+      this.id,
+      this.projectId,
+      this.title,
+      this.description,
+      this.status,
+      this.priority,
+      this.dueDate,
+      this.createdAt,
+      this.deletedAt,
+      position,
       this.coverAttachmentId,
     );
   }
@@ -247,6 +337,7 @@ export class Task {
       this.dueDate,
       this.createdAt,
       this.deletedAt,
+      this.position,
       coverAttachmentId,
     );
   }
@@ -266,6 +357,7 @@ export class Task {
       this.dueDate,
       this.createdAt,
       now,
+      this.position,
       this.coverAttachmentId,
     );
   }

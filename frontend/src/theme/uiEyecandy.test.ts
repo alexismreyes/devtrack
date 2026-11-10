@@ -17,6 +17,20 @@ describe("023 UI eyecandy theme tokens", () => {
     }
   });
 
+  it("defines CSS tokens and previews for VioletNight, CyanEdge, and Graphite (033 AC-003)", () => {
+    for (const id of ["VioletNight", "CyanEdge", "Graphite"] as const) {
+      expect(UI_PALETTE_IDS).toContain(id);
+      expect(css).toContain(`[data-palette="${id}"]`);
+      expect(css).toContain(`.ui-palette-preview[data-preview-palette="${id}"]`);
+      expect(css).toMatch(
+        new RegExp(`\\[data-palette="${id}"\\][\\s\\S]*?--eyecandy-surface-image:`),
+      );
+      expect(css).toMatch(
+        new RegExp(`\\[data-palette="${id}"\\][\\s\\S]*?--popover:`),
+      );
+    }
+  });
+
   it("defines eyecandy surface tokens and utility for every catalog palette (AC-002/004/005)", () => {
     expect(EYECANDY_SURFACE_CLASS).toBe("bg-eyecandy-surface");
     expect(css).toContain(".bg-eyecandy-surface");

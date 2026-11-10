@@ -31,6 +31,20 @@ export interface TasksRepository {
     filters?: ListTasksFilters,
   ): Promise<Task[]>;
   listNonDeletedByProjectIds(projectIds: string[]): Promise<Task[]>;
+  /**
+   * Updates fields. Status change appends at end of target column and densifies
+   * the source column. Position is not a general PATCH field.
+   */
   update(id: string, input: UpdateTaskInput): Promise<Task>;
+  /** Soft-deletes and densifies remaining live tasks in the same status column. */
   softDelete(id: string): Promise<Task>;
+  /**
+   * Rewrites dense positions for the exact live set in (projectId, status).
+   * Empty orderedIds is valid only when the column is empty.
+   */
+  reorderInStatus(
+    projectId: string,
+    status: TaskStatus,
+    orderedIds: string[],
+  ): Promise<Task[]>;
 }

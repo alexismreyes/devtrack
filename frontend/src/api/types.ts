@@ -149,6 +149,11 @@ export type ReorderStatusesRequestDto = {
   statusIds: string[];
 };
 
+export type ReorderTasksRequestDto = {
+  status: TaskStatus;
+  taskIds: string[];
+};
+
 export type ReplaceTaskLabelsRequestDto = {
   labelIds: string[];
 };
@@ -172,6 +177,8 @@ export type PublicTaskDto = {
   priority: TaskPriority;
   dueDate: string | null;
   createdAt: string;
+  /** Dense within-column rank for the task's status (031 / H). */
+  position: number;
   labels: TaskEmbeddedLabelDto[];
   cover: PublicCoverSummaryDto | null;
 };

@@ -141,6 +141,8 @@ model Task {
   dueDate     DateTime?    @db.Date
   createdAt   DateTime
   deletedAt   DateTime?
+  /// Dense within-column rank for live tasks per (projectId, status). Soft-deleted rows are excluded from the live partial unique index.
+  position    Int          @default(0)
   coverAttachmentId String? @unique @db.Uuid
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
   comments    TaskComment[]
@@ -151,6 +153,7 @@ model Task {
   coverAttachment TaskAttachment? @relation("TaskCover", fields: [coverAttachmentId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+  @@index([projectId, status, position])
   @@map("tasks")
 }
 

@@ -43,6 +43,7 @@ import {
   register,
   removeMember,
   reorderStatuses,
+  reorderTasks,
   replaceTaskLabels,
   setTaskCover,
   softDeleteTask,
@@ -748,6 +749,7 @@ describe("tasks API client", () => {
     priority: "MEDIUM" as const,
     dueDate: "2026-11-01" as string | null,
     createdAt: "2026-10-29T18:00:00.000Z",
+    position: 0,
     labels: [] as Array<{ id: string; name: string; color: string }>,
     cover: null as { attachmentId: string; contentType: string } | null,
   };
@@ -1004,6 +1006,45 @@ describe("tasks API client", () => {
     });
     expect(JSON.stringify(conflict)).not.toMatch(/DATABASE_URL/i);
     expect(JSON.stringify(conflict)).not.toMatch(/postgresql:\/\//i);
+    expectNoTokenStorage();
+  });
+
+  it("reorders tasks with PUT status+taskIds and credentials included (AC-001 / AC-007)", async () => {
+    const reordered = [
+      { ...task, id: "task-2", position: 0 },
+      { ...task, id: "task-1", position: 1 },
+    ];
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/tasks/reorder",
+      );
+      expect(init?.method).toBe("PUT");
+      expect(init?.body).toBe(
+        JSON.stringify({ status: "TODO", taskIds: ["task-2", "task-1"] }),
+      );
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { tasks: reordered });
+    });
+
+    await expect(
+      reorderTasks("proj-1", { status: "TODO", taskIds: ["task-2", "task-1"] }),
+    ).resolves.toEqual({ tasks: reordered });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("maps PublicTaskDto.position from task responses (AC-007)", async () => {
+    const positioned = { ...task, position: 3 };
+    mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/tasks/task-1");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, {
+        ...positioned,
+        deletedAt: "must-not-be-kept",
+      });
+    });
+
+    await expect(getTask("task-1")).resolves.toEqual(positioned);
     expectNoTokenStorage();
   });
 });
@@ -1269,6 +1310,7 @@ describe("project statuses API client", () => {
       priority: "MEDIUM" as const,
       dueDate: null,
       createdAt: "2026-11-06T12:00:00.000Z",
+      position: 0,
       labels: [],
       cover: null,
     };

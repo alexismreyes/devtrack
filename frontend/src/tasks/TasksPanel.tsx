@@ -8,6 +8,8 @@ import {
   listLabels,
   listStatuses,
   listTasks,
+  reorderStatuses,
+  reorderTasks,
   toUserMessage,
   updateTask,
 } from "../api/client";
@@ -66,6 +68,18 @@ type MoveState =
   | { kind: "error"; message: string }
   | { kind: "conflict"; message: string };
 
+type ColumnReorderState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "error"; message: string }
+  | { kind: "conflict"; message: string };
+
+type TaskReorderState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "error"; message: string }
+  | { kind: "conflict"; message: string };
+
 const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 
 export function TasksPanel({
@@ -81,6 +95,12 @@ export function TasksPanel({
   const [listState, setListState] = useState<ListState>({ kind: "loading" });
   const [createState, setCreateState] = useState<CreateState>({ kind: "ready" });
   const [moveState, setMoveState] = useState<MoveState>({ kind: "idle" });
+  const [columnReorderState, setColumnReorderState] = useState<ColumnReorderState>({
+    kind: "idle",
+  });
+  const [taskReorderState, setTaskReorderState] = useState<TaskReorderState>({
+    kind: "idle",
+  });
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "">("");
   const [labelFilter, setLabelFilter] = useState("");
@@ -218,13 +238,37 @@ export function TasksPanel({
   }
 
   async function onMoveTask(taskId: string, status: TaskStatus): Promise<void> {
-    if (archived) {
+    if (archived || !canWriteTasks) {
       setMoveState({
         kind: "conflict",
-        message: "Cannot modify tasks on an archived project",
+        message: archived
+          ? "Cannot modify tasks on an archived project"
+          : "You do not have permission to move tasks",
       });
       return;
     }
+    const previous =
+      listState.kind === "success"
+        ? listState.tasks
+        : listState.kind === "empty"
+          ? []
+          : null;
+    if (previous === null) {
+      return;
+    }
+    const movingTask = previous.find((task) => task.id === taskId);
+    if (movingTask === undefined || movingTask.status === status) {
+      return;
+    }
+    const targetMax = previous
+      .filter((task) => task.status === status)
+      .reduce((max, task) => Math.max(max, task.position), -1);
+    const optimistic = previous.map((task) =>
+      task.id === taskId
+        ? { ...task, status, position: targetMax + 1 }
+        : task,
+    );
+    setListState({ kind: "success", tasks: optimistic });
     setMoveState({ kind: "saving" });
     try {
       await updateTask(taskId, { status });
@@ -233,6 +277,12 @@ export function TasksPanel({
         setMoveState({ kind: "idle" });
       }
     } catch (err) {
+      setListState(
+        previous.length === 0
+          ? { kind: "empty" }
+          : { kind: "success", tasks: previous },
+      );
+      void loadTasks();
       if (isUnauthenticated(err)) {
         setListState({ kind: "unauthenticated", message: toUserMessage(err) });
         setMoveState({ kind: "idle" });
@@ -251,13 +301,141 @@ export function TasksPanel({
     }
   }
 
+  async function onReorderTasks(
+    status: TaskStatus,
+    taskIds: string[],
+  ): Promise<void> {
+    if (archived || !canWriteTasks) {
+      setTaskReorderState({
+        kind: "conflict",
+        message: archived
+          ? "Cannot modify tasks on an archived project"
+          : "You do not have permission to reorder tasks",
+      });
+      return;
+    }
+    const previous =
+      listState.kind === "success"
+        ? listState.tasks
+        : listState.kind === "empty"
+          ? []
+          : null;
+    if (previous === null) {
+      return;
+    }
+    const optimistic = previous.map((task) => {
+      if (task.status !== status) {
+        return task;
+      }
+      const index = taskIds.indexOf(task.id);
+      if (index < 0) {
+        return task;
+      }
+      return { ...task, position: index };
+    });
+    setListState({ kind: "success", tasks: optimistic });
+    setTaskReorderState({ kind: "saving" });
+    try {
+      const result = await reorderTasks(projectId, { status, taskIds });
+      const otherStatuses = previous.filter((task) => task.status !== status);
+      setListState({
+        kind: "success",
+        tasks: [...otherStatuses, ...result.tasks],
+      });
+      setTaskReorderState({ kind: "idle" });
+    } catch (err) {
+      setListState(
+        previous.length === 0
+          ? { kind: "empty" }
+          : { kind: "success", tasks: previous },
+      );
+      void loadTasks();
+      if (isUnauthenticated(err)) {
+        setListState({ kind: "unauthenticated", message: toUserMessage(err) });
+        setTaskReorderState({ kind: "idle" });
+        onUnauthenticated();
+        return;
+      }
+      if (isForbidden(err)) {
+        setTaskReorderState({ kind: "error", message: toUserMessage(err) });
+        return;
+      }
+      if (isConflict(err)) {
+        setTaskReorderState({
+          kind: "conflict",
+          message: toUserMessage(err),
+        });
+        return;
+      }
+      setTaskReorderState({ kind: "error", message: toUserMessage(err) });
+    }
+  }
+
+  async function onReorderColumns(statusIds: string[]): Promise<void> {
+    if (archived || !canWriteTasks) {
+      setColumnReorderState({
+        kind: "conflict",
+        message: archived
+          ? "Cannot modify statuses on an archived project"
+          : "You do not have permission to reorder statuses",
+      });
+      return;
+    }
+    const previous = catalogStatuses;
+    const optimistic = statusIds
+      .map((statusId) => previous.find((status) => status.id === statusId))
+      .filter((status): status is PublicProjectStatusDto => status !== undefined);
+    if (optimistic.length === previous.length) {
+      setCatalogStatuses(optimistic);
+    }
+    setColumnReorderState({ kind: "saving" });
+    try {
+      const result = await reorderStatuses(projectId, { statusIds });
+      setCatalogStatuses(result.statuses);
+      setColumnReorderState({ kind: "idle" });
+    } catch (err) {
+      setCatalogStatuses(previous);
+      void loadStatuses();
+      if (isUnauthenticated(err)) {
+        setListState({ kind: "unauthenticated", message: toUserMessage(err) });
+        setColumnReorderState({ kind: "idle" });
+        onUnauthenticated();
+        return;
+      }
+      if (isForbidden(err)) {
+        setColumnReorderState({ kind: "error", message: toUserMessage(err) });
+        return;
+      }
+      if (isConflict(err)) {
+        setColumnReorderState({
+          kind: "conflict",
+          message: toUserMessage(err),
+        });
+        return;
+      }
+      setColumnReorderState({ kind: "error", message: toUserMessage(err) });
+    }
+  }
+
   const creating = createState.kind === "saving";
   const moving = moveState.kind === "saving";
+  const reorderingColumns = columnReorderState.kind === "saving";
+  const reorderingTasks = taskReorderState.kind === "saving";
   const listBlocked =
     listState.kind === "unauthenticated" || listState.kind === "forbidden";
-  const writesDisabled = creating || archived || moving || !canWriteTasks;
+  const writesDisabled =
+    creating ||
+    archived ||
+    moving ||
+    reorderingColumns ||
+    reorderingTasks ||
+    !canWriteTasks;
   const filtered =
     statusFilter !== "" || priorityFilter !== "" || labelFilter !== "";
+  // Priority/label filters return a subset of a status column; reorder API
+  // requires the full live set for that status (spec §13 / plan risk).
+  const subsetFiltersActive =
+    priorityFilter !== "" || labelFilter !== "";
   const listedTasks =
     listState.kind === "success"
       ? listState.tasks
@@ -383,6 +561,26 @@ export function TasksPanel({
           {moveState.message}
         </p>
       ) : null}
+      {columnReorderState.kind === "conflict" ? (
+        <p className="shrink-0 text-sm text-destructive" role="alert">
+          {columnReorderState.message}
+        </p>
+      ) : null}
+      {columnReorderState.kind === "error" ? (
+        <p className="shrink-0 text-sm text-destructive" role="alert">
+          {columnReorderState.message}
+        </p>
+      ) : null}
+      {taskReorderState.kind === "conflict" ? (
+        <p className="shrink-0 text-sm text-destructive" role="alert">
+          {taskReorderState.message}
+        </p>
+      ) : null}
+      {taskReorderState.kind === "error" ? (
+        <p className="shrink-0 text-sm text-destructive" role="alert">
+          {taskReorderState.message}
+        </p>
+      ) : null}
       {listState.kind === "loading" ? (
         <p className="shrink-0 text-sm text-muted-foreground" role="status">
           Loading tasks…
@@ -402,6 +600,14 @@ export function TasksPanel({
             setSelectedTaskId(taskId);
           }}
           onMoveTask={onMoveTask}
+          onReorderColumns={
+            canWriteTasks && !archived ? onReorderColumns : undefined
+          }
+          onReorderTasks={
+            canWriteTasks && !archived && !subsetFiltersActive
+              ? onReorderTasks
+              : undefined
+          }
           onAddTask={canWriteTasks ? openCreate : undefined}
           disabled={writesDisabled}
         />

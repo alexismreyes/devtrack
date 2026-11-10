@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "./PasswordInput";
 
 type LoginFormProps = {
   onSuccess: (user: PublicUserDto) => void;
@@ -57,8 +58,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           </Label>
           <Label className="grid gap-2">
             Password
-            <Input
-              type="password"
+            <PasswordInput
               name="password"
               autoComplete="current-password"
               value={password}

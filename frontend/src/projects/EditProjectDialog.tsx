@@ -163,7 +163,7 @@ export function EditProjectDialog({
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/gif"
                 disabled={formBusy}
-                className="max-w-xs"
+                className="max-w-xs cursor-pointer file:cursor-pointer"
                 aria-label="Upload project cover"
                 onChange={(event) => {
                   const file = event.target.files?.[0];

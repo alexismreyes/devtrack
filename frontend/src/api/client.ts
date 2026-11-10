@@ -52,6 +52,7 @@ import type {
   PublicUserDto,
   RegisterRequestDto,
   ReorderStatusesRequestDto,
+  ReorderTasksRequestDto,
   ReplaceTaskLabelsRequestDto,
   SetCoverRequestDto,
   StatusListResponseDto,
@@ -317,6 +318,27 @@ export async function updateTask(
 
 export async function softDeleteTask(id: string): Promise<void> {
   await request("DELETE", `/api/tasks/${id}`);
+}
+
+export async function reorderTasks(
+  projectId: string,
+  input: ReorderTasksRequestDto,
+): Promise<TaskListResponseDto> {
+  const body = await request(
+    "PUT",
+    tasksReorderPath(projectId),
+    input,
+  );
+  if (!isTaskListResponse(body)) {
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "Unexpected task reorder response",
+    );
+  }
+  return {
+    tasks: body.tasks.map(toPublicTask),
+  };
 }
 
 export async function listLabels(
@@ -1001,6 +1023,14 @@ function statusesReorderPath(projectId: string): string {
   return `${statusesCollectionPath(projectId)}/reorder`;
 }
 
+function tasksCollectionPath(projectId: string): string {
+  return `/api/projects/${projectId}/tasks`;
+}
+
+function tasksReorderPath(projectId: string): string {
+  return `${tasksCollectionPath(projectId)}/reorder`;
+}
+
 function requirePublicTask(value: unknown, message: string): PublicTaskDto {
   if (!isPublicTask(value)) {
     throw new ApiError(500, "INTERNAL_ERROR", message);
@@ -1018,6 +1048,7 @@ function toPublicTask(value: PublicTaskDto): PublicTaskDto {
     priority: value.priority,
     dueDate: value.dueDate,
     createdAt: value.createdAt,
+    position: value.position,
     labels: value.labels.map(toTaskEmbeddedLabel),
     cover:
       value.cover === null ? null : toPublicCoverSummary(value.cover),
@@ -1225,6 +1256,7 @@ function isPublicTask(value: unknown): value is PublicTaskDto {
     priority?: unknown;
     dueDate?: unknown;
     createdAt?: unknown;
+    position?: unknown;
     labels?: unknown;
     cover?: unknown;
   };
@@ -1237,6 +1269,8 @@ function isPublicTask(value: unknown): value is PublicTaskDto {
     isTaskPriority(task.priority) &&
     (typeof task.dueDate === "string" || task.dueDate === null) &&
     typeof task.createdAt === "string" &&
+    typeof task.position === "number" &&
+    Number.isInteger(task.position) &&
     Array.isArray(task.labels) &&
     task.labels.every(isTaskEmbeddedLabel) &&
     (task.cover === null || isPublicCoverSummary(task.cover))

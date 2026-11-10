@@ -5,7 +5,7 @@ import { MemoryRouter, RouterProvider, createMemoryRouter } from "react-router-d
 import { App } from "./App";
 import { expectNoSessionTokenStorage } from "./test/storage";
 import { DEFAULT_PROJECT_STATUSES } from "./test/statuses";
-import { UI_PALETTE_IDS, UI_PALETTE_STORAGE_KEY } from "./theme/uiPalettes";
+import { UI_PALETTES, UI_PALETTE_STORAGE_KEY } from "./theme/uiPalettes";
 
 const publicUser = {
   id: "user-1",
@@ -713,7 +713,7 @@ describe("App frontend shell", () => {
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
   });
 
-  it("redirects the app root from guest register and authenticated projects", async () => {
+  it("redirects the app root from guest login and authenticated projects", async () => {
     mockFetch((url) => {
       if (url.endsWith("/api/users/me")) {
         return unauthenticated();
@@ -722,7 +722,8 @@ describe("App frontend shell", () => {
     });
 
     const { unmount } = renderApp("/");
-    expect(await screen.findByRole("heading", { name: /^register$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^register$/i })).not.toBeInTheDocument();
     unmount();
 
     mockFetch((url) => {
@@ -801,6 +802,7 @@ describe("App frontend shell", () => {
               priority: "MEDIUM",
               dueDate: null,
               createdAt: "2026-10-29T18:00:00.000Z",
+              position: 0,
               labels: [],
               cover: null,
             },
@@ -875,9 +877,11 @@ describe("App frontend shell", () => {
     expect(screen.queryByRole("combobox", { name: /color palette/i })).not.toBeInTheDocument();
     await user.click(paletteSelector);
     const palettePicker = screen.getByTestId("ui-palette-picker");
-    for (const id of UI_PALETTE_IDS) {
+    for (const item of UI_PALETTES) {
       expect(
-        within(palettePicker).getByRole("radio", { name: new RegExp(`^${id}`) }),
+        within(palettePicker).getByRole("radio", {
+          name: new RegExp(`^${item.label}(, selected)?$`),
+        }),
       ).toBeInTheDocument();
     }
   });

@@ -8,6 +8,7 @@ import {
   toPublicTaskDto,
   type CreateTaskRequestDto,
   type ListTasksQueryDto,
+  type ReorderTasksRequestDto,
   type TaskListResponseDto,
   type UpdateTaskRequestDto,
 } from "../dto/task-dtos";
@@ -104,5 +105,20 @@ export class TasksController {
     const actorId = requireActorId(req);
     await this.service.softDelete(actorId, requireTaskId(req));
     res.status(204).send();
+  }
+
+  async reorder(req: Request, res: Response): Promise<void> {
+    const actorId = requireActorId(req);
+    const body = req.body as ReorderTasksRequestDto;
+    const tasks = await this.service.reorderInStatus(
+      actorId,
+      requireProjectId(req),
+      body.status,
+      body.taskIds,
+    );
+    const response: TaskListResponseDto = {
+      tasks: tasks.map(toPublicTaskDto),
+    };
+    res.status(200).json(response);
   }
 }
