@@ -21,6 +21,7 @@ const activeProject = {
   createdAt: "2026-10-27T18:00:00.000Z",
   archivedAt: null as string | null,
   cover: null as { id: string; contentType: string } | null,
+  boardBackground: null,
 };
 
 const ownerMember = {
@@ -118,6 +119,14 @@ function expectBackNextToEditAndArchive(archiveName: RegExp = /archive project/i
     "href",
     "/projects",
   );
+}
+
+function isProjectsListUrl(url: string): boolean {
+  try {
+    return new URL(url, "http://localhost:3000").pathname === "/api/projects";
+  } catch {
+    return false;
+  }
 }
 
 function isMembersListUrl(url: string): boolean {
@@ -268,7 +277,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return authenticated ? jsonResponse(200, publicUser) : unauthenticated();
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return authenticated
           ? jsonResponse(200, { projects: [] })
           : unauthenticated();
@@ -294,6 +303,8 @@ describe("App frontend shell", () => {
     expectNoProbeUi();
 
     await user.click(screen.getByRole("button", { name: /log out/i }));
+    const logoutDialog = await screen.findByRole("dialog", { name: /log out\?/i });
+    await user.click(within(logoutDialog).getByRole("button", { name: /^log out$/i }));
     expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
     expect(screen.queryByText(/signed in as/i)).not.toBeInTheDocument();
     expectNoProductSidebar();
@@ -312,7 +323,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return authenticated ? jsonResponse(200, publicUser) : unauthenticated();
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return authenticated
           ? jsonResponse(200, { projects: [] })
           : unauthenticated();
@@ -340,7 +351,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -382,7 +393,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -428,7 +439,7 @@ describe("App frontend shell", () => {
         expect(init?.credentials).toBe("include");
         return jsonResponse(200, dashboard);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [{ ...activeProject }] });
       }
       return unexpectedRequest();
@@ -515,7 +526,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...project });
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [{ ...project }] });
       }
       return unexpectedRequest();
@@ -588,7 +599,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...project });
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [{ ...project }] });
       }
       return unexpectedRequest();
@@ -615,7 +626,7 @@ describe("App frontend shell", () => {
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
   });
 
-  it("keeps archive and unarchive on an archived detail URL even when the sidebar omits it", async () => {
+  it("keeps archive and unarchive on an archived detail URL and lists it under Archived in the sidebar", async () => {
     const project = { ...activeProject };
     const fetchMock = mockFetch((url, init) => {
       if (url.endsWith("/api/users/me")) {
@@ -640,11 +651,14 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...project });
       }
-      if (url.endsWith("/api/projects")) {
-        expect(url).not.toMatch(/includeArchived/i);
-        return jsonResponse(200, {
-          projects: project.archivedAt === null ? [{ ...project }] : [],
-        });
+      if (isProjectsListUrl(url)) {
+        const includeArchived = url.includes("includeArchived=true");
+        if (!includeArchived) {
+          return jsonResponse(200, {
+            projects: project.archivedAt === null ? [{ ...project }] : [],
+          });
+        }
+        return jsonResponse(200, { projects: [{ ...project }] });
       }
       return unexpectedRequest();
     });
@@ -665,7 +679,11 @@ describe("App frontend shell", () => {
     expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
     expectProjectsHomeMain();
     expect(await screen.findAllByText(/no projects yet/i)).not.toHaveLength(0);
-    expect(screen.queryByRole("button", { name: /^alpha$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /^projects$/i })).not.toBeInTheDocument();
+    const archivedList = await screen.findByRole("list", {
+      name: /archived projects/i,
+    });
+    expect(within(archivedList).getByRole("button", { name: /^alpha$/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
     expectAllCredentialsIncluded(fetchMock);
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(
@@ -680,14 +698,14 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects") && init?.method === "POST") {
+      if (isProjectsListUrl(url) && init?.method === "POST") {
         expect(init.body).toBe(
           JSON.stringify({ name: "Alpha", description: "First project" }),
         );
         projects.unshift(activeProject);
         return jsonResponse(201, activeProject);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [...projects] });
       }
       return unexpectedRequest();
@@ -730,7 +748,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -771,7 +789,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -805,6 +823,7 @@ describe("App frontend shell", () => {
               position: 0,
               labels: [],
               cover: null,
+              boardBackground: null,
             },
           ],
         });
@@ -821,7 +840,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...activeProject });
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [{ ...activeProject }] });
       }
       return unexpectedRequest();
@@ -896,7 +915,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -937,7 +956,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return authenticated ? jsonResponse(200, publicUser) : unauthenticated();
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return authenticated
           ? jsonResponse(200, { projects: [] })
           : unauthenticated();
@@ -956,6 +975,8 @@ describe("App frontend shell", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /log out/i }));
+    const logoutDialog = await screen.findByRole("dialog", { name: /log out\?/i });
+    await user.click(within(logoutDialog).getByRole("button", { name: /^log out$/i }));
     expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
     expectNoProductSidebar();
     expect(screen.queryByRole("button", { name: /color palette/i })).not.toBeInTheDocument();
@@ -1038,7 +1059,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, sharedProject);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [sharedProject] });
       }
       return unexpectedRequest();

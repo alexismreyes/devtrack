@@ -11,11 +11,14 @@ import {
   TaskChecklistItem,
 } from "../domain/task-checklist";
 import type {
+  ChecklistItemsPageResult,
+  ChecklistItemTallyByChecklist,
   ChecklistItemTallyByTask,
   ChecklistsRepository,
   CreateChecklistInput,
   CreateChecklistItemInput,
   DeletedChecklistSnapshot,
+  ListChecklistItemsPageInput,
   UpdateChecklistItemInput,
 } from "./checklists-repository";
 
@@ -149,17 +152,9 @@ export class PrismaChecklistsRepository implements ChecklistsRepository {
       const rows = await this.client().taskChecklist.findMany({
         where: { taskId },
         orderBy: { createdAt: "asc" },
-        select: {
-          ...CHECKLIST_SELECT,
-          items: {
-            orderBy: { createdAt: "asc" },
-            select: ITEM_SELECT,
-          },
-        },
+        select: CHECKLIST_SELECT,
       });
-      return rows.map((row) =>
-        toChecklist(row, row.items.map(toItem)),
-      );
+      return rows.map((row) => toChecklist(row, []));
     } catch (err) {
       rethrowMapped(err);
     }
@@ -172,18 +167,12 @@ export class PrismaChecklistsRepository implements ChecklistsRepository {
     try {
       const row = await this.client().taskChecklist.findFirst({
         where: { id: checklistId, taskId },
-        select: {
-          ...CHECKLIST_SELECT,
-          items: {
-            orderBy: { createdAt: "asc" },
-            select: ITEM_SELECT,
-          },
-        },
+        select: CHECKLIST_SELECT,
       });
       if (row === null) {
         return null;
       }
-      return toChecklist(row, row.items.map(toItem));
+      return toChecklist(row, []);
     } catch (err) {
       rethrowMapped(err);
     }
@@ -192,33 +181,19 @@ export class PrismaChecklistsRepository implements ChecklistsRepository {
   async updateName(checklistId: string, name: string): Promise<TaskChecklist> {
     const existing = await this.client().taskChecklist.findUnique({
       where: { id: checklistId },
-      select: {
-        ...CHECKLIST_SELECT,
-        items: {
-          orderBy: { createdAt: "asc" },
-          select: ITEM_SELECT,
-        },
-      },
+      select: CHECKLIST_SELECT,
     }).catch(rethrowMapped);
     if (existing === null) {
       throw new ChecklistNotFoundError();
     }
-    const updated = toChecklist(existing, existing.items.map(toItem)).withName(
-      name,
-    );
+    const updated = toChecklist(existing, []).withName(name);
     try {
       const row = await this.client().taskChecklist.update({
         where: { id: checklistId },
         data: { name: updated.name },
-        select: {
-          ...CHECKLIST_SELECT,
-          items: {
-            orderBy: { createdAt: "asc" },
-            select: ITEM_SELECT,
-          },
-        },
+        select: CHECKLIST_SELECT,
       });
-      return toChecklist(row, row.items.map(toItem));
+      return toChecklist(row, []);
     } catch (err) {
       rethrowMapped(err);
     }
@@ -335,6 +310,84 @@ export class PrismaChecklistsRepository implements ChecklistsRepository {
       await this.client().taskChecklistItem.delete({
         where: { id: itemId },
       });
+    } catch (err) {
+      rethrowMapped(err);
+    }
+  }
+
+  async listItemsPage(
+    input: ListChecklistItemsPageInput,
+  ): Promise<ChecklistItemsPageResult> {
+    try {
+      const rows = await this.client().taskChecklistItem.findMany({
+        where: {
+          checklistId: input.checklistId,
+          ...(input.cursor === null
+            ? {}
+            : {
+                OR: [
+                  { createdAt: { gt: input.cursor.createdAt } },
+                  {
+                    createdAt: input.cursor.createdAt,
+                    id: { gt: input.cursor.id },
+                  },
+                ],
+              }),
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: input.limit + 1,
+        select: ITEM_SELECT,
+      });
+      const hasMore = rows.length > input.limit;
+      const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+      const items = pageRows.map(toItem);
+      const last = items[items.length - 1];
+      return {
+        items,
+        nextCursor:
+          hasMore && last !== undefined
+            ? { createdAt: last.createdAt, id: last.id }
+            : null,
+      };
+    } catch (err) {
+      rethrowMapped(err);
+    }
+  }
+
+  async countItemTalliesByChecklistIds(
+    checklistIds: string[],
+  ): Promise<ChecklistItemTallyByChecklist[]> {
+    if (checklistIds.length === 0) {
+      return [];
+    }
+    try {
+      const rows = await this.client().taskChecklistItem.findMany({
+        where: { checklistId: { in: checklistIds } },
+        select: {
+          checklistId: true,
+          checked: true,
+        },
+      });
+      const byChecklist = new Map<
+        string,
+        { totalItems: number; checkedItems: number }
+      >();
+      for (const row of rows) {
+        const tally = byChecklist.get(row.checklistId) ?? {
+          totalItems: 0,
+          checkedItems: 0,
+        };
+        tally.totalItems += 1;
+        if (row.checked) {
+          tally.checkedItems += 1;
+        }
+        byChecklist.set(row.checklistId, tally);
+      }
+      return [...byChecklist.entries()].map(([checklistId, tally]) => ({
+        checklistId,
+        totalItems: tally.totalItems,
+        checkedItems: tally.checkedItems,
+      }));
     } catch (err) {
       rethrowMapped(err);
     }

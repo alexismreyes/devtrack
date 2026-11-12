@@ -670,6 +670,8 @@ describe("TasksPanel", () => {
 
     await user.click(await screen.findByRole("button", { name: /write tests/i }));
     await user.click(await screen.findByRole("button", { name: /delete task/i }));
+    const dialog = await screen.findByRole("dialog", { name: /delete task\?/i });
+    await user.click(within(dialog).getByRole("button", { name: /^delete$/i }));
 
     expect(await screen.findByText(/no tasks yet/i)).toBeInTheDocument();
     expectStatusColumns();

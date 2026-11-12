@@ -16,6 +16,7 @@ import {
 import type {
   ListTasksQueryDto,
   PublicLabelDto,
+  PublicProjectBoardBackgroundSummaryDto,
   PublicProjectStatusDto,
   PublicTaskDto,
   TaskPriority,
@@ -39,6 +40,7 @@ import { TaskDetail } from "./TaskDetail";
 type TasksPanelProps = {
   projectId: string;
   archived: boolean;
+  boardBackground?: PublicProjectBoardBackgroundSummaryDto | null;
   canWriteTasks?: boolean;
   canManageMembers?: boolean;
   currentUserId?: string | null;
@@ -85,6 +87,7 @@ const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 export function TasksPanel({
   projectId,
   archived,
+  boardBackground = null,
   canWriteTasks = true,
   canManageMembers = false,
   currentUserId = null,
@@ -593,6 +596,8 @@ export function TasksPanel({
       ) : null}
       {listedTasks !== null ? (
         <KanbanBoard
+          projectId={projectId}
+          boardBackground={boardBackground}
           columns={catalogStatuses}
           tasks={listedTasks}
           onSelectTask={(taskId) => {
@@ -635,10 +640,10 @@ export function TasksPanel({
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] w-full max-w-4xl overflow-y-auto sm:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle className="sr-only">Task detail</DialogTitle>
-            <DialogDescription className="sr-only">
+        <DialogContent className="flex max-h-[90vh] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Task detail</DialogTitle>
+            <DialogDescription>
               View or update the selected task. The board stays behind this
               dialog.
             </DialogDescription>

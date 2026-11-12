@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { expectNoSessionTokenStorage } from "../test/storage";
@@ -96,6 +96,12 @@ function isChecklistsListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/tasks/task-1/checklists";
 }
 
+function isChecklistItemsListUrl(url: string): boolean {
+  return /^http:\/\/localhost:3000\/api\/tasks\/task-1\/checklists\/[^/]+\/items(?:\?|$)/.test(
+    url,
+  );
+}
+
 function isAttachmentsListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/tasks/task-1/attachments";
 }
@@ -108,6 +114,7 @@ function defaultTaskHandler(
   labels: unknown[] = [],
   checklists: unknown[] = [],
   attachments: unknown[] = [],
+  checklistItemsById: Record<string, unknown[]> = {},
 ): Response {
   if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { comments, nextCursor: null });
@@ -124,6 +131,16 @@ function defaultTaskHandler(
   if (isChecklistsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { checklists });
   }
+  if (isChecklistItemsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+    const match = url.match(
+      /\/checklists\/([^/?]+)\/items/,
+    );
+    const checklistId = match?.[1] ?? "";
+    return jsonResponse(200, {
+      items: checklistItemsById[checklistId] ?? [],
+      nextCursor: null,
+    });
+  }
   if (isAttachmentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { attachments });
   }
@@ -135,27 +152,31 @@ function defaultTaskHandler(
   });
 }
 
+const sampleChecklistItems = [
+  {
+    id: "item-1",
+    checklistId: "checklist-1",
+    text: "Write tests",
+    checked: true,
+    createdAt: "2026-11-05T12:00:00.000Z",
+  },
+  {
+    id: "item-2",
+    checklistId: "checklist-1",
+    text: "Review PR",
+    checked: false,
+    createdAt: "2026-11-05T12:30:00.000Z",
+  },
+];
+
 const sampleChecklist = {
   id: "checklist-1",
   taskId: "task-1",
   name: "QA",
   createdAt: "2026-11-05T11:00:00.000Z",
-  items: [
-    {
-      id: "item-1",
-      checklistId: "checklist-1",
-      text: "Write tests",
-      checked: true,
-      createdAt: "2026-11-05T12:00:00.000Z",
-    },
-    {
-      id: "item-2",
-      checklistId: "checklist-1",
-      text: "Review PR",
-      checked: false,
-      createdAt: "2026-11-05T12:30:00.000Z",
-    },
-  ],
+  items: [],
+  itemCount: 2,
+  checkedCount: 1,
 };
 
 const createdActivity = {
@@ -476,7 +497,7 @@ describe("TaskDetail", () => {
     expect(await screen.findByText(/activity unavailable/i)).toBeInTheDocument();
   });
 
-  it("soft-deletes with DELETE and an empty 204 body", async () => {
+  it("soft-deletes with DELETE and an empty 204 body after confirm", async () => {
     const onDeleted = vi.fn();
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
@@ -486,6 +507,38 @@ describe("TaskDetail", () => {
       }
       return defaultTaskHandler(url, init);
     });
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm");
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={onDeleted}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /delete task/i }));
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE"),
+    ).toBe(false);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(/delete task\?/i);
+    await user.click(within(dialog).getByRole("button", { name: /^delete$/i }));
+    expect(onDeleted).toHaveBeenCalledOnce();
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE"),
+    ).toBe(true);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
+  });
+
+  it("does not soft-delete when delete confirm is cancelled", async () => {
+    const onDeleted = vi.fn();
+    const fetchMock = mockFetch((url, init) => defaultTaskHandler(url, init));
     const user = userEvent.setup();
 
     render(
@@ -500,11 +553,13 @@ describe("TaskDetail", () => {
     );
 
     await user.click(await screen.findByRole("button", { name: /delete task/i }));
-    expect(onDeleted).toHaveBeenCalledOnce();
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
+    expect(onDeleted).not.toHaveBeenCalled();
     expect(
       fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE"),
-    ).toBe(true);
-    expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
+    ).toBe(false);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("shows a forbidden state when GET returns 403", async () => {
@@ -1213,11 +1268,20 @@ describe("TaskDetail", () => {
       ) {
         expect(init.body).toBe(JSON.stringify({ checked: true }));
         return jsonResponse(200, {
-          ...sampleChecklist.items[1],
+          ...sampleChecklistItems[1],
           checked: true,
         });
       }
-      return defaultTaskHandler(url, init, [], [], [], [sampleChecklist]);
+      return defaultTaskHandler(
+        url,
+        init,
+        [],
+        [],
+        [],
+        [sampleChecklist],
+        [],
+        { "checklist-1": sampleChecklistItems },
+      );
     });
 
     const { rerender } = render(
@@ -1317,6 +1381,8 @@ describe("TaskDetail", () => {
       name: "Checklist",
       createdAt: "2026-11-05T13:00:00.000Z",
       items: [],
+      itemCount: 0,
+      checkedCount: 0,
     };
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
@@ -1855,6 +1921,179 @@ describe("TaskDetail", () => {
       ),
     ).toBe(false);
     expect(onUpdated).toHaveBeenCalled();
+    expectNoSessionTokenStorage();
+  });
+
+  it("shows a short non-interactive cover hero when cover is set (AC-001/AC-004/Q-241/Q-242)", async () => {
+    const coverSummary = {
+      attachmentId: "att-2",
+      contentType: "image/png",
+    };
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (
+        url ===
+        "http://localhost:3000/api/tasks/task-1/attachments/att-2/content"
+      ) {
+        expect(url).not.toMatch(/\/uploads\b/);
+        return new Response(new Uint8Array([137, 80, 78, 71]), {
+          status: 200,
+          headers: { "Content-Type": "image/png", "Cache-Control": "private" },
+        });
+      }
+      if (
+        url.endsWith("/api/tasks/task-1") &&
+        (init?.method === "GET" || init?.method === undefined)
+      ) {
+        return jsonResponse(200, { ...task, cover: coverSummary });
+      }
+      return defaultTaskHandler(url, init, [], [], [], [], [
+        sampleImageAttachment,
+      ]);
+    });
+    const createObjectURL = vi.fn(() => "blob:task-detail-cover");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL,
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const hero = await screen.findByTestId("task-detail-cover-hero");
+    expect(hero).toHaveAttribute("src", "blob:task-detail-cover");
+    expect(hero).toHaveAttribute("data-cover-attachment-id", "att-2");
+    expect(hero).toHaveClass("max-h-36", "object-cover", "w-full");
+    expect(hero).toHaveClass("pointer-events-none");
+    expect(hero.onclick).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.endsWith("/api/tasks/task-1/attachments/att-2/content") &&
+          init?.credentials === "include",
+      ),
+    ).toBe(true);
+    expectNoSessionTokenStorage();
+  });
+
+  it("omits the cover hero when cover is null (AC-002/Q-239)", async () => {
+    mockFetch((url, init) => defaultTaskHandler(url, init));
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("task-detail-layout");
+    expect(screen.queryByTestId("task-detail-cover-hero")).not.toBeInTheDocument();
+    expect(screen.getByTestId("task-detail-body")).toBeInTheDocument();
+  });
+
+  it("hides and restores the cover hero when cover is cleared then set (AC-003)", async () => {
+    const user = userEvent.setup();
+    const coverSummary = {
+      attachmentId: "att-2",
+      contentType: "image/png",
+    };
+    let coverCleared = false;
+    mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (
+        url ===
+        "http://localhost:3000/api/tasks/task-1/attachments/att-2/content"
+      ) {
+        return new Response(new Uint8Array([137, 80, 78, 71]), {
+          status: 200,
+          headers: { "Content-Type": "image/png", "Cache-Control": "private" },
+        });
+      }
+      if (
+        url === "http://localhost:3000/api/tasks/task-1/cover" &&
+        init?.method === "DELETE"
+      ) {
+        coverCleared = true;
+        return jsonResponse(200, { cover: null });
+      }
+      if (
+        url === "http://localhost:3000/api/tasks/task-1/cover" &&
+        init?.method === "PUT"
+      ) {
+        coverCleared = false;
+        return jsonResponse(200, { cover: coverSummary });
+      }
+      if (
+        url.endsWith("/api/tasks/task-1") &&
+        (init?.method === "GET" || init?.method === undefined)
+      ) {
+        return jsonResponse(200, {
+          ...task,
+          cover: coverCleared ? null : coverSummary,
+        });
+      }
+      if (isAttachmentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return jsonResponse(200, {
+          attachments: [
+            {
+              ...sampleImageAttachment,
+              isCover: !coverCleared,
+            },
+            sampleAttachment,
+          ],
+        });
+      }
+      return defaultTaskHandler(url, init, [], [], [], [], [
+        sampleImageAttachment,
+        sampleAttachment,
+      ]);
+    });
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:task-detail-cover"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("task-detail-cover-hero");
+    const panel = await screen.findByTestId("task-attachments");
+    await user.click(within(panel).getByRole("button", { name: /clear cover/i }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("task-detail-cover-hero")).not.toBeInTheDocument();
+    });
+
+    await user.click(
+      within(panel).getByRole("button", { name: /set as cover/i }),
+    );
+    expect(await screen.findByTestId("task-detail-cover-hero")).toBeInTheDocument();
     expectNoSessionTokenStorage();
   });
 });

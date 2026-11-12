@@ -1,3 +1,4 @@
+import type { FeedCursor } from "../domain/feed-cursor";
 import type {
   TaskChecklist,
   TaskChecklistItem,
@@ -32,8 +33,26 @@ export type ChecklistItemTallyByTask = {
   checkedItems: number;
 };
 
+export type ChecklistItemTallyByChecklist = {
+  checklistId: string;
+  totalItems: number;
+  checkedItems: number;
+};
+
+export type ListChecklistItemsPageInput = {
+  checklistId: string;
+  limit: number;
+  cursor: FeedCursor | null;
+};
+
+export type ChecklistItemsPageResult = {
+  items: TaskChecklistItem[];
+  nextCursor: FeedCursor | null;
+};
+
 export interface ChecklistsRepository {
   create(input: CreateChecklistInput): Promise<TaskChecklist>;
+  /** Lists checklists for a task without nested items (empty items arrays). */
   listByTaskId(taskId: string): Promise<TaskChecklist[]>;
   findByIdInTask(
     taskId: string,
@@ -53,6 +72,16 @@ export interface ChecklistsRepository {
     input: UpdateChecklistItemInput,
   ): Promise<TaskChecklistItem>;
   deleteItem(itemId: string): Promise<void>;
+  listItemsPage(
+    input: ListChecklistItemsPageInput,
+  ): Promise<ChecklistItemsPageResult>;
+  /**
+   * Item tallies for the given checklist ids.
+   * Checklists with zero items are omitted (caller treats missing as 0/0).
+   */
+  countItemTalliesByChecklistIds(
+    checklistIds: string[],
+  ): Promise<ChecklistItemTallyByChecklist[]>;
   /**
    * Item tallies for the given task ids.
    * Tasks with zero items are omitted (caller treats missing as 0/0).

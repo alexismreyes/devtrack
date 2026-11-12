@@ -12,6 +12,7 @@ const baseProject: PublicProjectDto = {
   createdAt: "2026-10-27T18:00:00.000Z",
   archivedAt: null,
   cover: null,
+  boardBackground: null,
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -70,6 +71,7 @@ describe("EditProjectDialog cover controls", () => {
         saving={false}
         onSubmit={vi.fn()}
         onCoverChange={onCoverChange}
+        onBoardBackgroundChange={vi.fn()}
       />,
     );
 
@@ -123,6 +125,7 @@ describe("EditProjectDialog cover controls", () => {
         saving={false}
         onSubmit={vi.fn()}
         onCoverChange={onCoverChange}
+        onBoardBackgroundChange={vi.fn()}
       />,
     );
 
@@ -145,6 +148,7 @@ describe("EditProjectDialog cover controls", () => {
         saving
         onSubmit={vi.fn()}
         onCoverChange={vi.fn()}
+        onBoardBackgroundChange={vi.fn()}
       />,
     );
 
@@ -170,6 +174,7 @@ describe("EditProjectDialog cover controls", () => {
         saving={false}
         onSubmit={vi.fn()}
         onCoverChange={onCoverChange}
+        onBoardBackgroundChange={vi.fn()}
       />,
     );
 
@@ -183,5 +188,108 @@ describe("EditProjectDialog cover controls", () => {
     ).toBeInTheDocument();
     expect(onCoverChange).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("EditProjectDialog board background controls", () => {
+  it("uploads a board background with credentials included and notifies parent", async () => {
+    const boardBackground = {
+      id: "bg-1",
+      contentType: "image/png",
+    };
+    const onBoardBackgroundChange = vi.fn();
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/board-background",
+      );
+      expect(init?.method).toBe("PUT");
+      expect(init?.credentials).toBe("include");
+      expect(init?.body).toBeInstanceOf(FormData);
+      return jsonResponse(200, { boardBackground });
+    });
+    const user = userEvent.setup();
+    const file = new File([new Uint8Array([1, 2, 3])], "board.png", {
+      type: "image/png",
+    });
+
+    render(
+      <EditProjectDialog
+        open
+        onOpenChange={vi.fn()}
+        project={baseProject}
+        saving={false}
+        onSubmit={vi.fn()}
+        onCoverChange={vi.fn()}
+        onBoardBackgroundChange={onBoardBackgroundChange}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByTestId("project-board-background-preview-empty"),
+    ).toBeInTheDocument();
+    const input = within(dialog).getByLabelText(/upload board background/i);
+    expect(input).toHaveClass("cursor-pointer", "file:cursor-pointer");
+    await user.upload(input, file);
+
+    await waitFor(() => {
+      expect(onBoardBackgroundChange).toHaveBeenCalledWith(boardBackground);
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("clears an existing board background with credentials included", async () => {
+    const project: PublicProjectDto = {
+      ...baseProject,
+      boardBackground: { id: "bg-1", contentType: "image/png" },
+    };
+    const onBoardBackgroundChange = vi.fn();
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    mockFetch((url, init) => {
+      if (url.endsWith("/board-background/content")) {
+        expect(init?.credentials).toBe("include");
+        return new Response(bytes, {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        });
+      }
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/board-background",
+      );
+      expect(init?.method).toBe("DELETE");
+      expect(init?.credentials).toBe("include");
+      return emptyResponse(204);
+    });
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:board-preview"),
+      revokeObjectURL: vi.fn(),
+    });
+    const user = userEvent.setup();
+
+    render(
+      <EditProjectDialog
+        open
+        onOpenChange={vi.fn()}
+        project={project}
+        saving={false}
+        onSubmit={vi.fn()}
+        onCoverChange={vi.fn()}
+        onBoardBackgroundChange={onBoardBackgroundChange}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() => {
+      expect(
+        within(dialog).getByTestId("project-board-background-preview"),
+      ).toBeInTheDocument();
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: /clear board background/i }),
+    );
+    await waitFor(() => {
+      expect(onBoardBackgroundChange).toHaveBeenCalledWith(null);
+    });
   });
 });

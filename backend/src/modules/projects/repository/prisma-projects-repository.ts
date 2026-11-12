@@ -159,6 +159,19 @@ export class PrismaProjectsRepository implements ProjectsRepository {
     }
   }
 
+  async listArchivedByOwnerId(ownerUserId: string): Promise<Project[]> {
+    try {
+      const rows = await this.client().project.findMany({
+        where: { ownerUserId, archivedAt: { not: null } },
+        orderBy: { createdAt: "desc" },
+        select: PROJECT_SELECT,
+      });
+      return rows.map(toProject);
+    } catch (err) {
+      rethrowMapped(err);
+    }
+  }
+
   async update(id: string, input: UpdateProjectInput): Promise<Project> {
     const existing = await this.findById(id);
     if (existing === null) {

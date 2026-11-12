@@ -99,7 +99,8 @@ export function errorHandler(
       case "ChecklistNotFoundError":
       case "ChecklistItemNotFoundError":
       case "AttachmentNotFoundError":
-      case "ProjectCoverNotFoundError": {
+      case "ProjectCoverNotFoundError":
+      case "ProjectBoardBackgroundNotFoundError": {
         const mapped = notFound(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
@@ -147,6 +148,9 @@ export function errorHandler(
       case "InvalidProjectCoverFilenameError":
       case "InvalidProjectCoverContentTypeError":
       case "ProjectCoverSizeExceededError":
+      case "InvalidProjectBoardBackgroundFilenameError":
+      case "InvalidProjectBoardBackgroundContentTypeError":
+      case "ProjectBoardBackgroundSizeExceededError":
       case "InvalidProjectMemberRoleError":
         sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
         return;
@@ -164,6 +168,14 @@ export function errorHandler(
           503,
           ERROR_CODES.SERVICE_UNAVAILABLE,
           "Project cover storage is unavailable",
+        );
+        return;
+      case "ProjectBoardBackgroundStorageError":
+        sendError(
+          res,
+          503,
+          ERROR_CODES.SERVICE_UNAVAILABLE,
+          "Project board background storage is unavailable",
         );
         return;
       case "DatabaseUnavailableError":

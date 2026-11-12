@@ -1,3 +1,4 @@
+import { takeOldestPage } from "../domain/feed-cursor";
 import {
   ChecklistItemNotFoundError,
   ChecklistNotFoundError,
@@ -9,11 +10,14 @@ import {
   TaskChecklistItem,
 } from "../domain/task-checklist";
 import type {
+  ChecklistItemsPageResult,
+  ChecklistItemTallyByChecklist,
   ChecklistItemTallyByTask,
   ChecklistsRepository,
   CreateChecklistInput,
   CreateChecklistItemInput,
   DeletedChecklistSnapshot,
+  ListChecklistItemsPageInput,
   UpdateChecklistItemInput,
 } from "../repository/checklists-repository";
 
@@ -32,9 +36,7 @@ export class InMemoryChecklistsRepository implements ChecklistsRepository {
       (checklist) => checklist.taskId === taskId,
     );
     return sortChecklistsOldestFirst(
-      checklists.map((checklist) =>
-        checklist.withItems(this.itemsForChecklist(checklist.id)),
-      ),
+      checklists.map((checklist) => checklist.withItems([])),
     );
   }
 
@@ -46,7 +48,7 @@ export class InMemoryChecklistsRepository implements ChecklistsRepository {
     if (checklist === undefined || checklist.taskId !== taskId) {
       return null;
     }
-    return checklist.withItems(this.itemsForChecklist(checklist.id));
+    return checklist.withItems([]);
   }
 
   async updateName(checklistId: string, name: string): Promise<TaskChecklist> {
@@ -54,10 +56,8 @@ export class InMemoryChecklistsRepository implements ChecklistsRepository {
     if (existing === undefined) {
       throw new ChecklistNotFoundError();
     }
-    const updated = existing
-      .withName(name)
-      .withItems(this.itemsForChecklist(checklistId));
-    this.checklistsById.set(checklistId, updated.withItems([]));
+    const updated = existing.withName(name).withItems([]);
+    this.checklistsById.set(checklistId, updated);
     return updated;
   }
 
@@ -128,6 +128,51 @@ export class InMemoryChecklistsRepository implements ChecklistsRepository {
     this.itemsById.delete(itemId);
   }
 
+  async listItemsPage(
+    input: ListChecklistItemsPageInput,
+  ): Promise<ChecklistItemsPageResult> {
+    const items = sortChecklistItemsOldestFirst(
+      [...this.itemsById.values()].filter(
+        (item) => item.checklistId === input.checklistId,
+      ),
+    );
+    return takeOldestPage(items, input.limit, input.cursor);
+  }
+
+  async countItemTalliesByChecklistIds(
+    checklistIds: string[],
+  ): Promise<ChecklistItemTallyByChecklist[]> {
+    if (checklistIds.length === 0) {
+      return [];
+    }
+    const idSet = new Set(checklistIds);
+    const byChecklist = new Map<
+      string,
+      { totalItems: number; checkedItems: number }
+    >();
+    for (const item of this.itemsById.values()) {
+      if (!idSet.has(item.checklistId)) {
+        continue;
+      }
+      const tally = byChecklist.get(item.checklistId) ?? {
+        totalItems: 0,
+        checkedItems: 0,
+      };
+      tally.totalItems += 1;
+      if (item.checked) {
+        tally.checkedItems += 1;
+      }
+      byChecklist.set(item.checklistId, tally);
+    }
+    return [...byChecklist.entries()]
+      .filter(([, tally]) => tally.totalItems > 0)
+      .map(([checklistId, tally]) => ({
+        checklistId,
+        totalItems: tally.totalItems,
+        checkedItems: tally.checkedItems,
+      }));
+  }
+
   async countItemTalliesByTaskIds(
     taskIds: string[],
   ): Promise<ChecklistItemTallyByTask[]> {
@@ -165,13 +210,5 @@ export class InMemoryChecklistsRepository implements ChecklistsRepository {
         totalItems: tally.totalItems,
         checkedItems: tally.checkedItems,
       }));
-  }
-
-  private itemsForChecklist(checklistId: string): TaskChecklistItem[] {
-    return sortChecklistItemsOldestFirst(
-      [...this.itemsById.values()].filter(
-        (item) => item.checklistId === checklistId,
-      ),
-    );
   }
 }

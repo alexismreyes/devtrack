@@ -26,6 +26,7 @@ services:
       PORT: ${PORT:-3000}
       ATTACHMENTS_ROOT: /data/attachments
       PROJECT_COVERS_ROOT: /data/project-covers
+      PROJECT_BOARD_BACKGROUNDS_ROOT: /data/project-board-backgrounds
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
@@ -36,6 +37,7 @@ services:
       - ./backend/prisma:/app/prisma
       - attachments_data:/data/attachments
       - project_covers_data:/data/project-covers
+      - project_board_backgrounds_data:/data/project-board-backgrounds
 
   frontend:
     build:
@@ -53,3 +55,4 @@ volumes:
   pgdata:
   attachments_data:
   project_covers_data:
+  project_board_backgrounds_data:

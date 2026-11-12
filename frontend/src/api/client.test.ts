@@ -8,6 +8,7 @@ import {
   createTask,
   createTaskComment,
   addMember,
+  clearProjectBoardBackground,
   clearProjectCover,
   deleteTaskComment,
   getDashboard,
@@ -29,12 +30,14 @@ import {
   deleteTaskChecklist,
   deleteTaskChecklistItem,
   fetchAttachmentContent,
+  fetchProjectBoardBackgroundContent,
   fetchProjectCoverContent,
   listLabels,
   listStatuses,
   listTaskActivity,
   listTaskAttachments,
   listTaskChecklists,
+  listTaskChecklistItems,
   listTaskComments,
   listTasks,
   changePassword,
@@ -57,6 +60,7 @@ import {
   updateTaskChecklist,
   updateTaskChecklistItem,
   updateTaskComment,
+  uploadProjectBoardBackground,
   uploadProjectCover,
   uploadTaskAttachment,
 } from "./client";
@@ -344,6 +348,7 @@ describe("projects API client", () => {
     createdAt: "2026-10-27T18:00:00.000Z",
     archivedAt: null as string | null,
     cover: null as { id: string; contentType: string } | null,
+    boardBackground: null,
   };
 
   it("creates a project at VITE_API_URL with credentials included and no token storage", async () => {
@@ -385,6 +390,22 @@ describe("projects API client", () => {
     });
 
     await expect(listProjects()).resolves.toEqual({ projects: [project] });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("lists projects with includeArchived=true when requested", async () => {
+    const archived = { ...project, archivedAt: "2026-10-27T19:00:00.000Z" };
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe("http://localhost:3000/api/projects?includeArchived=true");
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      return jsonResponse(200, { projects: [project, archived] });
+    });
+
+    await expect(listProjects({ includeArchived: true })).resolves.toEqual({
+      projects: [project, archived],
+    });
     expect(fetchMock).toHaveBeenCalledOnce();
     expectNoTokenStorage();
   });
@@ -548,6 +569,70 @@ describe("projects API client", () => {
     });
 
     const result = await fetchProjectCoverContent("proj-1");
+    expect(result.contentType).toBe("image/png");
+    expect(result.blob.size).toBe(4);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("uploads project board background multipart with field file and credentials included", async () => {
+    const boardBackground = { id: "bg-1", contentType: "image/png" };
+    const file = new File([new Uint8Array([1, 2, 3])], "board.png", {
+      type: "image/png",
+    });
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/board-background",
+      );
+      expect(url).not.toMatch(/\/uploads\b/);
+      expect(init?.method).toBe("PUT");
+      expectCredentialsInclude(init);
+      expect(init?.body).toBeInstanceOf(FormData);
+      return jsonResponse(200, { boardBackground });
+    });
+
+    await expect(
+      uploadProjectBoardBackground("proj-1", file),
+    ).resolves.toEqual({ boardBackground });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("clears project board background with DELETE and credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/board-background",
+      );
+      expect(init?.method).toBe("DELETE");
+      expectCredentialsInclude(init);
+      return emptyResponse(204);
+    });
+
+    await expect(clearProjectBoardBackground("proj-1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expectNoTokenStorage();
+  });
+
+  it("fetches project board background content with credentials and private cache path", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/board-background/content",
+      );
+      expect(url).not.toMatch(/\/uploads\b/);
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "private",
+        },
+      });
+    });
+
+    const result = await fetchProjectBoardBackgroundContent("proj-1");
     expect(result.contentType).toBe("image/png");
     expect(result.blob.size).toBe(4);
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -1800,7 +1885,9 @@ describe("task checklists API client", () => {
     taskId: "task-1",
     name: "QA",
     createdAt: "2026-11-05T11:00:00.000Z",
-    items: [checklistItem],
+    items: [],
+    itemCount: 1,
+    checkedCount: 0,
   };
 
   it("lists checklists with credentials included and strips non-public fields", async () => {
@@ -1827,10 +1914,42 @@ describe("task checklists API client", () => {
     });
 
     await expect(listTaskChecklists("task-1")).resolves.toEqual({
-      checklists: [checklist],
+      checklists: [
+        {
+          ...checklist,
+          items: [checklistItem],
+        },
+      ],
     });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(setItem).not.toHaveBeenCalled();
+    expectNoTokenStorage();
+  });
+
+  it("lists checklist items with cursor/limit and credentials included", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/tasks/task-1/checklists/checklist-1/items?cursor=cursor-1&limit=10",
+      );
+      expect(init?.method).toBe("GET");
+      expectCredentialsInclude(init);
+      expectNoAuthorizationHeader(init);
+      return jsonResponse(200, {
+        items: [{ ...checklistItem, secret: "must-not-be-kept" }],
+        nextCursor: "cursor-2",
+      });
+    });
+
+    await expect(
+      listTaskChecklistItems("task-1", "checklist-1", {
+        cursor: "cursor-1",
+        limit: 10,
+      }),
+    ).resolves.toEqual({
+      items: [checklistItem],
+      nextCursor: "cursor-2",
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
     expectNoTokenStorage();
   });
 
@@ -1840,12 +1959,22 @@ describe("task checklists API client", () => {
       expect(init?.method).toBe("POST");
       expectCredentialsInclude(init);
       expect(init?.body).toBe(JSON.stringify({ name: "QA" }));
-      return jsonResponse(201, { ...checklist, items: [] });
+      return jsonResponse(201, {
+        ...checklist,
+        items: [],
+        itemCount: 0,
+        checkedCount: 0,
+      });
     });
 
     await expect(
       createTaskChecklist("task-1", { name: "QA" }),
-    ).resolves.toEqual({ ...checklist, items: [] });
+    ).resolves.toEqual({
+      ...checklist,
+      items: [],
+      itemCount: 0,
+      checkedCount: 0,
+    });
     expectNoTokenStorage();
   });
 

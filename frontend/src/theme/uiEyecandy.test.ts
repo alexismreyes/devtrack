@@ -5,20 +5,37 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { EYECANDY_SURFACE_CLASS, UI_PALETTE_IDS } from "./uiPalettes";
 
-describe("023 UI eyecandy theme tokens", () => {
+const NEW_DARK_IDS = [
+  "MidnightAurora",
+  "ObsidianGold",
+  "CyberpunkDreams",
+  "DeepOcean",
+  "CherryBlossom",
+  "ToxicEmerald",
+  "CosmicLavender",
+  "NeoGlass",
+  "Dribbble",
+  "OledBlack",
+  "LuxuryDark",
+  "CyberAesthetic",
+] as const;
+
+const REMOVED_DARK_IDS = [
+  "Midnight",
+  "Obsidian",
+  "Noir",
+  "Dusk",
+  "VioletNight",
+  "CyanEdge",
+  "Graphite",
+] as const;
+
+describe("023 UI eyecandy theme tokens (039 dark refresh)", () => {
   const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../index.css");
   const css = readFileSync(cssPath, "utf8");
 
-  it("defines CSS tokens and previews for Obsidian, Noir, and Dusk (AC-003)", () => {
-    for (const id of ["Obsidian", "Noir", "Dusk"] as const) {
-      expect(UI_PALETTE_IDS).toContain(id);
-      expect(css).toContain(`[data-palette="${id}"]`);
-      expect(css).toContain(`.ui-palette-preview[data-preview-palette="${id}"]`);
-    }
-  });
-
-  it("defines CSS tokens and previews for VioletNight, CyanEdge, and Graphite (033 AC-003)", () => {
-    for (const id of ["VioletNight", "CyanEdge", "Graphite"] as const) {
+  it("defines CSS tokens and previews for twelve new dark palettes (AC-001)", () => {
+    for (const id of NEW_DARK_IDS) {
       expect(UI_PALETTE_IDS).toContain(id);
       expect(css).toContain(`[data-palette="${id}"]`);
       expect(css).toContain(`.ui-palette-preview[data-preview-palette="${id}"]`);
@@ -28,6 +45,14 @@ describe("023 UI eyecandy theme tokens", () => {
       expect(css).toMatch(
         new RegExp(`\\[data-palette="${id}"\\][\\s\\S]*?--popover:`),
       );
+    }
+  });
+
+  it("does not retain CSS blocks for removed dark palette ids (AC-002)", () => {
+    for (const id of REMOVED_DARK_IDS) {
+      expect(UI_PALETTE_IDS).not.toContain(id);
+      expect(css).not.toContain(`[data-palette="${id}"]`);
+      expect(css).not.toContain(`.ui-palette-preview[data-preview-palette="${id}"]`);
     }
   });
 

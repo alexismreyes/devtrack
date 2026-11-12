@@ -3,20 +3,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EYECANDY_SURFACE_CLASS } from "../theme/uiPalettes";
 import { TaskChecklistsPanel } from "./TaskChecklistsPanel";
 
+const sampleItem = {
+  id: "item-1",
+  checklistId: "checklist-1",
+  text: "Write tests",
+  checked: false,
+  createdAt: "2026-11-05T12:00:00.000Z",
+};
+
 const sampleChecklist = {
   id: "checklist-1",
   taskId: "task-1",
   name: "QA",
   createdAt: "2026-11-05T12:00:00.000Z",
-  items: [
-    {
-      id: "item-1",
-      checklistId: "checklist-1",
-      text: "Write tests",
-      checked: false,
-      createdAt: "2026-11-05T12:00:00.000Z",
-    },
-  ],
+  items: [],
+  itemCount: 1,
+  checkedCount: 0,
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -46,6 +48,12 @@ describe("TaskChecklistsPanel eyecandy (023)", () => {
               : input.url;
         if (url.endsWith("/api/tasks/task-1/checklists")) {
           return jsonResponse(200, { checklists: [sampleChecklist] });
+        }
+        if (url.includes("/api/tasks/task-1/checklists/checklist-1/items")) {
+          return jsonResponse(200, {
+            items: [sampleItem],
+            nextCursor: null,
+          });
         }
         return jsonResponse(404, { error: { code: "NOT_FOUND", message: "missing" } });
       }),

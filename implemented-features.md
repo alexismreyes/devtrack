@@ -4,7 +4,7 @@ Human-readable catalog of **Verified** work: what shipped, and how (tech + conce
 
 **How this file is updated:** after a spec is Verified, the agent proposes a catalog patch and **does not edit this file until you confirm**. Do not treat a completion report as an automatic update.
 
-Last confirmed: 2026-11-10 (features `001`–`033`).
+Last confirmed: 2026-11-12 (features `001`–`040`).
 
 ---
 
@@ -65,7 +65,7 @@ Last confirmed: 2026-11-10 (features `001`–`033`).
 
 - **Spec:** `specs/007-workspace-ui/` (includes polish in the same folder)
 - **What:** Trello-like workspace without cloning Trello: project card grid, Dialogs, compact board, whole-UI palettes.
-- **Approach:** Originally name-derived color+initials covers only (no uploads). Create/edit/task forms as Dialogs. Palettes on the document root; id in localStorage `devtrack.uiPalette` only. Remaining-height Kanban (`h-svh`). Back to projects on the board header. **Later:** image project covers (`020`/`024`); more dark palettes (`023`/`033`).
+- **Approach:** Originally name-derived color+initials covers only (no uploads). Create/edit/task forms as Dialogs. Palettes on the document root; id in localStorage `devtrack.uiPalette` only. Remaining-height Kanban (`h-svh`). Back to projects on the board header. **Later:** image project covers (`020`/`024`); dark catalog path `023`/`033` then **SUPERSEDED by `039`**.
 
 ### 008 — Dashboard
 
@@ -161,7 +161,7 @@ Last confirmed: 2026-11-10 (features `001`–`033`).
 
 - **Spec:** `specs/023-ui-eyecandy/`
 - **What:** Checklist pointer + non-flat checklist surfaces; dark palettes Obsidian/Noir/Dusk; gradient eyecandy on dashboard and profile cards.
-- **Approach:** Frontend-only. `--eyecandy-surface-image` / `bg-eyecandy-surface` via palette tokens. Later: more dark palettes (`033`).
+- **Approach:** Frontend-only. `--eyecandy-surface-image` / `bg-eyecandy-surface` via palette tokens. Dark ids Obsidian/Noir/Dusk later extended by `033`, then **SUPERSEDED by `039`**.
 
 ### 024 — Project Cover on Create
 
@@ -221,7 +221,49 @@ Last confirmed: 2026-11-10 (features `001`–`033`).
 
 - **Spec:** `specs/033-dark-theme-retune/`
 - **What:** Additive dark palettes Violet Night, Cyan Edge, Graphite (keep Obsidian/Noir/Dusk).
-- **Approach:** Frontend-only catalog + CSS tokens + eyecandy surfaces; inspired by `templates/DarkThemes/` (not pixel clone). localStorage `devtrack.uiPalette` / Forest fallback unchanged.
+- **Approach:** Frontend-only catalog + CSS tokens + eyecandy surfaces; inspired by `templates/DarkThemes/` (not pixel clone). localStorage `devtrack.uiPalette` / Forest fallback unchanged. **SUPERSEDED by `039`** (those dark ids removed).
+
+### 034 — Pointer Cursors
+
+- **Spec:** `specs/034-pointer-cursors/`
+- **What:** Pointer on attachment picker; Kanban card idle/hover pointer + dragging grabbing; label/status swatch pointer.
+- **Approach:** Frontend-only (Q-208–Q-210). No Prisma/API/DnD library change.
+
+### 035 — Confirm Dialogs
+
+- **Spec:** `specs/035-confirm-dialogs/`
+- **What:** Confirm before task soft-delete and logout.
+- **Approach:** Shared shadcn `ConfirmDialog`; no `window.confirm`; HTTP contracts unchanged (Q-211–Q-213).
+
+### 036 — Archived Projects Sidebar
+
+- **Spec:** `specs/036-archived-projects/`
+- **What:** Owner-only sidebar Archived section; open archived detail with Unarchive.
+- **Approach:** Additive `GET /api/projects?includeArchived=true` for `ownerUserId`; `/projects` grid stays active-only (Q-214–Q-218). No migration.
+
+### 037 — Board Background Image
+
+- **Spec:** `specs/037-board-background/`
+- **What:** Separate board backdrop behind Kanban columns (not project cover).
+- **Approach:** `ProjectBoardBackground` + migration `20261111160000_project_board_backgrounds`; volume `project_board_backgrounds_data`; OWNER+EDITOR upload/clear; jpeg/png/webp/gif 5 MiB (Q-219–Q-225).
+
+### 038 — Checklist Item Window
+
+- **Spec:** `specs/038-checklist-window/`
+- **What:** ≤10 checklist items with Prev/Next replace navigation.
+- **Approach:** Additive paginated item GET; checklist list omits nested items + `itemCount`/`checkedCount`; FE stack like 025 (Q-226–Q-230). No migration.
+
+### 039 — Dark Theme Catalog Refresh
+
+- **Spec:** `specs/039-dark-theme-catalog/`
+- **What:** Replace prior dark catalog with twelve guide darks; keep lights/gradients + Forest.
+- **Approach:** Frontend-only; remove Midnight/Obsidian/Noir/Dusk/VioletNight/CyanEdge/Graphite; same `uiPalettes`/CSS/eyecandy/localStorage (Q-231–Q-236). **SUPERSEDES** 023/033 dark ids.
+
+### 040 — TaskDetail Cover Hero
+
+- **Spec:** `specs/040-task-detail-cover-hero/`
+- **What:** Short flush-top cover hero in TaskDetail Dialog when 017 cover is set.
+- **Approach:** Frontend-only over 017; `max-h-36` `object-cover`; null → no hero; non-interactive; reuse auth content fetch/`applyCover` (Q-237–Q-242). No Prisma/API.
 
 ---
 

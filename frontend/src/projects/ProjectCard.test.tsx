@@ -12,6 +12,7 @@ const baseProject: PublicProjectDto = {
   createdAt: "2026-10-27T18:00:00.000Z",
   archivedAt: null,
   cover: null,
+  boardBackground: null,
 };
 
 function mockFetch(

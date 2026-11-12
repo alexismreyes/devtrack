@@ -26,9 +26,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Plus } from "lucide-react";
-import { fetchAttachmentContent } from "../api/client";
+import {
+  fetchAttachmentContent,
+  fetchProjectBoardBackgroundContent,
+} from "../api/client";
 import type {
   PublicCoverSummaryDto,
+  PublicProjectBoardBackgroundSummaryDto,
   PublicProjectStatusDto,
   PublicTaskDto,
   TaskStatus,
@@ -40,6 +44,8 @@ import { LabelChips } from "./LabelChips";
 import { labelChipClassName, labelSoftTintClassName } from "./labelColors";
 
 type KanbanBoardProps = {
+  projectId?: string;
+  boardBackground?: PublicProjectBoardBackgroundSummaryDto | null;
   columns: PublicProjectStatusDto[];
   tasks: PublicTaskDto[];
   onSelectTask: (taskId: string) => void;
@@ -252,6 +258,8 @@ function createKeyboardCoordinates(
 }
 
 export function KanbanBoard({
+  projectId,
+  boardBackground = null,
   columns,
   tasks,
   onSelectTask,
@@ -263,6 +271,50 @@ export function KanbanBoard({
 }: KanbanBoardProps) {
   const [activeDrag, setActiveDrag] = useState<ActiveDrag>(null);
   const suppressSelectRef = useRef(false);
+  const [boardBackgroundUrl, setBoardBackgroundUrl] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    let createdUrl: string | null = null;
+
+    if (
+      projectId === undefined ||
+      boardBackground === null ||
+      boardBackground === undefined
+    ) {
+      setBoardBackgroundUrl(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    async function load(): Promise<void> {
+      try {
+        const { blob } = await fetchProjectBoardBackgroundContent(projectId!);
+        createdUrl = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(createdUrl);
+          createdUrl = null;
+          return;
+        }
+        setBoardBackgroundUrl(createdUrl);
+      } catch {
+        if (!cancelled) {
+          setBoardBackgroundUrl(null);
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+      if (createdUrl !== null) {
+        URL.revokeObjectURL(createdUrl);
+      }
+    };
+  }, [boardBackground, projectId]);
   const columnKeys = columns.map((column) => column.key);
   const columnIds = columns.map((column) => column.id);
   const columnsSortable = !disabled && onReorderColumns !== undefined;
@@ -382,6 +434,15 @@ export function KanbanBoard({
     clearSelectSuppression();
   }
 
+  const boardStyle: CSSProperties | undefined =
+    boardBackgroundUrl === null
+      ? undefined
+      : {
+          backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.35), rgba(15, 23, 42, 0.35)), url(${boardBackgroundUrl})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        };
+
   return (
     <DndContext
       id="project-kanban"
@@ -399,7 +460,11 @@ export function KanbanBoard({
       >
         <div
           data-slot="kanban-board"
-          className="flex min-h-0 min-w-0 flex-1 justify-start gap-3 overflow-x-auto"
+          data-board-background={
+            boardBackgroundUrl === null ? "fallback" : "image"
+          }
+          style={boardStyle}
+          className="flex min-h-0 min-w-0 flex-1 justify-start gap-3 overflow-x-auto rounded-xl bg-transparent p-2"
         >
           {columns.map((column) => (
             <KanbanColumn
@@ -749,13 +814,9 @@ function KanbanCard({
         aria-label={task.title}
         className={cn(
           "touch-none",
-          disabled
-            ? "cursor-pointer"
-            : isDragging
-              ? "cursor-grabbing opacity-50"
-              : sortable
-                ? "cursor-grab"
-                : "cursor-pointer",
+          isDragging
+            ? "cursor-grabbing opacity-50"
+            : "cursor-pointer",
         )}
         {...attributes}
         {...otherDragListeners}

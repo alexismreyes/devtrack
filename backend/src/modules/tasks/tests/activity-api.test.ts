@@ -7,6 +7,8 @@ import { InMemoryProjectMembersRepository } from "../../project-members/tests/in
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
 import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
 import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "../../projects/tests/in-memory-project-board-backgrounds-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "../../projects/tests/in-memory-project-board-background-storage";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
@@ -66,6 +68,8 @@ function createActivityApp() {
     projectsRepository,
     projectCoversRepository: new InMemoryProjectCoversRepository(),
     projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,

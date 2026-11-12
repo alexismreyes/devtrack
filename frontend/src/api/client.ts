@@ -7,6 +7,7 @@ import type {
   ChecklistAddedActivityPayload,
   ChecklistItemCompletedActivityPayload,
   ChecklistItemUncompletedActivityPayload,
+  ChecklistItemListResponseDto,
   ChecklistListResponseDto,
   ChecklistRemovedActivityPayload,
   CommentAddedActivityPayload,
@@ -34,6 +35,7 @@ import type {
   MemberListResponseDto,
   ProbeListResponseDto,
   ProbeResponseDto,
+  ProjectBoardBackgroundResponseDto,
   ProjectCoverResponseDto,
   ProjectListResponseDto,
   ProjectMemberRole,
@@ -45,6 +47,7 @@ import type {
   PublicCoverSummaryDto,
   PublicLabelDto,
   PublicMemberDto,
+  PublicProjectBoardBackgroundSummaryDto,
   PublicProjectCoverSummaryDto,
   PublicProjectDto,
   PublicProjectStatusDto,
@@ -183,8 +186,14 @@ export async function changePassword(
   await request("POST", "/api/auth/password", input);
 }
 
-export async function listProjects(): Promise<ProjectListResponseDto> {
-  const body = await request("GET", "/api/projects");
+export type ListProjectsQuery = {
+  includeArchived?: boolean;
+};
+
+export async function listProjects(
+  query: ListProjectsQuery = {},
+): Promise<ProjectListResponseDto> {
+  const body = await request("GET", projectsListPath(query));
   if (!isProjectListResponse(body)) {
     throw new ApiError(500, "INTERNAL_ERROR", "Unexpected project list response");
   }
@@ -250,6 +259,78 @@ export async function fetchProjectCoverContent(
   projectId: string,
 ): Promise<{ blob: Blob; contentType: string }> {
   const url = projectCoverContentUrl(projectId);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "*/*" },
+    });
+  } catch (err) {
+    throw new ApiError(0, "INTERNAL_ERROR", toUserMessage(err));
+  }
+
+  if (!response.ok) {
+    const parsed = await parseJson(response);
+    if (isErrorEnvelope(parsed)) {
+      throw new ApiError(
+        response.status,
+        parsed.error.code,
+        parsed.error.message,
+      );
+    }
+    throw new ApiError(response.status, "INTERNAL_ERROR", "Request failed");
+  }
+
+  const contentTypeHeader = response.headers.get("Content-Type");
+  const contentType =
+    contentTypeHeader === null || contentTypeHeader.trim() === ""
+      ? "application/octet-stream"
+      : contentTypeHeader.split(";")[0]!.trim();
+  const blob = await response.blob();
+  return { blob, contentType };
+}
+
+export async function uploadProjectBoardBackground(
+  projectId: string,
+  file: File,
+): Promise<ProjectBoardBackgroundResponseDto> {
+  const form = new FormData();
+  form.append("file", file);
+  const body = await requestMultipart(
+    "PUT",
+    projectBoardBackgroundPath(projectId),
+    form,
+  );
+  if (!isProjectBoardBackgroundResponse(body)) {
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "Unexpected project board background response",
+    );
+  }
+  return {
+    boardBackground:
+      body.boardBackground === null
+        ? null
+        : toPublicProjectBoardBackgroundSummary(body.boardBackground),
+  };
+}
+
+export async function clearProjectBoardBackground(
+  projectId: string,
+): Promise<void> {
+  await request("DELETE", projectBoardBackgroundPath(projectId));
+}
+
+export function projectBoardBackgroundContentUrl(projectId: string): string {
+  return `${getApiBaseUrl()}${projectBoardBackgroundContentPath(projectId)}`;
+}
+
+export async function fetchProjectBoardBackgroundContent(
+  projectId: string,
+): Promise<{ blob: Blob; contentType: string }> {
+  const url = projectBoardBackgroundContentUrl(projectId);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -536,6 +617,28 @@ export async function listTaskChecklists(
   }
   return {
     checklists: body.checklists.map(toPublicChecklist),
+  };
+}
+
+export async function listTaskChecklistItems(
+  taskId: string,
+  checklistId: string,
+  query: FeedPaginationQueryDto = {},
+): Promise<ChecklistItemListResponseDto> {
+  const body = await request(
+    "GET",
+    checklistItemsCollectionPath(taskId, checklistId, query),
+  );
+  if (!isChecklistItemListResponse(body)) {
+    throw new ApiError(
+      500,
+      "INTERNAL_ERROR",
+      "Unexpected checklist item list response",
+    );
+  }
+  return {
+    items: body.items.map(toPublicChecklistItem),
+    nextCursor: body.nextCursor,
   };
 }
 
@@ -914,6 +1017,10 @@ function toPublicProject(value: PublicProjectDto): PublicProjectDto {
     createdAt: value.createdAt,
     archivedAt: value.archivedAt,
     cover: value.cover === null ? null : toPublicProjectCoverSummary(value.cover),
+    boardBackground:
+      value.boardBackground === null
+        ? null
+        : toPublicProjectBoardBackgroundSummary(value.boardBackground),
   };
 }
 
@@ -929,6 +1036,7 @@ function isPublicProject(value: unknown): value is PublicProjectDto {
     createdAt?: unknown;
     archivedAt?: unknown;
     cover?: unknown;
+    boardBackground?: unknown;
   };
   return (
     typeof project.id === "string" &&
@@ -937,7 +1045,9 @@ function isPublicProject(value: unknown): value is PublicProjectDto {
     (typeof project.description === "string" || project.description === null) &&
     typeof project.createdAt === "string" &&
     (typeof project.archivedAt === "string" || project.archivedAt === null) &&
-    (project.cover === null || isPublicProjectCoverSummary(project.cover))
+    (project.cover === null || isPublicProjectCoverSummary(project.cover)) &&
+    (project.boardBackground === null ||
+      isPublicProjectBoardBackgroundSummary(project.boardBackground))
   );
 }
 
@@ -975,12 +1085,64 @@ function isProjectCoverResponse(
   return cover === null || isPublicProjectCoverSummary(cover);
 }
 
+function toPublicProjectBoardBackgroundSummary(
+  value: PublicProjectBoardBackgroundSummaryDto,
+): PublicProjectBoardBackgroundSummaryDto {
+  return {
+    id: value.id,
+    contentType: value.contentType,
+  };
+}
+
+function isPublicProjectBoardBackgroundSummary(
+  value: unknown,
+): value is PublicProjectBoardBackgroundSummaryDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const boardBackground = value as {
+    id?: unknown;
+    contentType?: unknown;
+  };
+  return (
+    typeof boardBackground.id === "string" &&
+    typeof boardBackground.contentType === "string"
+  );
+}
+
+function isProjectBoardBackgroundResponse(
+  value: unknown,
+): value is ProjectBoardBackgroundResponseDto {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("boardBackground" in value)
+  ) {
+    return false;
+  }
+  const boardBackground = (value as { boardBackground: unknown })
+    .boardBackground;
+  return (
+    boardBackground === null ||
+    isPublicProjectBoardBackgroundSummary(boardBackground)
+  );
+}
+
 function isProjectListResponse(value: unknown): value is ProjectListResponseDto {
   if (typeof value !== "object" || value === null || !("projects" in value)) {
     return false;
   }
   const projects = (value as { projects: unknown }).projects;
   return Array.isArray(projects) && projects.every(isPublicProject);
+}
+
+function projectsListPath(query: ListProjectsQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.includeArchived === true) {
+    params.set("includeArchived", "true");
+  }
+  const encoded = params.toString();
+  return encoded === "" ? "/api/projects" : `/api/projects?${encoded}`;
 }
 
 function taskListPath(projectId: string, query: ListTasksQueryDto): string {
@@ -1515,8 +1677,12 @@ function checklistItemPath(taskId: string, checklistId: string): string {
 function checklistItemsCollectionPath(
   taskId: string,
   checklistId: string,
+  query: FeedPaginationQueryDto = {},
 ): string {
-  return `${checklistItemPath(taskId, checklistId)}/items`;
+  return withFeedPaginationQuery(
+    `${checklistItemPath(taskId, checklistId)}/items`,
+    query,
+  );
 }
 
 function checklistItemItemPath(
@@ -1563,6 +1729,14 @@ function projectCoverPath(projectId: string): string {
 
 function projectCoverContentPath(projectId: string): string {
   return `${projectCoverPath(projectId)}/content`;
+}
+
+function projectBoardBackgroundPath(projectId: string): string {
+  return `/api/projects/${projectId}/board-background`;
+}
+
+function projectBoardBackgroundContentPath(projectId: string): string {
+  return `${projectBoardBackgroundPath(projectId)}/content`;
 }
 
 function requirePublicAttachment(
@@ -1833,6 +2007,8 @@ function toPublicChecklist(value: PublicChecklistDto): PublicChecklistDto {
     name: value.name,
     createdAt: value.createdAt,
     items: value.items.map(toPublicChecklistItem),
+    itemCount: value.itemCount,
+    checkedCount: value.checkedCount,
   };
 }
 
@@ -1878,6 +2054,8 @@ function isPublicChecklist(value: unknown): value is PublicChecklistDto {
     name?: unknown;
     createdAt?: unknown;
     items?: unknown;
+    itemCount?: unknown;
+    checkedCount?: unknown;
   };
   return (
     typeof checklist.id === "string" &&
@@ -1885,7 +2063,27 @@ function isPublicChecklist(value: unknown): value is PublicChecklistDto {
     typeof checklist.name === "string" &&
     typeof checklist.createdAt === "string" &&
     Array.isArray(checklist.items) &&
-    checklist.items.every(isPublicChecklistItem)
+    checklist.items.every(isPublicChecklistItem) &&
+    typeof checklist.itemCount === "number" &&
+    Number.isInteger(checklist.itemCount) &&
+    checklist.itemCount >= 0 &&
+    typeof checklist.checkedCount === "number" &&
+    Number.isInteger(checklist.checkedCount) &&
+    checklist.checkedCount >= 0
+  );
+}
+
+function isChecklistItemListResponse(
+  value: unknown,
+): value is ChecklistItemListResponseDto {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as { items: unknown; nextCursor?: unknown };
+  return (
+    Array.isArray(record.items) &&
+    record.items.every(isPublicChecklistItem) &&
+    isFeedNextCursor(record.nextCursor)
   );
 }
 

@@ -13,6 +13,8 @@ import { PrismaProjectCoversRepository } from "../../projects/repository/prisma-
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
 import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
 import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "../../projects/tests/in-memory-project-board-backgrounds-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "../../projects/tests/in-memory-project-board-background-storage";
 import { PrismaSystemRepository } from "../../system/repository/prisma-system-repository";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
@@ -84,6 +86,8 @@ function createMembersApp() {
     projectsRepository,
     projectCoversRepository: new InMemoryProjectCoversRepository(),
     projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -457,6 +461,7 @@ describe("project-members HTTP API persistence", () => {
   if (hasDatabaseUrl) {
     process.env.ATTACHMENTS_ROOT ??= "./data/attachments-test";
     process.env.PROJECT_COVERS_ROOT ??= "./data/project-covers-test";
+    process.env.PROJECT_BOARD_BACKGROUNDS_ROOT ??= "./data/project-board-backgrounds-test";
     prisma = createPrismaClient(loadConfig().databaseUrl);
     app = createApp({
       corsOrigin: process.env.CORS_ORIGIN,
@@ -466,6 +471,8 @@ describe("project-members HTTP API persistence", () => {
       projectsRepository: new PrismaProjectsRepository(prisma),
       projectCoversRepository: new PrismaProjectCoversRepository(prisma),
       projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),

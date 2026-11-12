@@ -43,6 +43,12 @@ export type PublicProjectCoverSummaryDto = {
   contentType: string;
 };
 
+/** Board background summary — opaque id + content type only (037). */
+export type PublicProjectBoardBackgroundSummaryDto = {
+  id: string;
+  contentType: string;
+};
+
 export type PublicProjectDto = {
   id: string;
   ownerUserId: string;
@@ -51,10 +57,15 @@ export type PublicProjectDto = {
   createdAt: string;
   archivedAt: string | null;
   cover: PublicProjectCoverSummaryDto | null;
+  boardBackground: PublicProjectBoardBackgroundSummaryDto | null;
 };
 
 export type ProjectCoverResponseDto = {
   cover: PublicProjectCoverSummaryDto | null;
+};
+
+export type ProjectBoardBackgroundResponseDto = {
+  boardBackground: PublicProjectBoardBackgroundSummaryDto | null;
 };
 
 export type ProjectListResponseDto = {
@@ -235,6 +246,12 @@ export const ATTACHMENT_MAX_SIZE_BYTES = 20 * 1024 * 1024;
 /** Q-160: 5 MiB max for project covers. */
 export const PROJECT_COVER_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
+/** Q-222: 5 MiB max for board backgrounds. */
+export const PROJECT_BOARD_BACKGROUND_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+
+export const PROJECT_BOARD_BACKGROUND_ALLOWED_CONTENT_TYPES =
+  COVER_IMAGE_CONTENT_TYPES;
+
 export function isAllowedAttachmentContentType(
   value: string,
 ): value is AttachmentContentType {
@@ -251,6 +268,14 @@ export function isAllowedProjectCoverContentType(value: string): boolean {
   return (PROJECT_COVER_ALLOWED_CONTENT_TYPES as readonly string[]).includes(
     value,
   );
+}
+
+export function isAllowedProjectBoardBackgroundContentType(
+  value: string,
+): boolean {
+  return (
+    PROJECT_BOARD_BACKGROUND_ALLOWED_CONTENT_TYPES as readonly string[]
+  ).includes(value);
 }
 
 export type TaskListResponseDto = {
@@ -374,10 +399,17 @@ export type PublicChecklistDto = {
   name: string;
   createdAt: string;
   items: PublicChecklistItemDto[];
+  itemCount: number;
+  checkedCount: number;
 };
 
 export type ChecklistListResponseDto = {
   checklists: PublicChecklistDto[];
+};
+
+export type ChecklistItemListResponseDto = {
+  items: PublicChecklistItemDto[];
+  nextCursor: string | null;
 };
 
 export type CreateChecklistRequestDto = {

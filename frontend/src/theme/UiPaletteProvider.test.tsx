@@ -40,6 +40,18 @@ describe("UiPaletteProvider", () => {
     );
   });
 
+  it("falls back to Forest for removed stored id Obsidian (AC-004)", () => {
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "Obsidian");
+    renderSelector();
+    expect(document.documentElement.dataset.palette).toBe("Forest");
+  });
+
+  it("falls back to Forest for removed stored id VioletNight (AC-004)", () => {
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "VioletNight");
+    renderSelector();
+    expect(document.documentElement.dataset.palette).toBe("Forest");
+  });
+
   it("applies a valid stored palette without a guest-only rewrite", () => {
     window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "Glacier");
     renderSelector();
@@ -47,7 +59,7 @@ describe("UiPaletteProvider", () => {
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Glacier");
   });
 
-  it("writes the selected catalog id via circular previews and lists the full Q-041 catalog", async () => {
+  it("writes the selected catalog id via circular previews and lists the full catalog", async () => {
     const user = userEvent.setup();
     renderSelector();
     const trigger = screen.getByRole("button", { name: /color palette/i });
@@ -56,7 +68,7 @@ describe("UiPaletteProvider", () => {
     const picker = screen.getByTestId("ui-palette-picker");
     for (const item of UI_PALETTES) {
       const option = within(picker).getByRole("radio", {
-        name: new RegExp(`^${item.label}(, selected)?$`),
+        name: new RegExp(`^${item.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(, selected)?$`),
       });
       expect(option).toBeInTheDocument();
       expect(
@@ -70,32 +82,32 @@ describe("UiPaletteProvider", () => {
     expectNoSessionTokenStorage();
   });
 
-  it("persists Q-177 dark palette Obsidian under devtrack.uiPalette (AC-003)", async () => {
+  it("persists Midnight Aurora under catalog id MidnightAurora (AC-001)", async () => {
     const user = userEvent.setup();
     renderSelector();
     await user.click(screen.getByRole("button", { name: /color palette/i }));
     await user.click(
       within(screen.getByTestId("ui-palette-picker")).getByRole("radio", {
-        name: /^Obsidian$/i,
+        name: /^Midnight Aurora$/i,
       }),
     );
-    expect(document.documentElement.dataset.palette).toBe("Obsidian");
-    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Obsidian");
+    expect(document.documentElement.dataset.palette).toBe("MidnightAurora");
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("MidnightAurora");
+    expect(screen.getByRole("button", { name: /color palette/i })).toHaveTextContent(
+      "Midnight Aurora",
+    );
   });
 
-  it("persists 033 Violet Night under catalog id VioletNight (AC-001/AC-004)", async () => {
+  it("persists Obsidian & Gold under catalog id ObsidianGold (AC-001)", async () => {
     const user = userEvent.setup();
     renderSelector();
     await user.click(screen.getByRole("button", { name: /color palette/i }));
     await user.click(
       within(screen.getByTestId("ui-palette-picker")).getByRole("radio", {
-        name: /^Violet Night$/i,
+        name: /^Obsidian & Gold$/i,
       }),
     );
-    expect(document.documentElement.dataset.palette).toBe("VioletNight");
-    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("VioletNight");
-    expect(screen.getByRole("button", { name: /color palette/i })).toHaveTextContent(
-      "Violet Night",
-    );
+    expect(document.documentElement.dataset.palette).toBe("ObsidianGold");
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("ObsidianGold");
   });
 });

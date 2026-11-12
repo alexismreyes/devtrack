@@ -7,10 +7,15 @@ import type { ProjectStatusSeedPort } from "../access/project-status-seed-port";
 import type { UnitOfWork } from "../access/unit-of-work";
 import { ProjectNotFoundError } from "../domain/errors";
 import {
+  isAllowedProjectBoardBackgroundContentType,
+  type ProjectBoardBackgroundSummary,
+} from "../domain/project-board-background";
+import {
   isAllowedProjectCoverContentType,
   type ProjectCoverSummary,
 } from "../domain/project-cover";
 import type { Project } from "../domain/project";
+import type { ProjectBoardBackgroundsRepository } from "../repository/project-board-backgrounds-repository";
 import type { ProjectCoversRepository } from "../repository/project-covers-repository";
 import type {
   ProjectsRepository,
@@ -25,6 +30,7 @@ export type ProjectView = {
   createdAt: Date;
   archivedAt: Date | null;
   cover: ProjectCoverSummary | null;
+  boardBackground: ProjectBoardBackgroundSummary | null;
 };
 
 export class ProjectsService {
@@ -35,6 +41,7 @@ export class ProjectsService {
     private readonly unitOfWork: UnitOfWork,
     private readonly statusSeed: ProjectStatusSeedPort,
     private readonly covers: ProjectCoversRepository,
+    private readonly boardBackgrounds: ProjectBoardBackgroundsRepository,
   ) {}
 
   create(
@@ -50,14 +57,31 @@ export class ProjectsService {
       });
       await this.ownerMembership.insertCreatingOwner(project.id, actorId);
       await this.statusSeed.seedDefaultsForProject(project.id);
-      return this.toView(project, null);
+      return this.toView(project, null, null);
     });
   }
 
-  async listAuthorized(actorId: string): Promise<ProjectView[]> {
+  async listAuthorized(
+    actorId: string,
+    options: { includeArchived?: boolean } = {},
+  ): Promise<ProjectView[]> {
     const ids = await this.membership.listAuthorizedActiveProjectIds(actorId);
-    const projects = await this.projects.listActiveByIds(ids);
-    return this.withCovers(projects);
+    const active = await this.projects.listActiveByIds(ids);
+    if (options.includeArchived !== true) {
+      return this.withMedia(active);
+    }
+    const archivedOwned = await this.projects.listArchivedByOwnerId(actorId);
+    const seen = new Set(active.map((project) => project.id));
+    const combined = [...active];
+    for (const project of archivedOwned) {
+      if (seen.has(project.id)) {
+        continue;
+      }
+      combined.push(project);
+      seen.add(project.id);
+    }
+    combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return this.withMedia(combined);
   }
 
   async getById(actorId: string, projectId: string): Promise<ProjectView> {
@@ -67,7 +91,8 @@ export class ProjectsService {
       "read_project",
     );
     const cover = await this.loadCoverSummary(project.id);
-    return this.toView(project, cover);
+    const boardBackground = await this.loadBoardBackgroundSummary(project.id);
+    return this.toView(project, cover, boardBackground);
   }
 
   async update(
@@ -83,21 +108,26 @@ export class ProjectsService {
     project.withDetails(input);
     const updated = await this.projects.update(projectId, input);
     const cover = await this.loadCoverSummary(updated.id);
-    return this.toView(updated, cover);
+    const boardBackground = await this.loadBoardBackgroundSummary(updated.id);
+    return this.toView(updated, cover, boardBackground);
   }
 
   async archive(actorId: string, projectId: string): Promise<ProjectView> {
     await this.requireAuthorized(actorId, projectId, "archive_project");
     const archived = await this.projects.archive(projectId);
     const cover = await this.loadCoverSummary(archived.id);
-    return this.toView(archived, cover);
+    const boardBackground = await this.loadBoardBackgroundSummary(archived.id);
+    return this.toView(archived, cover, boardBackground);
   }
 
   async unarchive(actorId: string, projectId: string): Promise<ProjectView> {
     await this.requireAuthorized(actorId, projectId, "unarchive_project");
     const unarchived = await this.projects.unarchive(projectId);
     const cover = await this.loadCoverSummary(unarchived.id);
-    return this.toView(unarchived, cover);
+    const boardBackground = await this.loadBoardBackgroundSummary(
+      unarchived.id,
+    );
+    return this.toView(unarchived, cover, boardBackground);
   }
 
   private async requireAuthorized(
@@ -126,22 +156,41 @@ export class ProjectsService {
     return project;
   }
 
-  private async withCovers(projects: Project[]): Promise<ProjectView[]> {
-    const summaries = await this.covers.listSummariesForProjectIds(
-      projects.map((project) => project.id),
-    );
-    const byProjectId = new Map<string, ProjectCoverSummary>();
-    for (const row of summaries) {
+  private async withMedia(projects: Project[]): Promise<ProjectView[]> {
+    const projectIds = projects.map((project) => project.id);
+    const [coverSummaries, boardBackgroundSummaries] = await Promise.all([
+      this.covers.listSummariesForProjectIds(projectIds),
+      this.boardBackgrounds.listSummariesForProjectIds(projectIds),
+    ]);
+    const coversByProjectId = new Map<string, ProjectCoverSummary>();
+    for (const row of coverSummaries) {
       if (!isAllowedProjectCoverContentType(row.contentType)) {
         continue;
       }
-      byProjectId.set(row.projectId, {
+      coversByProjectId.set(row.projectId, {
         id: row.coverId,
         contentType: row.contentType,
       });
     }
+    const boardBackgroundsByProjectId = new Map<
+      string,
+      ProjectBoardBackgroundSummary
+    >();
+    for (const row of boardBackgroundSummaries) {
+      if (!isAllowedProjectBoardBackgroundContentType(row.contentType)) {
+        continue;
+      }
+      boardBackgroundsByProjectId.set(row.projectId, {
+        id: row.boardBackgroundId,
+        contentType: row.contentType,
+      });
+    }
     return projects.map((project) =>
-      this.toView(project, byProjectId.get(project.id) ?? null),
+      this.toView(
+        project,
+        coversByProjectId.get(project.id) ?? null,
+        boardBackgroundsByProjectId.get(project.id) ?? null,
+      ),
     );
   }
 
@@ -158,9 +207,24 @@ export class ProjectsService {
     };
   }
 
+  private async loadBoardBackgroundSummary(
+    projectId: string,
+  ): Promise<ProjectBoardBackgroundSummary | null> {
+    const boardBackground =
+      await this.boardBackgrounds.findByProjectId(projectId);
+    if (boardBackground === null) {
+      return null;
+    }
+    return {
+      id: boardBackground.id,
+      contentType: boardBackground.contentType,
+    };
+  }
+
   private toView(
     project: Project,
     cover: ProjectCoverSummary | null,
+    boardBackground: ProjectBoardBackgroundSummary | null,
   ): ProjectView {
     return {
       id: project.id,
@@ -170,6 +234,7 @@ export class ProjectsService {
       createdAt: project.createdAt,
       archivedAt: project.archivedAt,
       cover,
+      boardBackground,
     };
   }
 }

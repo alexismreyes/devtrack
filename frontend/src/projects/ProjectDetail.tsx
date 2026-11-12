@@ -347,6 +347,9 @@ export function ProjectDetail({
             onCoverChange={(cover) => {
               applyProject({ ...project, cover });
             }}
+            onBoardBackgroundChange={(boardBackground) => {
+              applyProject({ ...project, boardBackground });
+            }}
             onUnauthenticated={onUnauthenticated}
           />
           <MembersDialog
@@ -379,6 +382,7 @@ export function ProjectDetail({
           <TasksPanel
             projectId={projectId}
             archived={archived}
+            boardBackground={project.boardBackground}
             canWriteTasks={writeTasks}
             canManageMembers={showMembers}
             currentUserId={actorUserId}

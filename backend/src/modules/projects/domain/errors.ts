@@ -67,3 +67,38 @@ export class ProjectCoverStorageError extends Error {
     this.name = "ProjectCoverStorageError";
   }
 }
+
+export class ProjectBoardBackgroundNotFoundError extends Error {
+  constructor() {
+    super("Project board background was not found");
+    this.name = "ProjectBoardBackgroundNotFoundError";
+  }
+}
+
+export class InvalidProjectBoardBackgroundFilenameError extends Error {
+  constructor() {
+    super("Project board background filename is invalid");
+    this.name = "InvalidProjectBoardBackgroundFilenameError";
+  }
+}
+
+export class InvalidProjectBoardBackgroundContentTypeError extends Error {
+  constructor() {
+    super("Project board background content type is not allowed");
+    this.name = "InvalidProjectBoardBackgroundContentTypeError";
+  }
+}
+
+export class ProjectBoardBackgroundSizeExceededError extends Error {
+  constructor() {
+    super("Project board background exceeds the maximum allowed size");
+    this.name = "ProjectBoardBackgroundSizeExceededError";
+  }
+}
+
+export class ProjectBoardBackgroundStorageError extends Error {
+  constructor(message = "Project board background storage operation failed") {
+    super(message);
+    this.name = "ProjectBoardBackgroundStorageError";
+  }
+}

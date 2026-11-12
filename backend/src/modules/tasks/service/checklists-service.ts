@@ -1,11 +1,18 @@
 import type { TaskAuthorizationPort } from "../../project-members/access/task-authorization-port";
 import type { UnitOfWork } from "../../projects/access/unit-of-work";
+import { validationError } from "../../../infrastructure/http/app-error";
 import {
   ChecklistItemNotFoundError,
   ChecklistNotFoundError,
   TaskNotFoundError,
   TaskParentArchivedError,
 } from "../domain/errors";
+import {
+  DEFAULT_CHECKLIST_ITEMS_LIMIT,
+  MAX_FEED_LIMIT,
+  decodeFeedCursor,
+  encodeFeedCursor,
+} from "../domain/feed-cursor";
 import type {
   TaskChecklist,
   TaskChecklistItem,
@@ -29,6 +36,18 @@ export type ChecklistView = {
   name: string;
   createdAt: Date;
   items: ChecklistItemView[];
+  itemCount: number;
+  checkedCount: number;
+};
+
+export type ChecklistItemListPage = {
+  items: ChecklistItemView[];
+  nextCursor: string | null;
+};
+
+export type ListChecklistItemsOptions = {
+  cursor?: string;
+  limit?: number;
 };
 
 export class ChecklistsService {
@@ -44,7 +63,46 @@ export class ChecklistsService {
     const task = await this.requireLiveTask(taskId);
     await this.authorization.requireTaskRead(actorId, task.projectId);
     const listed = await this.checklists.listByTaskId(task.id);
-    return listed.map((checklist) => this.toChecklistView(checklist));
+    const tallies = await this.checklists.countItemTalliesByChecklistIds(
+      listed.map((checklist) => checklist.id),
+    );
+    const tallyById = new Map(
+      tallies.map((tally) => [
+        tally.checklistId,
+        { itemCount: tally.totalItems, checkedCount: tally.checkedItems },
+      ]),
+    );
+    return listed.map((checklist) => {
+      const counts = tallyById.get(checklist.id) ?? {
+        itemCount: 0,
+        checkedCount: 0,
+      };
+      return this.toChecklistView(checklist, counts);
+    });
+  }
+
+  async listItems(
+    actorId: string,
+    taskId: string,
+    checklistId: string,
+    options: ListChecklistItemsOptions = {},
+  ): Promise<ChecklistItemListPage> {
+    const task = await this.requireLiveTask(taskId);
+    await this.authorization.requireTaskRead(actorId, task.projectId);
+    await this.requireChecklistInTask(task.id, checklistId);
+    const limit = normalizeChecklistItemsLimit(options.limit);
+    const cursor =
+      options.cursor === undefined ? null : parseFeedCursor(options.cursor);
+    const page = await this.checklists.listItemsPage({
+      checklistId,
+      limit,
+      cursor,
+    });
+    return {
+      items: page.items.map((item) => this.toItemView(item)),
+      nextCursor:
+        page.nextCursor === null ? null : encodeFeedCursor(page.nextCursor),
+    };
   }
 
   async create(
@@ -71,7 +129,10 @@ export class ChecklistsService {
           checklist.name,
         ),
       );
-      return this.toChecklistView(checklist);
+      return this.toChecklistView(checklist, {
+        itemCount: 0,
+        checkedCount: 0,
+      });
     });
   }
 
@@ -89,7 +150,8 @@ export class ChecklistsService {
     this.assertParentWritable(snapshot.archivedAt);
     await this.requireChecklistInTask(task.id, checklistId);
     const updated = await this.checklists.updateName(checklistId, name);
-    return this.toChecklistView(updated);
+    const counts = await this.countsForChecklist(checklistId);
+    return this.toChecklistView(updated, counts);
   }
 
   async delete(
@@ -235,6 +297,22 @@ export class ChecklistsService {
     }
   }
 
+  private async countsForChecklist(
+    checklistId: string,
+  ): Promise<{ itemCount: number; checkedCount: number }> {
+    const tallies = await this.checklists.countItemTalliesByChecklistIds([
+      checklistId,
+    ]);
+    const tally = tallies[0];
+    if (tally === undefined) {
+      return { itemCount: 0, checkedCount: 0 };
+    }
+    return {
+      itemCount: tally.totalItems,
+      checkedCount: tally.checkedItems,
+    };
+  }
+
   private toItemView(item: TaskChecklistItem): ChecklistItemView {
     return {
       id: item.id,
@@ -245,13 +323,36 @@ export class ChecklistsService {
     };
   }
 
-  private toChecklistView(checklist: TaskChecklist): ChecklistView {
+  private toChecklistView(
+    checklist: TaskChecklist,
+    counts: { itemCount: number; checkedCount: number },
+  ): ChecklistView {
     return {
       id: checklist.id,
       taskId: checklist.taskId,
       name: checklist.name,
       createdAt: checklist.createdAt,
-      items: checklist.items.map((item) => this.toItemView(item)),
+      items: [],
+      itemCount: counts.itemCount,
+      checkedCount: counts.checkedCount,
     };
+  }
+}
+
+function normalizeChecklistItemsLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return DEFAULT_CHECKLIST_ITEMS_LIMIT;
+  }
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_FEED_LIMIT) {
+    throw validationError("Invalid request query");
+  }
+  return limit;
+}
+
+function parseFeedCursor(token: string) {
+  try {
+    return decodeFeedCursor(token);
+  } catch {
+    throw validationError("Invalid request query");
   }
 }

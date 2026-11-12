@@ -17,6 +17,8 @@ import { InMemoryStatusesRepository } from "../../tasks/tests/in-memory-statuses
 import { InMemoryTaskLabelsRepository } from "../../tasks/tests/in-memory-task-labels-repository";
 import { InMemoryTasksRepository } from "../../tasks/tests/in-memory-tasks-repository";
 import { InMemoryUsersRepository } from "../../users/tests/in-memory-users-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "./in-memory-project-board-background-storage";
+import { InMemoryProjectBoardBackgroundsRepository } from "./in-memory-project-board-backgrounds-repository";
 import { InMemoryProjectCoverStorage } from "./in-memory-project-cover-storage";
 import { InMemoryProjectCoversRepository } from "./in-memory-project-covers-repository";
 import { InMemoryProjectsRepository } from "./in-memory-projects-repository";
@@ -53,6 +55,10 @@ function createCoversApp() {
   const projectsRepository = new InMemoryProjectsRepository();
   const projectCoversRepository = new InMemoryProjectCoversRepository();
   const projectCoverStorage = new InMemoryProjectCoverStorage();
+  const projectBoardBackgroundsRepository =
+    new InMemoryProjectBoardBackgroundsRepository();
+  const projectBoardBackgroundStorage =
+    new InMemoryProjectBoardBackgroundStorage();
   const labelsRepository = new InMemoryLabelsRepository();
   const taskLabelsRepository = new InMemoryTaskLabelsRepository(labelsRepository);
   const tasksRepository = new InMemoryTasksRepository(taskLabelsRepository.joins);
@@ -66,6 +72,8 @@ function createCoversApp() {
     projectsRepository,
     projectCoversRepository,
     projectCoverStorage,
+    projectBoardBackgroundsRepository,
+    projectBoardBackgroundStorage,
     tasksRepository,
     commentsRepository: new InMemoryCommentsRepository(),
     activityRepository: new InMemoryActivityRepository(),

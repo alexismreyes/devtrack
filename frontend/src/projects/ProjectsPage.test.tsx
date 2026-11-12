@@ -12,6 +12,7 @@ const activeProject = {
   createdAt: "2026-10-27T18:00:00.000Z",
   archivedAt: null,
   cover: null as { id: string; contentType: string } | null,
+  boardBackground: null,
 };
 
 const archivedProject = {
@@ -58,7 +59,9 @@ describe("ProjectsPage", () => {
       resolveList = resolve;
     });
     mockFetch((url, init) => {
-      expect(url).toBe("http://localhost:3000/api/projects");
+      expect(url).toBe(
+        "http://localhost:3000/api/projects?includeArchived=true",
+      );
       expect(init?.credentials).toBe("include");
       return listPromise;
     });
@@ -76,10 +79,11 @@ describe("ProjectsPage", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("lists active projects and hides archived ones", async () => {
+  it("lists active projects separately from archived sidebar entries", async () => {
     mockFetch((url, init) => {
-      expect(url).toBe("http://localhost:3000/api/projects");
-      expect(url).not.toMatch(/includeArchived/i);
+      expect(url).toBe(
+        "http://localhost:3000/api/projects?includeArchived=true",
+      );
       expect(init?.credentials).toBe("include");
       return jsonResponse(200, {
         projects: [activeProject, archivedProject],
@@ -90,10 +94,54 @@ describe("ProjectsPage", () => {
       <ProjectsPage onSelectProject={vi.fn()} onUnauthenticated={vi.fn()} />,
     );
 
-    const list = await screen.findByRole("list", { name: /projects/i });
+    const list = await screen.findByRole("list", { name: /^projects$/i });
     expect(list).toHaveTextContent("Alpha");
     expect(list).not.toHaveTextContent("Archived Alpha");
+    const archivedList = screen.getByRole("list", {
+      name: /archived projects/i,
+    });
+    expect(archivedList).toHaveTextContent("Archived Alpha");
+    expect(screen.getByRole("heading", { name: /^archived$/i })).toBeInTheDocument();
     expectNoSessionTokenStorage();
+  });
+
+  it("hides the Archived section when there are no archived projects", async () => {
+    mockFetch((url) => {
+      expect(url).toBe(
+        "http://localhost:3000/api/projects?includeArchived=true",
+      );
+      return jsonResponse(200, { projects: [activeProject] });
+    });
+
+    render(
+      <ProjectsPage onSelectProject={vi.fn()} onUnauthenticated={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole("button", { name: /^alpha$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^archived$/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("list", { name: /archived projects/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("navigates when an archived sidebar entry is selected", async () => {
+    mockFetch(() =>
+      jsonResponse(200, { projects: [activeProject, archivedProject] }),
+    );
+    const onSelectProject = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ProjectsPage
+        onSelectProject={onSelectProject}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /^archived alpha$/i }),
+    );
+    expect(onSelectProject).toHaveBeenCalledWith("proj-archived");
   });
 
   it("lists a shared project the caller did not create", async () => {
@@ -103,7 +151,9 @@ describe("ProjectsPage", () => {
       name: "Shared Alpha",
     };
     mockFetch((url, init) => {
-      expect(url).toBe("http://localhost:3000/api/projects");
+      expect(url).toBe(
+        "http://localhost:3000/api/projects?includeArchived=true",
+      );
       expect(init?.credentials).toBe("include");
       return jsonResponse(200, { projects: [sharedProject] });
     });

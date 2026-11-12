@@ -26,14 +26,19 @@ import {
   ImmediateUnitOfWork,
   type UnitOfWork,
 } from "./modules/projects/access/unit-of-work";
+import { ProjectBoardBackgroundsController } from "./modules/projects/controller/project-board-backgrounds-controller";
 import { ProjectCoversController } from "./modules/projects/controller/project-covers-controller";
 import { ProjectsController } from "./modules/projects/controller/projects-controller";
+import type { ProjectBoardBackgroundsRepository } from "./modules/projects/repository/project-board-backgrounds-repository";
 import type { ProjectCoversRepository } from "./modules/projects/repository/project-covers-repository";
 import type { ProjectsRepository } from "./modules/projects/repository/projects-repository";
+import { createProjectBoardBackgroundsRouter } from "./modules/projects/routes/project-board-backgrounds-routes";
 import { createProjectCoversRouter } from "./modules/projects/routes/project-covers-routes";
 import { createProjectsRouter } from "./modules/projects/routes/projects-routes";
+import { ProjectBoardBackgroundsService } from "./modules/projects/service/project-board-backgrounds-service";
 import { ProjectCoversService } from "./modules/projects/service/project-covers-service";
 import { ProjectsService } from "./modules/projects/service/projects-service";
+import type { ProjectBoardBackgroundStoragePort } from "./modules/projects/storage/project-board-background-storage-port";
 import type { ProjectCoverStoragePort } from "./modules/projects/storage/project-cover-storage-port";
 import { ActivityController } from "./modules/tasks/controller/activity-controller";
 import { AttachmentsController } from "./modules/tasks/controller/attachments-controller";
@@ -80,6 +85,8 @@ export type AppDependencies = {
   projectsRepository: ProjectsRepository;
   projectCoversRepository: ProjectCoversRepository;
   projectCoverStorage: ProjectCoverStoragePort;
+  projectBoardBackgroundsRepository: ProjectBoardBackgroundsRepository;
+  projectBoardBackgroundStorage: ProjectBoardBackgroundStoragePort;
   tasksRepository: TasksRepository;
   commentsRepository: CommentsRepository;
   activityRepository: ActivityRepository;
@@ -121,12 +128,20 @@ export function createApp(deps: AppDependencies): Express {
     unitOfWork,
     statusSeed,
     deps.projectCoversRepository,
+    deps.projectBoardBackgroundsRepository,
   );
   const projectCoversService = new ProjectCoversService(
     deps.projectCoversRepository,
     deps.projectsRepository,
     projectMembershipAccess,
     deps.projectCoverStorage,
+    unitOfWork,
+  );
+  const projectBoardBackgroundsService = new ProjectBoardBackgroundsService(
+    deps.projectBoardBackgroundsRepository,
+    deps.projectsRepository,
+    projectMembershipAccess,
+    deps.projectBoardBackgroundStorage,
     unitOfWork,
   );
   const projectAccess = new ProjectAccessAdapter(deps.projectsRepository);
@@ -199,6 +214,9 @@ export function createApp(deps: AppDependencies): Express {
   const projectCoversController = new ProjectCoversController(
     projectCoversService,
   );
+  const projectBoardBackgroundsController = new ProjectBoardBackgroundsController(
+    projectBoardBackgroundsService,
+  );
   const projectMembersController = new ProjectMembersController(
     projectMembersService,
   );
@@ -224,6 +242,12 @@ export function createApp(deps: AppDependencies): Express {
   app.use(createSystemRouter(systemController, requireAuth));
   app.use(createProjectsRouter(projectsController, requireAuth));
   app.use(createProjectCoversRouter(projectCoversController, requireAuth));
+  app.use(
+    createProjectBoardBackgroundsRouter(
+      projectBoardBackgroundsController,
+      requireAuth,
+    ),
+  );
   app.use(createProjectMembersRouter(projectMembersController, requireAuth));
   app.use(createTasksRouter(tasksController, requireAuth));
   app.use(createCommentsRouter(commentsController, requireAuth));

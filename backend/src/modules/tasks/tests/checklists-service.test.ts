@@ -120,11 +120,60 @@ describe("ChecklistsService", () => {
 
     expect(first.name).toBe("Alpha");
     expect(first.items).toEqual([]);
+    expect(first.itemCount).toBe(0);
+    expect(first.checkedCount).toBe(0);
     const listed = await service.listByTask(VIEWER_ID, task.id);
     expect(listed.map((entry) => entry.id)).toEqual([first.id, second.id]);
+    expect(listed[0]?.itemCount).toBe(0);
+    expect(listed[0]?.checkedCount).toBe(0);
 
     const events = [...(activity as InMemoryActivityRepository).eventsById.values()];
     expect(events.filter((e) => e.kind === "CHECKLIST_ADDED")).toHaveLength(2);
+  });
+
+  it("lists checklist items with cursor/limit and summary counts (AC-004)", async () => {
+    const { service, tasks } = createHarness();
+    const task = await seedLiveTask(tasks);
+    const checklist = await service.create(OWNER_ID, task.id, "Long");
+    const createdIds: string[] = [];
+    for (let index = 0; index < 12; index += 1) {
+      const item = await service.createItem(
+        OWNER_ID,
+        task.id,
+        checklist.id,
+        `Item ${index + 1}`,
+      );
+      createdIds.push(item.id);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    await service.updateItem(OWNER_ID, task.id, checklist.id, createdIds[0]!, {
+      checked: true,
+    });
+
+    const listed = await service.listByTask(VIEWER_ID, task.id);
+    expect(listed[0]?.items).toEqual([]);
+    expect(listed[0]?.itemCount).toBe(12);
+    expect(listed[0]?.checkedCount).toBe(1);
+
+    const firstPage = await service.listItems(
+      VIEWER_ID,
+      task.id,
+      checklist.id,
+      { limit: 10 },
+    );
+    expect(firstPage.items.map((item) => item.id)).toEqual(createdIds.slice(0, 10));
+    expect(typeof firstPage.nextCursor).toBe("string");
+
+    const secondPage = await service.listItems(
+      VIEWER_ID,
+      task.id,
+      checklist.id,
+      { limit: 10, cursor: firstPage.nextCursor ?? undefined },
+    );
+    expect(secondPage.items.map((item) => item.id)).toEqual(
+      createdIds.slice(10),
+    );
+    expect(secondPage.nextCursor).toBeNull();
   });
 
   it("adds items checked false without activity; toggles emit complete/uncomplete", async () => {
@@ -232,6 +281,8 @@ describe("ChecklistsService", () => {
     );
     const listed = await service.listByTask(OWNER_ID, task.id);
     expect(listed[0]?.items).toEqual([]);
+    expect(listed[0]?.itemCount).toBe(0);
+    expect(listed[0]?.checkedCount).toBe(0);
   });
 
   it("enforces authz, soft-delete 404, and archived 409/403", async () => {

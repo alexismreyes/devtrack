@@ -1,4 +1,5 @@
 export const DEFAULT_FEED_LIMIT = 5;
+export const DEFAULT_CHECKLIST_ITEMS_LIMIT = 10;
 export const MAX_FEED_LIMIT = 50;
 
 export type FeedCursor = {
@@ -79,6 +80,48 @@ export function takeNewestPage<T extends FeedCursor>(
     cursor === null
       ? sorted
       : sorted.filter((item) => isStrictlyOlderThanCursor(item, cursor));
+  const page = filtered.slice(0, limit);
+  const last = page[page.length - 1];
+  const nextCursor =
+    filtered.length > limit && last !== undefined
+      ? { createdAt: last.createdAt, id: last.id }
+      : null;
+  return { items: page, nextCursor };
+}
+
+export function isStrictlyNewerThanCursor(
+  item: FeedCursor,
+  cursor: FeedCursor,
+): boolean {
+  const itemTime = item.createdAt.getTime();
+  const cursorTime = cursor.createdAt.getTime();
+  if (itemTime > cursorTime) {
+    return true;
+  }
+  if (itemTime < cursorTime) {
+    return false;
+  }
+  return item.id > cursor.id;
+}
+
+export function compareOldestFirst(left: FeedCursor, right: FeedCursor): number {
+  const byTime = left.createdAt.getTime() - right.createdAt.getTime();
+  if (byTime !== 0) {
+    return byTime;
+  }
+  return left.id.localeCompare(right.id);
+}
+
+export function takeOldestPage<T extends FeedCursor>(
+  items: T[],
+  limit: number,
+  cursor: FeedCursor | null,
+): { items: T[]; nextCursor: FeedCursor | null } {
+  const sorted = [...items].sort(compareOldestFirst);
+  const filtered =
+    cursor === null
+      ? sorted
+      : sorted.filter((item) => isStrictlyNewerThanCursor(item, cursor));
   const page = filtered.slice(0, limit);
   const last = page[page.length - 1];
   const nextCursor =

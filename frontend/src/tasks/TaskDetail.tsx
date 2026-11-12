@@ -29,6 +29,7 @@ import type {
   TaskPriority,
   TaskStatus,
 } from "../api/types";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,10 @@ import { LabelsPopover } from "./LabelsPopover";
 import { taskStatusLabel } from "./statusDisplay";
 import { TaskAttachmentsPanel } from "./TaskAttachmentsPanel";
 import { TaskChecklistsPanel } from "./TaskChecklistsPanel";
+import {
+  isImageCoverSummary,
+  TaskDetailCoverHero,
+} from "./TaskDetailCoverHero";
 
 const TASK_FIELD_LABEL_CLASS =
   "text-xs font-normal text-muted-foreground";
@@ -129,6 +134,7 @@ export function TaskDetail({
 }: TaskDetailProps) {
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [actionState, setActionState] = useState<ActionState>({ kind: "idle" });
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [task, setTask] = useState<PublicTaskDto | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -501,9 +507,11 @@ export function TaskDetail({
     setActionState({ kind: "deleting" });
     try {
       await softDeleteTask(taskId);
+      setDeleteConfirmOpen(false);
       setActionState({ kind: "success", message: "Task deleted." });
       onDeleted();
     } catch (err) {
+      setDeleteConfirmOpen(false);
       if (handleAuthzError(err)) {
         return;
       }
@@ -609,8 +617,22 @@ export function TaskDetail({
     return canEditComment(comment) || canManageMembers;
   }
 
+  const coverForHero =
+    task !== null && isImageCoverSummary(task.cover) ? task.cover : null;
+
   return (
-    <section aria-labelledby="task-detail-heading" className="grid gap-4">
+    <section
+      aria-labelledby="task-detail-heading"
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="task-detail"
+    >
+      {coverForHero !== null ? (
+        <TaskDetailCoverHero taskId={taskId} cover={coverForHero} />
+      ) : null}
+      <div
+        data-testid="task-detail-body"
+        className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-6"
+      >
       <div className="flex flex-row items-start justify-between gap-3">
         <h4
           id="task-detail-heading"
@@ -801,7 +823,7 @@ export function TaskDetail({
                   <Button
                     type="button"
                     variant="destructive"
-                    onClick={() => void onDelete()}
+                    onClick={() => setDeleteConfirmOpen(true)}
                     disabled={writesDisabled}
                   >
                     {actionState.kind === "deleting"
@@ -879,6 +901,17 @@ export function TaskDetail({
           Saving task…
         </p>
       ) : null}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete task?"
+        description="This removes the task from the board. You can cancel if you changed your mind."
+        confirmLabel="Delete"
+        confirmVariant="destructive"
+        confirming={actionState.kind === "deleting"}
+        onConfirm={() => void onDelete()}
+      />
+
       {actionState.kind === "deleting" ? (
         <p className="text-sm text-muted-foreground" role="status">
           Deleting task…
@@ -909,6 +942,7 @@ export function TaskDetail({
         onUnauthenticated={onUnauthenticated}
         onActivityMaybeChanged={() => void reloadNewestFeedWindow()}
       />
+      </div>
     </section>
   );
 }

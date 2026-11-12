@@ -75,9 +75,26 @@ describe("PrismaChecklistsRepository", () => {
 
       const listed = await checklists.listByTaskId(task.id);
       expect(listed.map((entry) => entry.id)).toEqual([first.id, second.id]);
-      expect(listed[0]?.items.map((item) => item.id)).toEqual([
+      expect(listed[0]?.items).toEqual([]);
+      const firstPage = await checklists.listItemsPage({
+        checklistId: first.id,
+        limit: 10,
+        cursor: null,
+      });
+      expect(firstPage.items.map((item) => item.id)).toEqual([
         itemA.id,
         itemB.id,
+      ]);
+      const tallies = await checklists.countItemTalliesByChecklistIds([
+        first.id,
+        second.id,
+      ]);
+      expect(tallies).toEqual([
+        {
+          checklistId: first.id,
+          totalItems: 2,
+          checkedItems: 0,
+        },
       ]);
       expect(itemA.checked).toBe(false);
 

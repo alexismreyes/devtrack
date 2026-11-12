@@ -37,6 +37,8 @@ import { PrismaProjectCoversRepository } from "../repository/prisma-project-cove
 import { PrismaProjectsRepository } from "../repository/prisma-projects-repository";
 import { InMemoryProjectCoverStorage } from "./in-memory-project-cover-storage";
 import { InMemoryProjectCoversRepository } from "./in-memory-project-covers-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "./in-memory-project-board-backgrounds-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "./in-memory-project-board-background-storage";
 import { InMemoryProjectsRepository } from "./in-memory-projects-repository";
 
 class FakeSystemRepository implements SystemRepository {
@@ -84,6 +86,8 @@ function createProjectsApp() {
     projectsRepository,
     projectCoversRepository: new InMemoryProjectCoversRepository(),
     projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -161,6 +165,7 @@ function assertPublicProject(
     createdAt: expect.any(String),
     archivedAt: expected.archived ? expect.any(String) : null,
     cover: null,
+    boardBackground: null,
   });
   const project = body as {
     id: string;
@@ -170,6 +175,7 @@ function assertPublicProject(
     createdAt: string;
     archivedAt: string | null;
     cover: null;
+    boardBackground: null;
   };
   expect(project.id).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
@@ -462,7 +468,7 @@ describe("projects HTTP API", () => {
     );
     const asOwner = await owner.get(`/api/projects/${created.body.id}`);
     const listed = await editor.get("/api/projects");
-    const listedWithIgnoredFilter = await editor.get(
+    const listedWithArchived = await editor.get(
       "/api/projects?includeArchived=true",
     );
     const editorMembers = await editor.get(
@@ -482,7 +488,7 @@ describe("projects HTTP API", () => {
       archived: true,
     });
     expect(listed.body).toEqual({ projects: [] });
-    expect(listedWithIgnoredFilter.body).toEqual({ projects: [] });
+    expect(listedWithArchived.body).toEqual({ projects: [] });
     expect(editorMembers.status).toBe(403);
     assertNoSecrets(asEditor.body);
   });
@@ -535,10 +541,11 @@ describe("projects HTTP API", () => {
     await other.post("/api/projects").send({ name: "Other" });
 
     const listed = await owner.get("/api/projects");
-    const listedWithIgnoredFilter = await owner.get(
+    const listedWithArchived = await owner.get(
       "/api/projects?includeArchived=true",
     );
     const emptyList = await empty.get("/api/projects");
+    const invalidQuery = await owner.get("/api/projects?includeArchived=1");
 
     expect(first.status).toBe(201);
     expect(listed.status).toBe(200);
@@ -550,9 +557,22 @@ describe("projects HTTP API", () => {
         (project: { id: string }) => project.id === archived.body.id,
       ),
     ).toBe(false);
-    expect(listedWithIgnoredFilter.body.projects).toHaveLength(1);
+    expect(listedWithArchived.status).toBe(200);
+    expect(listedWithArchived.body.projects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: first.body.id, name: "Keep" }),
+        expect.objectContaining({
+          id: archived.body.id,
+          name: "Hide",
+          archivedAt: expect.any(String),
+        }),
+      ]),
+    );
+    expect(listedWithArchived.body.projects).toHaveLength(2);
     expect(emptyList.status).toBe(200);
     expect(emptyList.body).toEqual({ projects: [] });
+    expect(invalidQuery.status).toBe(400);
+    expect(invalidQuery.body).toMatchObject(envelope("VALIDATION_ERROR"));
     assertNoSecrets(listed.body);
   });
 
@@ -683,6 +703,7 @@ describe("projects HTTP API persistence", () => {
   if (hasDatabaseUrl) {
     process.env.ATTACHMENTS_ROOT ??= "./data/attachments-test";
     process.env.PROJECT_COVERS_ROOT ??= "./data/project-covers-test";
+    process.env.PROJECT_BOARD_BACKGROUNDS_ROOT ??= "./data/project-board-backgrounds-test";
     prisma = createPrismaClient(loadConfig().databaseUrl);
     app = createApp({
       corsOrigin: process.env.CORS_ORIGIN,
@@ -692,6 +713,8 @@ describe("projects HTTP API persistence", () => {
       projectsRepository: new PrismaProjectsRepository(prisma),
       projectCoversRepository: new PrismaProjectCoversRepository(prisma),
       projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),

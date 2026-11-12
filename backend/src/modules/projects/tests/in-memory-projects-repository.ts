@@ -44,6 +44,15 @@ export class InMemoryProjectsRepository implements ProjectsRepository {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
+  async listArchivedByOwnerId(ownerUserId: string): Promise<Project[]> {
+    return [...this.projectsById.values()]
+      .filter(
+        (project) =>
+          project.ownerUserId === ownerUserId && project.archivedAt !== null,
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
   async update(id: string, input: UpdateProjectInput): Promise<Project> {
     const existing = await this.findById(id);
     if (existing === null) {

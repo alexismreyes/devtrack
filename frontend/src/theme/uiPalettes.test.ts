@@ -16,21 +16,40 @@ afterEach(() => {
   delete document.documentElement.dataset.palette;
 });
 
-describe("Q-041 UI palette catalog", () => {
-  it("documents Forest as default plus the decided solid and gradient ids", () => {
+const NEW_DARK_IDS = [
+  "MidnightAurora",
+  "ObsidianGold",
+  "CyberpunkDreams",
+  "DeepOcean",
+  "CherryBlossom",
+  "ToxicEmerald",
+  "CosmicLavender",
+  "NeoGlass",
+  "Dribbble",
+  "OledBlack",
+  "LuxuryDark",
+  "CyberAesthetic",
+] as const;
+
+const REMOVED_DARK_IDS = [
+  "Midnight",
+  "Obsidian",
+  "Noir",
+  "Dusk",
+  "VioletNight",
+  "CyanEdge",
+  "Graphite",
+] as const;
+
+describe("Q-041 UI palette catalog (039 dark refresh)", () => {
+  it("documents Forest as default plus lights, twelve new darks, and gradients (AC-001/AC-003)", () => {
     expect(DEFAULT_UI_PALETTE).toBe("Forest");
     expect([...UI_PALETTE_IDS]).toEqual([
       "Forest",
       "Ocean",
       "Sunset",
       "Violet",
-      "Midnight",
-      "Obsidian",
-      "Noir",
-      "Dusk",
-      "VioletNight",
-      "CyanEdge",
-      "Graphite",
+      ...NEW_DARK_IDS,
       "Aurora",
       "Ember",
       "Lagoon",
@@ -45,13 +64,7 @@ describe("Q-041 UI palette catalog", () => {
       "Ocean",
       "Sunset",
       "Violet",
-      "Midnight",
-      "Obsidian",
-      "Noir",
-      "Dusk",
-      "VioletNight",
-      "CyanEdge",
-      "Graphite",
+      ...NEW_DARK_IDS,
     ]);
     expect(UI_PALETTES.filter((item) => item.kind === "gradient").map((item) => item.id)).toEqual([
       "Aurora",
@@ -64,37 +77,43 @@ describe("Q-041 UI palette catalog", () => {
     ]);
   });
 
-  it("includes Q-177 dark palette ids Obsidian, Noir, and Dusk", () => {
-    expect(UI_PALETTE_IDS).toEqual(
-      expect.arrayContaining(["Obsidian", "Noir", "Dusk"]),
-    );
-    expect(isUiPaletteId("Obsidian")).toBe(true);
-    expect(isUiPaletteId("Noir")).toBe(true);
-    expect(isUiPaletteId("Dusk")).toBe(true);
+  it("adds twelve guide dark ids with FR-002 labels (AC-001)", () => {
+    expect(UI_PALETTE_IDS).toEqual(expect.arrayContaining([...NEW_DARK_IDS]));
+    expect(UI_PALETTES.find((item) => item.id === "MidnightAurora")).toEqual({
+      id: "MidnightAurora",
+      label: "Midnight Aurora",
+      kind: "solid",
+    });
+    expect(UI_PALETTES.find((item) => item.id === "ObsidianGold")).toEqual({
+      id: "ObsidianGold",
+      label: "Obsidian & Gold",
+      kind: "solid",
+    });
+    expect(UI_PALETTES.find((item) => item.id === "NeoGlass")).toEqual({
+      id: "NeoGlass",
+      label: "Neo-Glass",
+      kind: "solid",
+    });
+    expect(UI_PALETTES.find((item) => item.id === "Dribbble")).toEqual({
+      id: "Dribbble",
+      label: "Dribbble Aesthetic",
+      kind: "solid",
+    });
+    expect(UI_PALETTES.find((item) => item.id === "OledBlack")).toEqual({
+      id: "OledBlack",
+      label: "OLED Black",
+      kind: "solid",
+    });
   });
 
-  it("includes Q-205/Q-206 dark palette ids with spaced display labels (033)", () => {
-    expect(UI_PALETTE_IDS).toEqual(
-      expect.arrayContaining(["VioletNight", "CyanEdge", "Graphite"]),
-    );
-    expect(UI_PALETTES.find((item) => item.id === "VioletNight")).toEqual({
-      id: "VioletNight",
-      label: "Violet Night",
-      kind: "solid",
-    });
-    expect(UI_PALETTES.find((item) => item.id === "CyanEdge")).toEqual({
-      id: "CyanEdge",
-      label: "Cyan Edge",
-      kind: "solid",
-    });
-    expect(UI_PALETTES.find((item) => item.id === "Graphite")).toEqual({
-      id: "Graphite",
-      label: "Graphite",
-      kind: "solid",
-    });
+  it("removes the seven retired dark palette ids (AC-002)", () => {
+    for (const id of REMOVED_DARK_IDS) {
+      expect(UI_PALETTE_IDS).not.toContain(id);
+      expect(isUiPaletteId(id)).toBe(false);
+    }
   });
 
-  it("treats missing or unknown stored ids as Forest without writing", () => {
+  it("treats missing, unknown, or removed stored ids as Forest without writing (AC-004)", () => {
     expect(readStoredUiPalette()).toBe("Forest");
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBeNull();
 
@@ -102,6 +121,11 @@ describe("Q-041 UI palette catalog", () => {
     expect(isUiPaletteId("neon")).toBe(false);
     expect(readStoredUiPalette()).toBe("Forest");
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("neon");
+
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "Obsidian");
+    expect(readStoredUiPalette()).toBe("Forest");
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "VioletNight");
+    expect(readStoredUiPalette()).toBe("Forest");
   });
 
   it("persists only the catalog id under the dedicated localStorage key", () => {

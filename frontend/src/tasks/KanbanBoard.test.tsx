@@ -353,14 +353,14 @@ describe("KanbanBoard drag-and-drop", () => {
     expect(screen.getByRole("button", { name: /add task to todo/i })).toBeInTheDocument();
   });
 
-  it("shows a grab cursor on sortable task cards", () => {
+  it("shows a pointer cursor on idle sortable task cards (034 AC-002)", () => {
     renderBoard({
       onReorderTasks: vi.fn().mockResolvedValue(undefined),
     });
 
-    expect(document.querySelector('[data-kanban-card="task-1"]')).toHaveClass(
-      "cursor-grab",
-    );
+    const card = document.querySelector('[data-kanban-card="task-1"]');
+    expect(card).toHaveClass("cursor-pointer");
+    expect(card).not.toHaveClass("cursor-grab");
   });
 
   it("opens task detail from a non-title region of the card (AC-002)", async () => {
@@ -427,7 +427,8 @@ describe("KanbanBoard drag-and-drop", () => {
     const overlay = document.querySelector('[data-slot="kanban-drag-overlay"]');
     expect(overlay).not.toBeNull();
     expect(overlay).toHaveTextContent("Write tests");
-    expect(card).toHaveClass("opacity-50");
+    expect(overlay).toHaveClass("cursor-grabbing");
+    expect(card).toHaveClass("cursor-grabbing", "opacity-50");
   });
 
   it("calls onReorderColumns when a writable column is keyboard-reordered (AC-001)", async () => {
@@ -607,7 +608,7 @@ describe("KanbanBoard drag-and-drop", () => {
     expect(screen.queryByLabelText(/rank/i)).not.toBeInTheDocument();
     expect(
       document.querySelector('[data-kanban-card="task-1"]'),
-    ).toHaveClass("cursor-grab");
+    ).toHaveClass("cursor-pointer");
   });
 
   it("loads card-face cover via authenticated content fetch, not a public /uploads URL (AC-011)", async () => {
@@ -667,5 +668,69 @@ describe("KanbanBoard drag-and-drop", () => {
       />,
     );
     expect(screen.queryByTestId("kanban-card-cover")).not.toBeInTheDocument();
+  });
+
+  it("renders authenticated board background behind columns and falls back when null", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      expect(url).toBe(
+        "http://localhost:3000/api/projects/proj-1/board-background/content",
+      );
+      expect(init?.credentials).toBe("include");
+      return new Response(bytes, {
+        status: 200,
+        headers: { "Content-Type": "image/png" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const createObjectURL = vi.fn(() => "blob:board-bg");
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL: vi.fn(),
+    });
+
+    const { rerender } = render(
+      <KanbanBoard
+        projectId="proj-1"
+        boardBackground={{ id: "bg-1", contentType: "image/png" }}
+        columns={DEFAULT_PROJECT_STATUSES}
+        tasks={[todoTask]}
+        onSelectTask={vi.fn()}
+        onMoveTask={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="kanban-board"]')).toHaveAttribute(
+        "data-board-background",
+        "image",
+      );
+    });
+    expect(document.querySelector('[data-slot="kanban-board"]')).toHaveStyle({
+      backgroundImage: expect.stringContaining("blob:board-bg"),
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    rerender(
+      <KanbanBoard
+        projectId="proj-1"
+        boardBackground={null}
+        columns={DEFAULT_PROJECT_STATUSES}
+        tasks={[todoTask]}
+        onSelectTask={vi.fn()}
+        onMoveTask={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(document.querySelector('[data-slot="kanban-board"]')).toHaveAttribute(
+      "data-board-background",
+      "fallback",
+    );
   });
 });

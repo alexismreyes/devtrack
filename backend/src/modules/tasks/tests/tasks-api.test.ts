@@ -13,6 +13,8 @@ import { PrismaProjectCoversRepository } from "../../projects/repository/prisma-
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
 import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
 import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "../../projects/tests/in-memory-project-board-backgrounds-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "../../projects/tests/in-memory-project-board-background-storage";
 import { PrismaSystemRepository } from "../../system/repository/prisma-system-repository";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
@@ -84,6 +86,8 @@ function createTasksApp() {
     projectsRepository,
     projectCoversRepository: new InMemoryProjectCoversRepository(),
     projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -1106,7 +1110,7 @@ describe("GET /api/dashboard", () => {
 
     const archived = await agent.post(`/api/projects/${hide.id}/archive`);
     const listed = await agent.get("/api/projects");
-    const listedWithIgnoredFilter = await agent.get(
+    const listedWithArchived = await agent.get(
       "/api/projects?includeArchived=true",
     );
     const afterArchive = await agent.get("/api/dashboard");
@@ -1118,7 +1122,12 @@ describe("GET /api/dashboard", () => {
     expect(
       listed.body.projects.some((project: { id: string }) => project.id === hide.id),
     ).toBe(false);
-    expect(listedWithIgnoredFilter.body.projects).toHaveLength(1);
+    expect(listedWithArchived.body.projects).toHaveLength(2);
+    expect(
+      listedWithArchived.body.projects.some(
+        (project: { id: string }) => project.id === hide.id,
+      ),
+    ).toBe(true);
     expect(afterArchive.status).toBe(200);
     assertDashboardBody(afterArchive.body, {
       totalProjects: 1,
@@ -1267,6 +1276,7 @@ describe("tasks HTTP API persistence", () => {
   if (hasDatabaseUrl) {
     process.env.ATTACHMENTS_ROOT ??= "./data/attachments-test";
     process.env.PROJECT_COVERS_ROOT ??= "./data/project-covers-test";
+    process.env.PROJECT_BOARD_BACKGROUNDS_ROOT ??= "./data/project-board-backgrounds-test";
     prisma = createPrismaClient(loadConfig().databaseUrl);
     const tasksRepository = new PrismaTasksRepository(prisma);
     app = createApp({
@@ -1277,6 +1287,8 @@ describe("tasks HTTP API persistence", () => {
       projectsRepository: new PrismaProjectsRepository(prisma),
       projectCoversRepository: new PrismaProjectCoversRepository(prisma),
       projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
       tasksRepository,
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),

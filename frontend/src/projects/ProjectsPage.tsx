@@ -41,6 +41,10 @@ function activeProjects(projects: PublicProjectDto[]): PublicProjectDto[] {
   return projects.filter((project) => project.archivedAt === null);
 }
 
+function archivedProjects(projects: PublicProjectDto[]): PublicProjectDto[] {
+  return projects.filter((project) => project.archivedAt !== null);
+}
+
 export function ProjectsPage({
   onSelectProject,
   onUnauthenticated,
@@ -62,13 +66,14 @@ export function ProjectsPage({
         : { kind: "loading" },
     );
     try {
-      const result = await listProjects();
-      const projects = activeProjects(result.projects);
-      if (projects.length === 0) {
+      const result = await listProjects({ includeArchived: true });
+      const active = activeProjects(result.projects);
+      const archived = archivedProjects(result.projects);
+      if (active.length === 0 && archived.length === 0) {
         setListState({ kind: "empty" });
         return true;
       }
-      setListState({ kind: "success", projects });
+      setListState({ kind: "success", projects: result.projects });
       return true;
     } catch (err) {
       if (isUnauthenticated(err)) {
@@ -164,6 +169,10 @@ export function ProjectsPage({
   const creating = createState.kind === "saving";
   const listBlocked =
     listState.kind === "unauthenticated" || listState.kind === "forbidden";
+  const successProjects =
+    listState.kind === "success" ? listState.projects : [];
+  const active = activeProjects(successProjects);
+  const archived = archivedProjects(successProjects);
 
   return (
     <section aria-labelledby="projects-heading" className="grid gap-4">
@@ -222,9 +231,9 @@ export function ProjectsPage({
       {listState.kind === "empty" ? (
         <p className="text-sm text-muted-foreground">No projects yet.</p>
       ) : null}
-      {listState.kind === "success" ? (
+      {listState.kind === "success" && active.length > 0 ? (
         <ul aria-label="Projects" className="grid gap-1">
-          {listState.projects.map((project) => (
+          {active.map((project) => (
             <li key={project.id}>
               <Button
                 type="button"
@@ -238,6 +247,32 @@ export function ProjectsPage({
             </li>
           ))}
         </ul>
+      ) : null}
+      {listState.kind === "success" && archived.length > 0 ? (
+        <div className="grid gap-1">
+          <h3 className="px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Archived
+          </h3>
+          <ul aria-label="Archived projects" className="grid gap-1">
+            {archived.map((project) => (
+              <li key={project.id}>
+                <Button
+                  type="button"
+                  variant={
+                    selectedProjectId === project.id ? "secondary" : "ghost"
+                  }
+                  className="h-auto w-full justify-start px-3 py-2 text-left text-muted-foreground"
+                  onClick={() => onSelectProject(project.id)}
+                  aria-current={
+                    selectedProjectId === project.id ? "page" : undefined
+                  }
+                >
+                  {project.name}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
       {listState.kind === "unauthenticated" ? (
         <p className="text-sm text-muted-foreground" role="status">

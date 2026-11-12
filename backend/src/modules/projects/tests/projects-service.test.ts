@@ -14,6 +14,7 @@ import {
 import { ProjectsService } from "../service/projects-service";
 import { ProjectStatusSeedAdapter } from "../../tasks/access/project-status-seed-adapter";
 import { InMemoryStatusesRepository } from "../../tasks/tests/in-memory-statuses-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "./in-memory-project-board-backgrounds-repository";
 import { InMemoryProjectCoversRepository } from "./in-memory-project-covers-repository";
 import { InMemoryProjectsRepository } from "./in-memory-projects-repository";
 
@@ -25,6 +26,7 @@ const OTHER_ID = "44444444-4444-4444-8444-444444444444";
 function createService() {
   const projects = new InMemoryProjectsRepository();
   const covers = new InMemoryProjectCoversRepository();
+  const boardBackgrounds = new InMemoryProjectBoardBackgroundsRepository();
   const members = new InMemoryProjectMembersRepository();
   const statuses = new InMemoryStatusesRepository();
   const snapshots = new ProjectSnapshotAdapter(projects);
@@ -35,8 +37,9 @@ function createService() {
     new ImmediateUnitOfWork(),
     new ProjectStatusSeedAdapter(statuses),
     covers,
+    boardBackgrounds,
   );
-  return { service, projects, covers, members, statuses };
+  return { service, projects, covers, boardBackgrounds, members, statuses };
 }
 
 describe("ProjectsService", () => {
@@ -185,6 +188,36 @@ describe("ProjectsService", () => {
     expect(empty).toEqual([]);
   });
 
+  it("includes ownerUserId archived projects when includeArchived is true", async () => {
+    const { service, members } = createService();
+    const active = await service.create(OWNER_ID, "Active", null);
+    const archived = await service.create(OWNER_ID, "Archived", null);
+    await service.archive(OWNER_ID, archived.id);
+    const sharedArchived = await service.create(OTHER_ID, "Shared archived", null);
+    await members.create({
+      projectId: sharedArchived.id,
+      userId: OWNER_ID,
+      role: "EDITOR",
+    });
+    await service.archive(OTHER_ID, sharedArchived.id);
+
+    const defaultList = await service.listAuthorized(OWNER_ID);
+    const withArchived = await service.listAuthorized(OWNER_ID, {
+      includeArchived: true,
+    });
+
+    expect(defaultList.map((project) => project.id)).toEqual([active.id]);
+    expect(withArchived.map((project) => project.id).sort()).toEqual(
+      [active.id, archived.id].sort(),
+    );
+    expect(
+      withArchived.find((project) => project.id === archived.id)?.archivedAt,
+    ).not.toBeNull();
+    expect(
+      withArchived.some((project) => project.id === sharedArchived.id),
+    ).toBe(false);
+  });
+
   it("forbids non-owner members from GET of an archived project", async () => {
     const { service, members } = createService();
     const created = await service.create(OWNER_ID, "Roadmap", null);
@@ -203,6 +236,11 @@ describe("ProjectsService", () => {
     expect((await service.listAuthorized(EDITOR_ID)).map((p) => p.id)).toEqual(
       [],
     );
+    expect(
+      (
+        await service.listAuthorized(EDITOR_ID, { includeArchived: true })
+      ).map((p) => p.id),
+    ).toEqual([]);
   });
 
   it("updates name and description without changing owner", async () => {

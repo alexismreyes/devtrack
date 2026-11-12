@@ -3,6 +3,7 @@ import { asyncHandler } from "../../../infrastructure/http/async-handler";
 import type { ProjectsController } from "../controller/projects-controller";
 import { validateCreateProjectBody } from "../validators/create-project";
 import { validateEmptyProjectActionBody } from "../validators/empty-body";
+import { validateListProjectsQuery } from "../validators/list-projects-query";
 import { validateProjectIdParam } from "../validators/project-id";
 import { validateUpdateProjectBody } from "../validators/update-project";
 
@@ -24,6 +25,7 @@ export function createProjectsRouter(
   router.get(
     "/api/projects",
     requireAuth,
+    validateListProjectsQuery,
     asyncHandler(async (req, res) => {
       await controller.list(req, res);
     }),

@@ -9,6 +9,7 @@ import {
 import { validateCreateChecklistBody } from "../validators/create-checklist";
 import { validateCreateChecklistItemBody } from "../validators/create-checklist-item";
 import { validateEmptyTaskActionBody } from "../validators/empty-body";
+import { validateFeedPaginationQuery } from "../validators/feed-pagination-query";
 import { validateUpdateChecklistBody } from "../validators/update-checklist";
 import { validateUpdateChecklistItemBody } from "../validators/update-checklist-item";
 
@@ -54,6 +55,16 @@ export function createChecklistsRouter(
     validateEmptyTaskActionBody,
     asyncHandler(async (req, res) => {
       await controller.delete(req, res);
+    }),
+  );
+
+  router.get(
+    "/api/tasks/:taskId/checklists/:checklistId/items",
+    requireAuth,
+    validateChecklistParams,
+    validateFeedPaginationQuery,
+    asyncHandler(async (req, res) => {
+      await controller.listItems(req, res);
     }),
   );
 
