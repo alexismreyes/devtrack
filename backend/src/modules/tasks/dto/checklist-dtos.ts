@@ -17,10 +17,17 @@ export type PublicChecklistDto = {
   name: string;
   createdAt: string;
   items: PublicChecklistItemDto[];
+  itemCount: number;
+  checkedCount: number;
 };
 
 export type ChecklistListResponseDto = {
   checklists: PublicChecklistDto[];
+};
+
+export type ChecklistItemListResponseDto = {
+  items: PublicChecklistItemDto[];
+  nextCursor: string | null;
 };
 
 export type CreateChecklistRequestDto = {
@@ -61,5 +68,7 @@ export function toPublicChecklistDto(
     name: checklist.name,
     createdAt: checklist.createdAt.toISOString(),
     items: checklist.items.map(toPublicChecklistItemDto),
+    itemCount: checklist.itemCount,
+    checkedCount: checklist.checkedCount,
   };
 }

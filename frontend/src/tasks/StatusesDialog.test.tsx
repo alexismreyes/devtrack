@@ -169,6 +169,25 @@ describe("StatusesDialog", () => {
     expect(screen.queryByRole("button", { name: /delete to do/i })).not.toBeInTheDocument();
   });
 
+  it("keeps Move up / Move down as secondary reorder controls (028 AC-006 / Q-193)", async () => {
+    mockFetch(() => jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES }));
+
+    renderDialog({ canWrite: true });
+
+    expect(
+      await screen.findByRole("button", { name: /move to do down/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /move in progress up/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /move in progress down/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /move done up/i }),
+    ).toBeInTheDocument();
+  });
+
   it("shows completed checkbox on all rows including seeded and no WIP/icons (AC-011)", async () => {
     mockFetch(() => jsonResponse(200, { statuses: DEFAULT_PROJECT_STATUSES }));
     const user = userEvent.setup();

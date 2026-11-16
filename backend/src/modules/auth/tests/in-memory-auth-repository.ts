@@ -39,6 +39,18 @@ export class InMemoryAuthRepository implements AuthRepository {
     this.sessions.set(id, existing.revoke());
   }
 
+  async revokeSessionsForUserExcept(
+    userId: string,
+    sessionId: string,
+  ): Promise<void> {
+    for (const [id, session] of this.sessions) {
+      if (session.userId !== userId || id === sessionId) {
+        continue;
+      }
+      this.sessions.set(id, session.revoke());
+    }
+  }
+
   async createRegisteredUser(
     input: RegisterPersistenceInput,
   ): Promise<RegisteredAuthRecord> {

@@ -12,6 +12,13 @@ export type ProjectAuthorizationSnapshot = {
 
 export interface ProjectMembershipQueryPort {
   listAuthorizedActiveProjectIds(actorId: string): Promise<string[]>;
+  /**
+   * Distinct member user ids across the given projects (membership rows),
+   * unioned with each project's ownerUserId for OWNER equivalence.
+   */
+  listDistinctMemberUserIdsForProjectIds(
+    projectIds: string[],
+  ): Promise<string[]>;
   assertAuthorized(
     actorId: string,
     project: ProjectAuthorizationSnapshot,

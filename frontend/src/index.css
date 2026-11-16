@@ -66,6 +66,12 @@
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.008 85),
+    oklch(0.94 0.02 85) 55%,
+    oklch(0.9 0.035 75)
+  );
 }
 
 [data-palette="Ocean"] {
@@ -99,6 +105,12 @@
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.01 230),
+    oklch(0.93 0.03 230) 55%,
+    oklch(0.88 0.045 220)
+  );
 }
 
 [data-palette="Sunset"] {
@@ -132,6 +144,12 @@
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.015 55),
+    oklch(0.94 0.035 55) 55%,
+    oklch(0.9 0.05 45)
+  );
 }
 
 [data-palette="Violet"] {
@@ -165,39 +183,492 @@
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.01 310),
+    oklch(0.94 0.03 310) 55%,
+    oklch(0.9 0.045 300)
+  );
 }
 
-[data-palette="Midnight"] {
-  --background: oklch(0.18 0.03 270);
-  --foreground: oklch(0.93 0.01 250);
-  --card: oklch(0.23 0.03 270);
-  --card-foreground: oklch(0.93 0.01 250);
-  --popover: oklch(0.23 0.03 270);
-  --popover-foreground: oklch(0.93 0.01 250);
-  --primary: oklch(0.68 0.12 250);
-  --primary-foreground: oklch(0.16 0.04 270);
-  --secondary: oklch(0.28 0.03 270);
-  --secondary-foreground: oklch(0.9 0.01 250);
-  --muted: oklch(0.26 0.025 270);
-  --muted-foreground: oklch(0.72 0.02 250);
-  --accent: oklch(0.32 0.05 280);
-  --accent-foreground: oklch(0.93 0.01 250);
-  --destructive: oklch(0.62 0.2 25);
-  --destructive-foreground: oklch(0.98 0.01 80);
-  --border: oklch(0.32 0.03 270);
-  --input: oklch(0.32 0.03 270);
-  --ring: oklch(0.68 0.12 250);
-  --sidebar: oklch(0.16 0.03 270);
-  --sidebar-foreground: oklch(0.93 0.01 250);
-  --board: oklch(0.15 0.025 270);
-  --board-foreground: oklch(0.93 0.01 250);
-  --devtrack-bar: oklch(0.12 0.03 270);
-  --devtrack-bar-foreground: oklch(0.94 0.01 250);
-  --devtrack-bar-muted: oklch(0.7 0.02 250);
+/* 039: MidnightAurora from theme guide (hex OK / Q-236). */
+[data-palette="MidnightAurora"] {
+  --background: #080B16;
+  --foreground: #EDF0FF;
+  --card: #11182A;
+  --card-foreground: #EDF0FF;
+  --popover: #11182A;
+  --popover-foreground: #EDF0FF;
+  --primary: #7C5CFC;
+  --primary-foreground: #080B16;
+  --secondary: #36D6C5;
+  --secondary-foreground: #080B16;
+  --muted: #1B2942;
+  --muted-foreground: #8792AF;
+  --accent: #B5A0FF;
+  --accent-foreground: #080B16;
+  --destructive: #FF647C;
+  --destructive-foreground: #EDF0FF;
+  --border: #28324B;
+  --input: #28324B;
+  --ring: #7C5CFC;
+  --sidebar: #080B16;
+  --sidebar-foreground: #EDF0FF;
+  --board: #080B16;
+  --board-foreground: #EDF0FF;
+  --devtrack-bar: #080B16;
+  --devtrack-bar-foreground: #EDF0FF;
+  --devtrack-bar-muted: #8792AF;
   --background-image: none;
   --sidebar-image: none;
   --board-image: none;
   --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #1B2942,
+    #11182A 55%,
+    #080B16
+  );
+}
+
+/* 039: ObsidianGold from theme guide (hex OK / Q-236). */
+[data-palette="ObsidianGold"] {
+  --background: #0C0C0C;
+  --foreground: #F5F1E8;
+  --card: #191919;
+  --card-foreground: #F5F1E8;
+  --popover: #191919;
+  --popover-foreground: #F5F1E8;
+  --primary: #D6AE67;
+  --primary-foreground: #0C0C0C;
+  --secondary: #F2D9A0;
+  --secondary-foreground: #0C0C0C;
+  --muted: #292929;
+  --muted-foreground: #A49D91;
+  --accent: #E8E5DF;
+  --accent-foreground: #0C0C0C;
+  --destructive: #D96B69;
+  --destructive-foreground: #F5F1E8;
+  --border: #38332A;
+  --input: #38332A;
+  --ring: #D6AE67;
+  --sidebar: #0C0C0C;
+  --sidebar-foreground: #F5F1E8;
+  --board: #0C0C0C;
+  --board-foreground: #F5F1E8;
+  --devtrack-bar: #0C0C0C;
+  --devtrack-bar-foreground: #F5F1E8;
+  --devtrack-bar-muted: #A49D91;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #292929,
+    #191919 55%,
+    #0C0C0C
+  );
+}
+
+/* 039: CyberpunkDreams from theme guide (hex OK / Q-236). */
+[data-palette="CyberpunkDreams"] {
+  --background: #090817;
+  --foreground: #F5F1FF;
+  --card: #15102B;
+  --card-foreground: #F5F1FF;
+  --popover: #15102B;
+  --popover-foreground: #F5F1FF;
+  --primary: #FF3CAC;
+  --primary-foreground: #090817;
+  --secondary: #00E5FF;
+  --secondary-foreground: #090817;
+  --muted: #241747;
+  --muted-foreground: #A59ABF;
+  --accent: #B8FF3D;
+  --accent-foreground: #090817;
+  --destructive: #FF3CAC;
+  --destructive-foreground: #F5F1FF;
+  --border: #38265B;
+  --input: #38265B;
+  --ring: #FF3CAC;
+  --sidebar: #090817;
+  --sidebar-foreground: #F5F1FF;
+  --board: #090817;
+  --board-foreground: #F5F1FF;
+  --devtrack-bar: #090817;
+  --devtrack-bar-foreground: #F5F1FF;
+  --devtrack-bar-muted: #A59ABF;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #241747,
+    #15102B 55%,
+    #090817
+  );
+}
+
+/* 039: DeepOcean from theme guide (hex OK / Q-236). */
+[data-palette="DeepOcean"] {
+  --background: #07151C;
+  --foreground: #E5F5F4;
+  --card: #102630;
+  --card-foreground: #E5F5F4;
+  --popover: #102630;
+  --popover-foreground: #E5F5F4;
+  --primary: #29B6A6;
+  --primary-foreground: #07151C;
+  --secondary: #55D6C2;
+  --secondary-foreground: #07151C;
+  --muted: #193B46;
+  --muted-foreground: #91AAA9;
+  --accent: #D5F3EF;
+  --accent-foreground: #07151C;
+  --destructive: #F07C83;
+  --destructive-foreground: #E5F5F4;
+  --border: #29474C;
+  --input: #29474C;
+  --ring: #29B6A6;
+  --sidebar: #07151C;
+  --sidebar-foreground: #E5F5F4;
+  --board: #07151C;
+  --board-foreground: #E5F5F4;
+  --devtrack-bar: #07151C;
+  --devtrack-bar-foreground: #E5F5F4;
+  --devtrack-bar-muted: #91AAA9;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #193B46,
+    #102630 55%,
+    #07151C
+  );
+}
+
+/* 039: CherryBlossom from theme guide (hex OK / Q-236). */
+[data-palette="CherryBlossom"] {
+  --background: #130D16;
+  --foreground: #F9EAF2;
+  --card: #241724;
+  --card-foreground: #F9EAF2;
+  --popover: #241724;
+  --popover-foreground: #F9EAF2;
+  --primary: #E879A8;
+  --primary-foreground: #130D16;
+  --secondary: #F6A6C8;
+  --secondary-foreground: #130D16;
+  --muted: #382137;
+  --muted-foreground: #BBA4B3;
+  --accent: #C5A5FF;
+  --accent-foreground: #130D16;
+  --destructive: #F06F91;
+  --destructive-foreground: #F9EAF2;
+  --border: #493144;
+  --input: #493144;
+  --ring: #E879A8;
+  --sidebar: #130D16;
+  --sidebar-foreground: #F9EAF2;
+  --board: #130D16;
+  --board-foreground: #F9EAF2;
+  --devtrack-bar: #130D16;
+  --devtrack-bar-foreground: #F9EAF2;
+  --devtrack-bar-muted: #BBA4B3;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #382137,
+    #241724 55%,
+    #130D16
+  );
+}
+
+/* 039: ToxicEmerald from theme guide (hex OK / Q-236). */
+[data-palette="ToxicEmerald"] {
+  --background: #080E0B;
+  --foreground: #EAF7EE;
+  --card: #101C15;
+  --card-foreground: #EAF7EE;
+  --popover: #101C15;
+  --popover-foreground: #EAF7EE;
+  --primary: #35D07F;
+  --primary-foreground: #080E0B;
+  --secondary: #A3FF6F;
+  --secondary-foreground: #080E0B;
+  --muted: #1C3023;
+  --muted-foreground: #94AA9B;
+  --accent: #D8FFE5;
+  --accent-foreground: #080E0B;
+  --destructive: #FF687B;
+  --destructive-foreground: #EAF7EE;
+  --border: #294634;
+  --input: #294634;
+  --ring: #35D07F;
+  --sidebar: #080E0B;
+  --sidebar-foreground: #EAF7EE;
+  --board: #080E0B;
+  --board-foreground: #EAF7EE;
+  --devtrack-bar: #080E0B;
+  --devtrack-bar-foreground: #EAF7EE;
+  --devtrack-bar-muted: #94AA9B;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #1C3023,
+    #101C15 55%,
+    #080E0B
+  );
+}
+
+/* 039: CosmicLavender from theme guide (hex OK / Q-236). */
+[data-palette="CosmicLavender"] {
+  --background: #0D0B19;
+  --foreground: #F0ECFF;
+  --card: #19152B;
+  --card-foreground: #F0ECFF;
+  --popover: #19152B;
+  --popover-foreground: #F0ECFF;
+  --primary: #9D7BFF;
+  --primary-foreground: #0D0B19;
+  --secondary: #C4A7FF;
+  --secondary-foreground: #0D0B19;
+  --muted: #292244;
+  --muted-foreground: #A49ABF;
+  --accent: #70B8FF;
+  --accent-foreground: #0D0B19;
+  --destructive: #F4779C;
+  --destructive-foreground: #F0ECFF;
+  --border: #393050;
+  --input: #393050;
+  --ring: #9D7BFF;
+  --sidebar: #0D0B19;
+  --sidebar-foreground: #F0ECFF;
+  --board: #0D0B19;
+  --board-foreground: #F0ECFF;
+  --devtrack-bar: #0D0B19;
+  --devtrack-bar-foreground: #F0ECFF;
+  --devtrack-bar-muted: #A49ABF;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #292244,
+    #19152B 55%,
+    #0D0B19
+  );
+}
+
+/* 039: NeoGlass from theme guide (hex OK / Q-236). */
+[data-palette="NeoGlass"] {
+  --background: #080B18;
+  --foreground: #F1F3FF;
+  --card: #11182B;
+  --card-foreground: #F1F3FF;
+  --popover: #11182B;
+  --popover-foreground: #F1F3FF;
+  --primary: #8B7CFF;
+  --primary-foreground: #080B18;
+  --secondary: #50E3D0;
+  --secondary-foreground: #080B18;
+  --muted: #202A45;
+  --muted-foreground: #A0A9C4;
+  --accent: #B8C6FF;
+  --accent-foreground: #080B18;
+  --destructive: #FF718F;
+  --destructive-foreground: #F1F3FF;
+  --border: #526080;
+  --input: #526080;
+  --ring: #8B7CFF;
+  --sidebar: #080B18;
+  --sidebar-foreground: #F1F3FF;
+  --board: #080B18;
+  --board-foreground: #F1F3FF;
+  --devtrack-bar: #080B18;
+  --devtrack-bar-foreground: #F1F3FF;
+  --devtrack-bar-muted: #A0A9C4;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #202A45,
+    #11182B 55%,
+    #080B18
+  );
+}
+
+/* 039: Dribbble from theme guide (hex OK / Q-236). */
+[data-palette="Dribbble"] {
+  --background: #101116;
+  --foreground: #F8FAFC;
+  --card: #191B24;
+  --card-foreground: #F8FAFC;
+  --popover: #191B24;
+  --popover-foreground: #F8FAFC;
+  --primary: #A78BFA;
+  --primary-foreground: #101116;
+  --secondary: #F472B6;
+  --secondary-foreground: #101116;
+  --muted: #242735;
+  --muted-foreground: #9CA3B5;
+  --accent: #67E8F9;
+  --accent-foreground: #101116;
+  --destructive: #FB7185;
+  --destructive-foreground: #F8FAFC;
+  --border: #303442;
+  --input: #303442;
+  --ring: #A78BFA;
+  --sidebar: #101116;
+  --sidebar-foreground: #F8FAFC;
+  --board: #101116;
+  --board-foreground: #F8FAFC;
+  --devtrack-bar: #101116;
+  --devtrack-bar-foreground: #F8FAFC;
+  --devtrack-bar-muted: #9CA3B5;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #242735,
+    #191B24 55%,
+    #101116
+  );
+}
+
+/* 039: OledBlack from theme guide (hex OK / Q-236). */
+[data-palette="OledBlack"] {
+  --background: #000000;
+  --foreground: #F5F5F5;
+  --card: #090909;
+  --card-foreground: #F5F5F5;
+  --popover: #090909;
+  --popover-foreground: #F5F5F5;
+  --primary: #8B7CFF;
+  --primary-foreground: #000000;
+  --secondary: #37D9C3;
+  --secondary-foreground: #000000;
+  --muted: #141414;
+  --muted-foreground: #909090;
+  --accent: #FFFFFF;
+  --accent-foreground: #000000;
+  --destructive: #FF5F6D;
+  --destructive-foreground: #F5F5F5;
+  --border: #252525;
+  --input: #252525;
+  --ring: #8B7CFF;
+  --sidebar: #000000;
+  --sidebar-foreground: #F5F5F5;
+  --board: #000000;
+  --board-foreground: #F5F5F5;
+  --devtrack-bar: #000000;
+  --devtrack-bar-foreground: #F5F5F5;
+  --devtrack-bar-muted: #909090;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #141414,
+    #090909 55%,
+    #000000
+  );
+}
+
+/* 039: LuxuryDark from theme guide (hex OK / Q-236). */
+[data-palette="LuxuryDark"] {
+  --background: #11100F;
+  --foreground: #F5EFE7;
+  --card: #1C1A18;
+  --card-foreground: #F5EFE7;
+  --popover: #1C1A18;
+  --popover-foreground: #F5EFE7;
+  --primary: #C49A62;
+  --primary-foreground: #11100F;
+  --secondary: #E7CDA4;
+  --secondary-foreground: #11100F;
+  --muted: #2A2622;
+  --muted-foreground: #A79B8C;
+  --accent: #A98B6D;
+  --accent-foreground: #11100F;
+  --destructive: #CE7770;
+  --destructive-foreground: #F5EFE7;
+  --border: #42392F;
+  --input: #42392F;
+  --ring: #C49A62;
+  --sidebar: #11100F;
+  --sidebar-foreground: #F5EFE7;
+  --board: #11100F;
+  --board-foreground: #F5EFE7;
+  --devtrack-bar: #11100F;
+  --devtrack-bar-foreground: #F5EFE7;
+  --devtrack-bar-muted: #A79B8C;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #2A2622,
+    #1C1A18 55%,
+    #11100F
+  );
+}
+
+/* 039: CyberAesthetic from theme guide (hex OK / Q-236). */
+[data-palette="CyberAesthetic"] {
+  --background: #080A14;
+  --foreground: #F0F4FF;
+  --card: #10162A;
+  --card-foreground: #F0F4FF;
+  --popover: #10162A;
+  --popover-foreground: #F0F4FF;
+  --primary: #4D7CFE;
+  --primary-foreground: #080A14;
+  --secondary: #00E5FF;
+  --secondary-foreground: #080A14;
+  --muted: #1B2542;
+  --muted-foreground: #929FBE;
+  --accent: #C77DFF;
+  --accent-foreground: #080A14;
+  --destructive: #FF5577;
+  --destructive-foreground: #F0F4FF;
+  --border: #29365B;
+  --input: #29365B;
+  --ring: #4D7CFE;
+  --sidebar: #080A14;
+  --sidebar-foreground: #F0F4FF;
+  --board: #080A14;
+  --board-foreground: #F0F4FF;
+  --devtrack-bar: #080A14;
+  --devtrack-bar-foreground: #F0F4FF;
+  --devtrack-bar-muted: #929FBE;
+  --background-image: none;
+  --sidebar-image: none;
+  --board-image: none;
+  --devtrack-bar-image: none;
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    #1B2542,
+    #10162A 55%,
+    #080A14
+  );
 }
 
 [data-palette="Aurora"] {
@@ -231,6 +702,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.88 0.06 180), oklch(0.86 0.08 280));
   --board-image: linear-gradient(160deg, oklch(0.86 0.07 190), oklch(0.82 0.09 290));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.32 0.1 180), oklch(0.3 0.12 300));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.98 0.01 280),
+    oklch(0.92 0.04 220) 55%,
+    oklch(0.88 0.07 190)
+  );
 }
 
 [data-palette="Ember"] {
@@ -264,6 +741,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.9 0.08 70), oklch(0.86 0.1 25));
   --board-image: linear-gradient(160deg, oklch(0.88 0.09 70), oklch(0.82 0.11 25));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.38 0.12 55), oklch(0.36 0.14 20));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.98 0.015 70),
+    oklch(0.92 0.05 60) 55%,
+    oklch(0.88 0.08 40)
+  );
 }
 
 [data-palette="Lagoon"] {
@@ -297,6 +780,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.9 0.06 210), oklch(0.88 0.08 155));
   --board-image: linear-gradient(160deg, oklch(0.87 0.07 205), oklch(0.83 0.09 160));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.32 0.08 210), oklch(0.34 0.1 155));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.98 0.01 190),
+    oklch(0.93 0.04 190) 55%,
+    oklch(0.88 0.07 170)
+  );
 }
 
 [data-palette="Twilight"] {
@@ -330,6 +819,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.24 0.09 280), oklch(0.28 0.12 330));
   --board-image: linear-gradient(160deg, oklch(0.26 0.1 285), oklch(0.3 0.13 325));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.2 0.1 280), oklch(0.24 0.14 330));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.3 0.07 300),
+    oklch(0.26 0.08 310) 55%,
+    oklch(0.24 0.1 320)
+  );
 }
 
 [data-palette="Citrus"] {
@@ -363,6 +858,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.93 0.1 120), oklch(0.9 0.12 90));
   --board-image: linear-gradient(160deg, oklch(0.91 0.11 118), oklch(0.88 0.13 88));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.4 0.14 125), oklch(0.42 0.15 80));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.02 100),
+    oklch(0.94 0.07 110) 55%,
+    oklch(0.9 0.1 95)
+  );
 }
 
 [data-palette="Magma"] {
@@ -396,6 +897,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.2 0.1 22), oklch(0.32 0.14 42));
   --board-image: linear-gradient(160deg, oklch(0.22 0.1 28), oklch(0.34 0.15 48));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.18 0.1 20), oklch(0.32 0.14 40));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.28 0.09 30),
+    oklch(0.24 0.1 35) 55%,
+    oklch(0.22 0.12 45)
+  );
 }
 
 [data-palette="Glacier"] {
@@ -429,6 +936,12 @@
   --sidebar-image: linear-gradient(180deg, oklch(0.94 0.03 230), oklch(0.9 0.04 210));
   --board-image: linear-gradient(160deg, oklch(0.92 0.04 225), oklch(0.88 0.05 205));
   --devtrack-bar-image: linear-gradient(90deg, oklch(0.4 0.08 240), oklch(0.42 0.08 200));
+  --eyecandy-surface-image: linear-gradient(
+    145deg,
+    oklch(0.99 0.01 220),
+    oklch(0.94 0.03 220) 55%,
+    oklch(0.9 0.045 210)
+  );
 }
 
 @layer base {
@@ -465,6 +978,14 @@
     background-size: cover;
     background-repeat: no-repeat;
   }
+
+  /* 023: palette-token gradient surface for checklist / dashboard / profile cards */
+  .bg-eyecandy-surface {
+    background-color: var(--card);
+    background-image: var(--eyecandy-surface-image, none);
+    background-size: cover;
+    background-repeat: no-repeat;
+  }
 }
 
 /* Safe CSS-only circular previews for UiPaletteSelector (Q-041 catalog). */
@@ -480,8 +1001,41 @@
 .ui-palette-preview[data-preview-palette="Violet"] {
   background: oklch(0.45 0.16 300);
 }
-.ui-palette-preview[data-preview-palette="Midnight"] {
-  background: oklch(0.28 0.06 270);
+.ui-palette-preview[data-preview-palette="MidnightAurora"] {
+  background: #7C5CFC;
+}
+.ui-palette-preview[data-preview-palette="ObsidianGold"] {
+  background: #D6AE67;
+}
+.ui-palette-preview[data-preview-palette="CyberpunkDreams"] {
+  background: #FF3CAC;
+}
+.ui-palette-preview[data-preview-palette="DeepOcean"] {
+  background: #29B6A6;
+}
+.ui-palette-preview[data-preview-palette="CherryBlossom"] {
+  background: #E879A8;
+}
+.ui-palette-preview[data-preview-palette="ToxicEmerald"] {
+  background: #35D07F;
+}
+.ui-palette-preview[data-preview-palette="CosmicLavender"] {
+  background: #9D7BFF;
+}
+.ui-palette-preview[data-preview-palette="NeoGlass"] {
+  background: #8B7CFF;
+}
+.ui-palette-preview[data-preview-palette="Dribbble"] {
+  background: #A78BFA;
+}
+.ui-palette-preview[data-preview-palette="OledBlack"] {
+  background: #8B7CFF;
+}
+.ui-palette-preview[data-preview-palette="LuxuryDark"] {
+  background: #C49A62;
+}
+.ui-palette-preview[data-preview-palette="CyberAesthetic"] {
+  background: #4D7CFE;
 }
 .ui-palette-preview[data-preview-palette="Aurora"] {
   background-image: linear-gradient(160deg, oklch(0.82 0.08 180), oklch(0.78 0.1 300));

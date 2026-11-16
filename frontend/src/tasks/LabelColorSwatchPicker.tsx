@@ -38,7 +38,7 @@ export function LabelColorSwatchPicker({
             disabled={disabled}
             data-label-color={color}
             className={cn(
-              "relative flex h-8 w-8 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+              "relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
               labelChipClassName(color),
             )}
             onClick={() => onChange(color)}

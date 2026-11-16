@@ -32,8 +32,21 @@ describe("InMemoryActivityRepository", () => {
     await repo.create(newer);
     await repo.create(other);
 
-    const listed = await repo.listByTaskId(TASK_ID);
-    expect(listed.map((event) => event.id)).toEqual([newer.id, older.id]);
-    expect(await repo.listByTaskId(OTHER_TASK_ID)).toHaveLength(1);
+    const listed = await repo.listPage({
+      taskId: TASK_ID,
+      limit: 5,
+      cursor: null,
+    });
+    expect(listed.items.map((event) => event.id)).toEqual([newer.id, older.id]);
+    expect(listed.nextCursor).toBeNull();
+    expect(
+      (
+        await repo.listPage({
+          taskId: OTHER_TASK_ID,
+          limit: 5,
+          cursor: null,
+        })
+      ).items,
+    ).toHaveLength(1);
   });
 });

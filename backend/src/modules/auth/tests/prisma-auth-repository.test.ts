@@ -168,4 +168,36 @@ describe("PrismaAuthRepository", () => {
       expect(loadedHash).toBe(passwordHash);
     },
   );
+
+  it.skipIf(!hasDatabaseUrl)(
+    "replaces a password hash and revokes other sessions for the user",
+    async () => {
+      if (!auth) {
+        return;
+      }
+
+      const email = `pwd-${randomUUID()}@example.com`;
+      const registered = await auth.createRegisteredUser({
+        email,
+        displayName: "Ada",
+        passwordHash: await hashPassword("first-secret"),
+      });
+      const other = await auth.createSession(registered.user.id);
+      const nextHash = await hashPassword("second-secret");
+
+      await auth.savePasswordHash(registered.user.id, nextHash);
+      await auth.revokeSessionsForUserExcept(
+        registered.user.id,
+        registered.session.id,
+      );
+
+      expect(await auth.findPasswordHashByUserId(registered.user.id)).toBe(
+        nextHash,
+      );
+      expect(
+        (await auth.findSessionById(registered.session.id))?.isValid(),
+      ).toBe(true);
+      expect((await auth.findSessionById(other.id))?.isValid()).toBe(false);
+    },
+  );
 });

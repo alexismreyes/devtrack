@@ -11,4 +11,6 @@ export interface ProjectAccessPort {
     projectId: string,
   ): Promise<OwnedProjectSnapshot>;
   listOwnedActiveProjects(actorId: string): Promise<OwnedProjectSnapshot[]>;
+  /** Active (non-archived) projects for the given ids, newest-first. */
+  listActiveProjectsByIds(ids: string[]): Promise<OwnedProjectSnapshot[]>;
 }

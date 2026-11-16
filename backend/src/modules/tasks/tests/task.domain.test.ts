@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   InvalidTaskDueDateError,
+  InvalidTaskPositionError,
   InvalidTaskPriorityError,
+  InvalidTaskReorderError,
   InvalidTaskStatusError,
   InvalidTaskTitleError,
 } from "../domain/errors";
 import {
+  applyTaskReorder,
   calendarDateFromString,
   DEFAULT_TASK_PRIORITY,
   DEFAULT_TASK_STATUS,
+  densifyLiveTasks,
+  nextTaskPosition,
+  sortTasksByPositionAsc,
   Task,
 } from "../domain/task";
 
@@ -33,7 +39,7 @@ describe("tasks domain", () => {
     expect(task.createdAt.getTime()).toBeLessThanOrEqual(after);
   });
 
-  it("defaults omitted status to TODO and omitted priority to MEDIUM", () => {
+  it("defaults omitted status to TODO, omitted priority to MEDIUM, and position to 0", () => {
     const task = Task.create(PROJECT_ID, "Write spec");
 
     expect(task.status).toBe(DEFAULT_TASK_STATUS);
@@ -41,6 +47,7 @@ describe("tasks domain", () => {
     expect(task.priority).toBe(DEFAULT_TASK_PRIORITY);
     expect(task.priority).toBe("MEDIUM");
     expect(task.dueDate).toBeNull();
+    expect(task.position).toBe(0);
   });
 
   it("persists supplied status and priority instead of defaults", () => {
@@ -169,7 +176,7 @@ describe("tasks domain", () => {
     );
   });
 
-  it("rehydrates persisted identity, association, enumerations, due date, and deletion state", () => {
+  it("rehydrates persisted identity, association, enumerations, due date, position, and deletion state", () => {
     const id = "33333333-3333-4333-8333-333333333333";
     const createdAt = new Date("2026-01-02T03:04:05.000Z");
     const deletedAt = new Date("2026-02-03T04:05:06.000Z");
@@ -184,6 +191,7 @@ describe("tasks domain", () => {
       dueDate,
       createdAt,
       deletedAt,
+      4,
     );
 
     expect(task.id).toBe(id);
@@ -195,5 +203,101 @@ describe("tasks domain", () => {
     expect(task.dueDate?.toISOString().slice(0, 10)).toBe("2026-03-04");
     expect(task.createdAt.toISOString()).toBe("2026-01-02T03:04:05.000Z");
     expect(task.deletedAt?.toISOString()).toBe("2026-02-03T04:05:06.000Z");
+    expect(task.position).toBe(4);
+  });
+
+  it("rejects negative or non-integer positions", () => {
+    expect(() => Task.create(PROJECT_ID, "Write spec", null, undefined, undefined, null, new Date(), -1)).toThrow(
+      InvalidTaskPositionError,
+    );
+    expect(() =>
+      Task.create(
+        PROJECT_ID,
+        "Write spec",
+        null,
+        undefined,
+        undefined,
+        null,
+        new Date(),
+        1.5,
+      ),
+    ).toThrow(InvalidTaskPositionError);
+  });
+
+  it("appends next position and densifies / reorders without mutating metadata", () => {
+    const a = Task.create(
+      PROJECT_ID,
+      "A",
+      null,
+      "TODO",
+      "MEDIUM",
+      null,
+      new Date("2026-01-01T00:00:00.000Z"),
+      2,
+    );
+    const b = Task.create(
+      PROJECT_ID,
+      "B",
+      null,
+      "TODO",
+      "MEDIUM",
+      null,
+      new Date("2026-01-02T00:00:00.000Z"),
+      0,
+    );
+    const c = Task.create(
+      PROJECT_ID,
+      "C",
+      null,
+      "TODO",
+      "MEDIUM",
+      null,
+      new Date("2026-01-03T00:00:00.000Z"),
+      1,
+    );
+
+    expect(nextTaskPosition([a, b, c])).toBe(3);
+    expect(nextTaskPosition([])).toBe(0);
+
+    const densified = densifyLiveTasks([a, b, c]);
+    expect(densified.map((task) => task.id)).toEqual([b.id, c.id, a.id]);
+    expect(densified.map((task) => task.position)).toEqual([0, 1, 2]);
+    expect(densified[0]!.title).toBe("B");
+
+    const reordered = applyTaskReorder([a, b, c], [a.id, b.id, c.id]);
+    expect(reordered.map((task) => task.id)).toEqual([a.id, b.id, c.id]);
+    expect(reordered.map((task) => task.position)).toEqual([0, 1, 2]);
+    expect(reordered[0]!.title).toBe("A");
+    expect(reordered[0]!.status).toBe("TODO");
+
+    expect(() => applyTaskReorder([a, b], [a.id])).toThrow(InvalidTaskReorderError);
+    expect(() => applyTaskReorder([a, b], [a.id, a.id])).toThrow(
+      InvalidTaskReorderError,
+    );
+
+    expect(sortTasksByPositionAsc([a, b, c]).map((task) => task.id)).toEqual([
+      b.id,
+      c.id,
+      a.id,
+    ]);
+  });
+
+  it("keeps position when details change and allows withPosition", () => {
+    const task = Task.create(
+      PROJECT_ID,
+      "Write spec",
+      null,
+      "TODO",
+      "MEDIUM",
+      null,
+      new Date(),
+      5,
+    );
+    const updated = task.withDetails({ title: "Review" });
+    const moved = task.withPosition(1);
+
+    expect(updated.position).toBe(5);
+    expect(moved.position).toBe(1);
+    expect(moved.title).toBe("Write spec");
   });
 });

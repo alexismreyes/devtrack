@@ -11,7 +11,12 @@ import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-reposito
 import { PrismaProjectMembersRepository } from "../../project-members/repository/prisma-project-members-repository";
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { PrismaProjectsRepository } from "../../projects/repository/prisma-projects-repository";
+import { PrismaProjectCoversRepository } from "../../projects/repository/prisma-project-covers-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "../../projects/tests/in-memory-project-board-backgrounds-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "../../projects/tests/in-memory-project-board-background-storage";
 import { PrismaActivityRepository } from "../../tasks/repository/prisma-activity-repository";
 import { PrismaChecklistsRepository } from "../../tasks/repository/prisma-checklists-repository";
 import { PrismaCommentsRepository } from "../../tasks/repository/prisma-comments-repository";
@@ -88,6 +93,10 @@ function createSystemApp(systemRepository: FakeSystemRepository = new FakeSystem
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -312,6 +321,8 @@ describe("system HTTP API persistence", () => {
 
   if (hasDatabaseUrl) {
     process.env.ATTACHMENTS_ROOT ??= "./data/attachments-test";
+    process.env.PROJECT_COVERS_ROOT ??= "./data/project-covers-test";
+    process.env.PROJECT_BOARD_BACKGROUNDS_ROOT ??= "./data/project-board-backgrounds-test";
     prisma = createPrismaClient(loadConfig().databaseUrl);
     app = createApp({
       corsOrigin: process.env.CORS_ORIGIN,
@@ -319,6 +330,10 @@ describe("system HTTP API persistence", () => {
       usersRepository: new PrismaUsersRepository(prisma),
       authRepository: new PrismaAuthRepository(prisma),
       projectsRepository: new PrismaProjectsRepository(prisma),
+      projectCoversRepository: new PrismaProjectCoversRepository(prisma),
+      projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
       tasksRepository: new PrismaTasksRepository(prisma),
       commentsRepository: new PrismaCommentsRepository(prisma),
       activityRepository: new PrismaActivityRepository(prisma),

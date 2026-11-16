@@ -29,6 +29,7 @@ import type {
   TaskPriority,
   TaskStatus,
 } from "../api/types";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,10 @@ import { LabelsPopover } from "./LabelsPopover";
 import { taskStatusLabel } from "./statusDisplay";
 import { TaskAttachmentsPanel } from "./TaskAttachmentsPanel";
 import { TaskChecklistsPanel } from "./TaskChecklistsPanel";
+import {
+  isImageCoverSummary,
+  TaskDetailCoverHero,
+} from "./TaskDetailCoverHero";
 
 const TASK_FIELD_LABEL_CLASS =
   "text-xs font-normal text-muted-foreground";
@@ -100,6 +105,20 @@ type ActivityLoadState =
   | { kind: "forbidden"; message: string }
   | { kind: "not_found"; message: string };
 
+type FeedNavState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "error"; message: string };
+
+type FeedWindowSnapshot = {
+  comments: PublicCommentDto[];
+  activity: PublicActivityDto[];
+  commentsNextCursor: string | null;
+  activityNextCursor: string | null;
+};
+
+const FEED_PAGE_LIMIT = 5;
+
 const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH"];
 
 export function TaskDetail({
@@ -115,6 +134,7 @@ export function TaskDetail({
 }: TaskDetailProps) {
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [actionState, setActionState] = useState<ActionState>({ kind: "idle" });
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [task, setTask] = useState<PublicTaskDto | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -122,6 +142,9 @@ export function TaskDetail({
   const [status, setStatus] = useState<TaskStatus>("TODO");
   const [priority, setPriority] = useState<TaskPriority>("MEDIUM");
   const [comments, setComments] = useState<PublicCommentDto[]>([]);
+  const [commentsNextCursor, setCommentsNextCursor] = useState<string | null>(
+    null,
+  );
   const [commentsLoadState, setCommentsLoadState] = useState<CommentsLoadState>({
     kind: "loading",
   });
@@ -132,9 +155,18 @@ export function TaskDetail({
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentBody, setEditCommentBody] = useState("");
   const [activity, setActivity] = useState<PublicActivityDto[]>([]);
+  const [activityNextCursor, setActivityNextCursor] = useState<string | null>(
+    null,
+  );
   const [activityLoadState, setActivityLoadState] = useState<ActivityLoadState>({
     kind: "loading",
   });
+  const [feedNavState, setFeedNavState] = useState<FeedNavState>({
+    kind: "idle",
+  });
+  const [feedWindowStack, setFeedWindowStack] = useState<FeedWindowSnapshot[]>(
+    [],
+  );
   const [catalogLabels, setCatalogLabels] = useState<PublicLabelDto[]>([]);
   const [catalogStatuses, setCatalogStatuses] = useState<
     PublicProjectStatusDto[]
@@ -165,9 +197,13 @@ export function TaskDetail({
 
   const loadComments = useCallback(async () => {
     setCommentsLoadState({ kind: "loading" });
+    setCommentsNextCursor(null);
+    setFeedWindowStack([]);
+    setFeedNavState({ kind: "idle" });
     try {
-      const result = await listTaskComments(taskId);
+      const result = await listTaskComments(taskId, { limit: FEED_PAGE_LIMIT });
       setComments(result.comments);
+      setCommentsNextCursor(result.nextCursor);
       setCommentsLoadState(
         result.comments.length === 0
           ? { kind: "empty" }
@@ -202,9 +238,13 @@ export function TaskDetail({
 
   const loadActivity = useCallback(async () => {
     setActivityLoadState({ kind: "loading" });
+    setActivityNextCursor(null);
+    setFeedWindowStack([]);
+    setFeedNavState({ kind: "idle" });
     try {
-      const result = await listTaskActivity(taskId);
+      const result = await listTaskActivity(taskId, { limit: FEED_PAGE_LIMIT });
       setActivity(result.activity);
+      setActivityNextCursor(result.nextCursor);
       setActivityLoadState(
         result.activity.length === 0
           ? { kind: "empty" }
@@ -236,6 +276,112 @@ export function TaskDetail({
       setActivityLoadState({ kind: "error", message: toUserMessage(err) });
     }
   }, [onUnauthenticated, taskId]);
+
+  const reloadNewestFeedWindow = useCallback(async () => {
+    await Promise.all([loadComments(), loadActivity()]);
+  }, [loadActivity, loadComments]);
+
+  const goNextFeedWindow = useCallback(async () => {
+    if (commentsNextCursor === null && activityNextCursor === null) {
+      return;
+    }
+    setFeedNavState({ kind: "loading" });
+    try {
+      const [commentsPage, activityPage] = await Promise.all([
+        commentsNextCursor === null
+          ? Promise.resolve(null)
+          : listTaskComments(taskId, {
+              cursor: commentsNextCursor,
+              limit: FEED_PAGE_LIMIT,
+            }),
+        activityNextCursor === null
+          ? Promise.resolve(null)
+          : listTaskActivity(taskId, {
+              cursor: activityNextCursor,
+              limit: FEED_PAGE_LIMIT,
+            }),
+      ]);
+
+      setFeedWindowStack((stack) => [
+        ...stack,
+        {
+          comments,
+          activity,
+          commentsNextCursor,
+          activityNextCursor,
+        },
+      ]);
+
+      if (commentsPage !== null) {
+        setComments(commentsPage.comments);
+        setCommentsNextCursor(commentsPage.nextCursor);
+        setCommentsLoadState(
+          commentsPage.comments.length === 0
+            ? { kind: "empty" }
+            : { kind: "success" },
+        );
+      } else {
+        setComments([]);
+        setCommentsNextCursor(null);
+        setCommentsLoadState({ kind: "empty" });
+      }
+
+      if (activityPage !== null) {
+        setActivity(activityPage.activity);
+        setActivityNextCursor(activityPage.nextCursor);
+        setActivityLoadState(
+          activityPage.activity.length === 0
+            ? { kind: "empty" }
+            : { kind: "success" },
+        );
+      } else {
+        setActivity([]);
+        setActivityNextCursor(null);
+        setActivityLoadState({ kind: "empty" });
+      }
+
+      setFeedNavState({ kind: "idle" });
+    } catch (err) {
+      if (isUnauthenticated(err)) {
+        setFeedNavState({
+          kind: "error",
+          message: toUserMessage(err),
+        });
+        onUnauthenticated();
+        return;
+      }
+      setFeedNavState({ kind: "error", message: toUserMessage(err) });
+    }
+  }, [
+    activity,
+    activityNextCursor,
+    comments,
+    commentsNextCursor,
+    onUnauthenticated,
+    taskId,
+  ]);
+
+  const goPrevFeedWindow = useCallback(() => {
+    if (feedWindowStack.length === 0) {
+      return;
+    }
+    const previous = feedWindowStack[feedWindowStack.length - 1];
+    if (previous === undefined) {
+      return;
+    }
+    setFeedWindowStack(feedWindowStack.slice(0, -1));
+    setComments(previous.comments);
+    setActivity(previous.activity);
+    setCommentsNextCursor(previous.commentsNextCursor);
+    setActivityNextCursor(previous.activityNextCursor);
+    setCommentsLoadState(
+      previous.comments.length === 0 ? { kind: "empty" } : { kind: "success" },
+    );
+    setActivityLoadState(
+      previous.activity.length === 0 ? { kind: "empty" } : { kind: "success" },
+    );
+    setFeedNavState({ kind: "idle" });
+  }, [feedWindowStack]);
 
   const loadCatalog = useCallback(async (projectId: string) => {
     try {
@@ -344,7 +490,7 @@ export function TaskDetail({
       applyTask(updated);
       setActionState({ kind: "success", message: "Task updated." });
       onUpdated();
-      await loadActivity();
+      await reloadNewestFeedWindow();
     } catch (err) {
       if (handleAuthzError(err)) {
         return;
@@ -361,9 +507,11 @@ export function TaskDetail({
     setActionState({ kind: "deleting" });
     try {
       await softDeleteTask(taskId);
+      setDeleteConfirmOpen(false);
       setActionState({ kind: "success", message: "Task deleted." });
       onDeleted();
     } catch (err) {
+      setDeleteConfirmOpen(false);
       if (handleAuthzError(err)) {
         return;
       }
@@ -381,17 +529,12 @@ export function TaskDetail({
     event.preventDefault();
     setCommentActionState({ kind: "creating" });
     try {
-      const created = await createTaskComment(taskId, {
+      await createTaskComment(taskId, {
         body: newCommentBody,
       });
-      const next = [...comments, created];
-      setComments(next);
-      setCommentsLoadState(
-        next.length === 0 ? { kind: "empty" } : { kind: "success" },
-      );
       setNewCommentBody("");
       setCommentActionState({ kind: "success", message: "Comment added." });
-      await loadActivity();
+      await reloadNewestFeedWindow();
     } catch (err) {
       if (handleCommentAuthzError(err)) {
         return;
@@ -410,17 +553,13 @@ export function TaskDetail({
   async function onSaveComment(commentId: string): Promise<void> {
     setCommentActionState({ kind: "saving", commentId });
     try {
-      const updated = await updateTaskComment(taskId, commentId, {
+      await updateTaskComment(taskId, commentId, {
         body: editCommentBody,
       });
-      const next = comments.map((comment) =>
-        comment.id === commentId ? updated : comment,
-      );
-      setComments(next);
       setEditingCommentId(null);
       setEditCommentBody("");
       setCommentActionState({ kind: "success", message: "Comment updated." });
-      await loadActivity();
+      await reloadNewestFeedWindow();
     } catch (err) {
       if (handleCommentAuthzError(err)) {
         return;
@@ -440,17 +579,12 @@ export function TaskDetail({
     setCommentActionState({ kind: "deleting", commentId });
     try {
       await deleteTaskComment(taskId, commentId);
-      const next = comments.filter((comment) => comment.id !== commentId);
-      setComments(next);
-      setCommentsLoadState(
-        next.length === 0 ? { kind: "empty" } : { kind: "success" },
-      );
       if (editingCommentId === commentId) {
         setEditingCommentId(null);
         setEditCommentBody("");
       }
       setCommentActionState({ kind: "success", message: "Comment deleted." });
-      await loadActivity();
+      await reloadNewestFeedWindow();
     } catch (err) {
       if (handleCommentAuthzError(err)) {
         return;
@@ -483,8 +617,22 @@ export function TaskDetail({
     return canEditComment(comment) || canManageMembers;
   }
 
+  const coverForHero =
+    task !== null && isImageCoverSummary(task.cover) ? task.cover : null;
+
   return (
-    <section aria-labelledby="task-detail-heading" className="grid gap-4">
+    <section
+      aria-labelledby="task-detail-heading"
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="task-detail"
+    >
+      {coverForHero !== null ? (
+        <TaskDetailCoverHero taskId={taskId} cover={coverForHero} />
+      ) : null}
+      <div
+        data-testid="task-detail-body"
+        className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-6"
+      >
       <div className="flex flex-row items-start justify-between gap-3">
         <h4
           id="task-detail-heading"
@@ -564,7 +712,7 @@ export function TaskDetail({
                 canWrite={canWrite}
                 disabled={archived}
                 onUploaded={setIngestedAttachment}
-                onActivityMaybeChanged={loadActivity}
+                onActivityMaybeChanged={() => void reloadNewestFeedWindow()}
                 onUnauthenticated={onUnauthenticated}
               />
             </div>
@@ -675,7 +823,7 @@ export function TaskDetail({
                   <Button
                     type="button"
                     variant="destructive"
-                    onClick={() => void onDelete()}
+                    onClick={() => setDeleteConfirmOpen(true)}
                     disabled={writesDisabled}
                   >
                     {actionState.kind === "deleting"
@@ -695,7 +843,7 @@ export function TaskDetail({
               canWrite={canWrite}
               disabled={archived}
               onUnauthenticated={onUnauthenticated}
-              onActivityMaybeChanged={loadActivity}
+              onActivityMaybeChanged={() => void reloadNewestFeedWindow()}
               ingestCreatedChecklist={ingestedChecklist}
             />
 
@@ -705,7 +853,7 @@ export function TaskDetail({
               disabled={archived}
               ingestCreatedAttachment={ingestedAttachment}
               onUnauthenticated={onUnauthenticated}
-              onActivityMaybeChanged={loadActivity}
+              onActivityMaybeChanged={() => void reloadNewestFeedWindow()}
               onCoverChange={applyCover}
             />
           </div>
@@ -737,6 +885,13 @@ export function TaskDetail({
             onDeleteComment={(commentId) => void onDeleteComment(commentId)}
             canEditComment={canEditComment}
             canSoftDeleteComment={canSoftDeleteComment}
+            canGoPrev={feedWindowStack.length > 0}
+            canGoNext={
+              commentsNextCursor !== null || activityNextCursor !== null
+            }
+            feedNavState={feedNavState}
+            onPrevFeedWindow={goPrevFeedWindow}
+            onNextFeedWindow={() => void goNextFeedWindow()}
           />
         </div>
       ) : null}
@@ -746,6 +901,17 @@ export function TaskDetail({
           Saving task…
         </p>
       ) : null}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete task?"
+        description="This removes the task from the board. You can cancel if you changed your mind."
+        confirmLabel="Delete"
+        confirmVariant="destructive"
+        confirming={actionState.kind === "deleting"}
+        onConfirm={() => void onDelete()}
+      />
+
       {actionState.kind === "deleting" ? (
         <p className="text-sm text-muted-foreground" role="status">
           Deleting task…
@@ -774,8 +940,9 @@ export function TaskDetail({
         disabled={archived || !canWrite}
         onCreated={setIngestedChecklist}
         onUnauthenticated={onUnauthenticated}
-        onActivityMaybeChanged={loadActivity}
+        onActivityMaybeChanged={() => void reloadNewestFeedWindow()}
       />
+      </div>
     </section>
   );
 }

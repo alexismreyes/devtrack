@@ -42,14 +42,29 @@ export class FakeProjectAccessPort implements ProjectAccessPort {
         (project) =>
           project.ownerUserId === actorId && project.archivedAt === null,
       )
-      .map((project) => ({
-        id: project.id,
-        ownerUserId: project.ownerUserId,
-        name: project.name,
-        archivedAt:
-          project.archivedAt === null
-            ? null
-            : new Date(project.archivedAt.getTime()),
-      }));
+      .map((project) => this.clone(project));
+  }
+
+  async listActiveProjectsByIds(
+    ids: string[],
+  ): Promise<OwnedProjectSnapshot[]> {
+    const idSet = new Set(ids);
+    return [...this.projectsById.values()]
+      .filter(
+        (project) => idSet.has(project.id) && project.archivedAt === null,
+      )
+      .map((project) => this.clone(project));
+  }
+
+  private clone(project: OwnedProjectSnapshot): OwnedProjectSnapshot {
+    return {
+      id: project.id,
+      ownerUserId: project.ownerUserId,
+      name: project.name,
+      archivedAt:
+        project.archivedAt === null
+          ? null
+          : new Date(project.archivedAt.getTime()),
+    };
   }
 }

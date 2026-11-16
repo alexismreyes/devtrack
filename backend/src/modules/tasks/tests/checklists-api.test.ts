@@ -5,6 +5,10 @@ import { createApp } from "../../../app";
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "../../projects/tests/in-memory-project-board-backgrounds-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "../../projects/tests/in-memory-project-board-background-storage";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
@@ -63,6 +67,10 @@ function createChecklistsApp() {
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -158,6 +166,8 @@ describe("task checklists HTTP API", () => {
       name: "Launch",
       createdAt: expect.any(String),
       items: [],
+      itemCount: 0,
+      checkedCount: 0,
     });
     assertNoSecrets(created.body);
 
@@ -374,6 +384,11 @@ describe("task checklists HTTP API", () => {
     const itemB = await agent
       .post(`/api/tasks/${task.id}/checklists/${first.body.id}/items`)
       .send({ text: "B" });
+    await agent
+      .patch(
+        `/api/tasks/${task.id}/checklists/${first.body.id}/items/${itemB.body.id}`,
+      )
+      .send({ checked: true });
     await agent.delete(
       `/api/tasks/${task.id}/checklists/${first.body.id}/items/${itemA.body.id}`,
     );
@@ -383,10 +398,114 @@ describe("task checklists HTTP API", () => {
       first.body.id,
       second.body.id,
     ]);
-    expect(
-      listed.body.checklists[0].items.map((i: { id: string }) => i.id),
-    ).toEqual([itemB.body.id]);
+    expect(listed.body.checklists[0].items).toEqual([]);
+    expect(listed.body.checklists[0].itemCount).toBe(1);
+    expect(listed.body.checklists[0].checkedCount).toBe(1);
     expect(listed.body.checklists[1].items).toEqual([]);
+    expect(listed.body.checklists[1].itemCount).toBe(0);
+    expect(listed.body.checklists[1].checkedCount).toBe(0);
+  });
+
+  it("paginates checklist items with default limit 10 and nextCursor (AC-004)", async () => {
+    const { app } = createChecklistsApp();
+    const { agent } = await registerAgent(app);
+    const project = await createOwnedProject(agent);
+    const task = await createTask(agent, project.id);
+    const checklist = await agent
+      .post(`/api/tasks/${task.id}/checklists`)
+      .send({ name: "Long" });
+
+    const createdIds: string[] = [];
+    for (let index = 0; index < 12; index += 1) {
+      const item = await agent
+        .post(`/api/tasks/${task.id}/checklists/${checklist.body.id}/items`)
+        .send({ text: `Item ${index + 1}` });
+      expect(item.status).toBe(201);
+      createdIds.push(item.body.id);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+
+    const firstPage = await agent.get(
+      `/api/tasks/${task.id}/checklists/${checklist.body.id}/items?limit=10`,
+    );
+    expect(firstPage.status).toBe(200);
+    expect(firstPage.body.items).toHaveLength(10);
+    expect(firstPage.body.items.map((item: { id: string }) => item.id)).toEqual(
+      createdIds.slice(0, 10),
+    );
+    expect(typeof firstPage.body.nextCursor).toBe("string");
+    assertNoSecrets(firstPage.body);
+
+    const defaultPage = await agent.get(
+      `/api/tasks/${task.id}/checklists/${checklist.body.id}/items`,
+    );
+    expect(defaultPage.status).toBe(200);
+    expect(defaultPage.body.items).toHaveLength(10);
+    expect(defaultPage.body.nextCursor).toBe(firstPage.body.nextCursor);
+
+    const secondPage = await agent.get(
+      `/api/tasks/${task.id}/checklists/${checklist.body.id}/items?limit=10&cursor=${encodeURIComponent(firstPage.body.nextCursor)}`,
+    );
+    expect(secondPage.status).toBe(200);
+    expect(secondPage.body.items.map((item: { id: string }) => item.id)).toEqual(
+      createdIds.slice(10),
+    );
+    expect(secondPage.body.nextCursor).toBeNull();
+
+    const invalidCursor = await agent.get(
+      `/api/tasks/${task.id}/checklists/${checklist.body.id}/items?cursor=not-a-cursor`,
+    );
+    expect(invalidCursor.status).toBe(400);
+    expect(invalidCursor.body).toMatchObject(envelope("VALIDATION_ERROR"));
+
+    const overLimit = await agent.get(
+      `/api/tasks/${task.id}/checklists/${checklist.body.id}/items?limit=51`,
+    );
+    expect(overLimit.status).toBe(400);
+  });
+
+  it("enforces item list authz for VIEWER vs stranger (AC-005)", async () => {
+    const { app } = createChecklistsApp();
+    const { agent: owner } = await registerAgent(app);
+    const { agent: viewer, user: viewerUser } = await registerAgent(
+      app,
+      `viewer-${randomUUID()}@example.com`,
+      "Vi",
+    );
+    const { agent: stranger } = await registerAgent(
+      app,
+      `stranger-${randomUUID()}@example.com`,
+      "St",
+    );
+    const project = await createOwnedProject(owner);
+    await owner.post(`/api/projects/${project.id}/members`).send({
+      email: viewerUser.email,
+      role: "VIEWER",
+    });
+    const task = await createTask(owner, project.id);
+    const checklist = await owner
+      .post(`/api/tasks/${task.id}/checklists`)
+      .send({ name: "List" });
+    await owner
+      .post(`/api/tasks/${task.id}/checklists/${checklist.body.id}/items`)
+      .send({ text: "One" });
+
+    const viewerItems = await viewer.get(
+      `/api/tasks/${task.id}/checklists/${checklist.body.id}/items`,
+    );
+    expect(viewerItems.status).toBe(200);
+    expect(viewerItems.body.items).toHaveLength(1);
+
+    const strangerItems = await stranger.get(
+      `/api/tasks/${task.id}/checklists/${checklist.body.id}/items`,
+    );
+    expect(strangerItems.status).toBe(403);
+
+    const guest = request(app);
+    const unauth = await guest.get(
+      `/api/tasks/${task.id}/checklists/${checklist.body.id}/items`,
+    );
+    expect(unauth.status).toBe(401);
   });
 
   it("applies archived mutate 409/403 and soft-deleted task 404 (AC-012)", async () => {

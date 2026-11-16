@@ -12,6 +12,7 @@ export type PublicActivityDto = {
 
 export type ActivityListResponseDto = {
   activity: PublicActivityDto[];
+  nextCursor: string | null;
 };
 
 export function toPublicActivityDto(event: ActivityView): PublicActivityDto {

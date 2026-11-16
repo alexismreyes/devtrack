@@ -1,9 +1,21 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../session/SessionContext";
 import { expectNoSessionTokenStorage } from "../test/storage";
 import { DashboardPage } from "./DashboardPage";
+
+vi.mock("recharts", async () => {
+  const actual = await vi.importActual<typeof import("recharts")>("recharts");
+  return {
+    ...actual,
+    ResponsiveContainer: ({
+      children,
+    }: {
+      children?: React.ReactNode;
+    }) => <div data-testid="responsive-container">{children}</div>,
+  };
+});
 
 const publicUser = {
   id: "user-1",
@@ -12,38 +24,50 @@ const publicUser = {
 };
 
 const dashboard = {
-  projectCount: 2,
-  taskCount: 5,
-  pendingCount: 3,
-  completedCount: 2,
-  overdueCount: 1,
-  projects: [
+  totalProjects: 2,
+  openTasks: 3,
+  teamMembers: 4,
+  dueSoon: 1,
+  projectsPie: [
+    { statusKey: "TODO", label: "To do", count: 2 },
+    { statusKey: "DONE", label: "Done", count: 1 },
+  ],
+  tasksBars: [
     {
-      id: "proj-1",
-      name: "Alpha",
-      taskCount: 3,
-      pendingCount: 2,
-      completedCount: 1,
-      overdueCount: 1,
+      projectId: "proj-1",
+      projectName: "Alpha",
+      checklistCompletionPercent: 50,
     },
     {
-      id: "proj-2",
-      name: "Beta",
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
+      projectId: "proj-2",
+      projectName: "Beta",
+      checklistCompletionPercent: 0,
+    },
+  ],
+  progress: [
+    {
+      projectId: "proj-1",
+      projectName: "Alpha",
+      completedTasks: 1,
+      totalTasks: 3,
+    },
+    {
+      projectId: "proj-2",
+      projectName: "Beta",
+      completedTasks: 0,
+      totalTasks: 0,
     },
   ],
 };
 
 const emptyDashboard = {
-  projectCount: 0,
-  taskCount: 0,
-  pendingCount: 0,
-  completedCount: 0,
-  overdueCount: 0,
-  projects: [] as typeof dashboard.projects,
+  totalProjects: 0,
+  openTasks: 0,
+  teamMembers: 0,
+  dueSoon: 0,
+  projectsPie: [] as typeof dashboard.projectsPie,
+  tasksBars: [] as typeof dashboard.tasksBars,
+  progress: [] as typeof dashboard.progress,
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -97,7 +121,7 @@ afterEach(() => {
 });
 
 describe("DashboardPage", () => {
-  it("shows loading then owner-wide totals and per-project counts from GET /api/dashboard", async () => {
+  it("shows loading then KPI row and overview charts from GET /api/dashboard", async () => {
     let resolveDashboard: ((value: Response) => void) | undefined;
     const dashboardPromise = new Promise<Response>((resolve) => {
       resolveDashboard = resolve;
@@ -119,35 +143,36 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/loading dashboard/i);
     resolveDashboard?.(jsonResponse(200, dashboard));
 
-    const totals = await screen.findByRole("list", { name: /owner totals/i });
-    expect(totals).toHaveTextContent(/projects 2/i);
-    expect(totals).toHaveTextContent(/tasks 5/i);
-    expect(totals).toHaveTextContent(/pending 3/i);
-    expect(totals).toHaveTextContent(/completed 2/i);
-    expect(totals).toHaveTextContent(/overdue 1/i);
+    const kpis = await screen.findByRole("list", { name: /dashboard kpis/i });
+    expect(kpis).toHaveTextContent(/total projects/i);
+    expect(kpis).toHaveTextContent(/open tasks/i);
+    expect(kpis).toHaveTextContent(/team members/i);
+    expect(kpis).toHaveTextContent(/due soon/i);
+    expect(screen.getByLabelText(/total projects 2/i)).toHaveTextContent("2");
+    expect(screen.getByLabelText(/open tasks 3/i)).toHaveTextContent("3");
+    expect(screen.getByLabelText(/team members 4/i)).toHaveTextContent("4");
+    expect(screen.getByLabelText(/due soon 1/i)).toHaveTextContent("1");
 
-    const projects = screen.getByRole("list", { name: /project summaries/i });
-    expect(within(projects).getByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
-    const alphaCounts = screen.getByRole("list", { name: /alpha counts/i });
-    expect(alphaCounts).toHaveTextContent(/tasks 3/i);
-    expect(alphaCounts).toHaveTextContent(/pending 2/i);
-    expect(alphaCounts).toHaveTextContent(/completed 1/i);
-    expect(alphaCounts).toHaveTextContent(/overdue 1/i);
-    expect(within(projects).getByRole("heading", { name: /^beta$/i })).toBeInTheDocument();
-    const betaCounts = screen.getByRole("list", { name: /beta counts/i });
-    expect(betaCounts).toHaveTextContent(/tasks 0/i);
-    expect(betaCounts).toHaveTextContent(/pending 0/i);
-    expect(betaCounts).toHaveTextContent(/completed 0/i);
-    expect(betaCounts).toHaveTextContent(/overdue 0/i);
+    expect(screen.getByRole("heading", { name: /^projects$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^tasks$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^progress$/i })).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-projects-pie")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-tasks-bars")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-progress-bars")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /stacked bars/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.queryByText(/due soon/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/activity/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-kpi-total-projects")).toHaveClass(
+      "bg-eyecandy-surface",
+    );
+    expect(screen.getByTestId("dashboard-projects-pie-card")).toHaveClass(
+      "bg-eyecandy-surface",
+    );
     expectNoListTasks(fetchMock);
     expectNoSessionTokenStorage();
   });
 
-  it("treats zero authorized data as empty zeros, not an error", async () => {
+  it("treats zero membership projects as empty success UI, not an error", async () => {
     const fetchMock = mockFetch((url, init) => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
@@ -160,14 +185,20 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(await screen.findByRole("heading", { name: /^dashboard$/i })).toBeInTheDocument();
-    const totals = await screen.findByRole("list", { name: /owner totals/i });
-    expect(totals).toHaveTextContent(/projects 0/i);
-    expect(totals).toHaveTextContent(/tasks 0/i);
-    expect(totals).toHaveTextContent(/pending 0/i);
-    expect(totals).toHaveTextContent(/completed 0/i);
-    expect(totals).toHaveTextContent(/overdue 0/i);
-    expect(screen.getByText(/no projects yet/i)).toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: /project summaries/i })).not.toBeInTheDocument();
+    const kpis = await screen.findByRole("list", { name: /dashboard kpis/i });
+    expect(screen.getByLabelText(/total projects 0/i)).toHaveTextContent("0");
+    expect(screen.getByLabelText(/open tasks 0/i)).toHaveTextContent("0");
+    expect(screen.getByLabelText(/team members 0/i)).toHaveTextContent("0");
+    expect(screen.getByLabelText(/due soon 0/i)).toHaveTextContent("0");
+    expect(kpis).toBeInTheDocument();
+    expect(
+      screen.getByText(/no projects in your membership set yet/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/no status counts to chart yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/no checklist completion data yet/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/no project progress yet/i)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expectNoListTasks(fetchMock);
     expectNoSessionTokenStorage();
@@ -191,7 +222,7 @@ describe("DashboardPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /database is unavailable/i,
     );
-    expect(screen.queryByRole("list", { name: /owner totals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /dashboard kpis/i })).not.toBeInTheDocument();
     expectNoSessionTokenStorage();
   });
 
@@ -216,7 +247,7 @@ describe("DashboardPage", () => {
       await screen.findByText(/authentication is required/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: /owner totals/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /dashboard kpis/i })).not.toBeInTheDocument();
     expectNoListTasks(fetchMock);
     expectNoSessionTokenStorage();
   });

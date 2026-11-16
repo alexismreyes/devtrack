@@ -76,6 +76,28 @@ describe("LoginForm", () => {
     expectNoSessionTokenStorage();
   });
 
+  it("toggles password visibility without clearing the value", async () => {
+    const user = userEvent.setup();
+
+    render(<LoginForm onSuccess={vi.fn()} />);
+
+    const password = screen.getByLabelText(/^password$/i);
+    expect(password).toHaveAttribute("type", "password");
+    await user.type(password, "secret");
+
+    await user.click(screen.getByRole("button", { name: /^show password$/i }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(password).toHaveValue("secret");
+    expect(screen.getByRole("button", { name: /^hide password$/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(screen.getByRole("button", { name: /^hide password$/i }));
+    expect(password).toHaveAttribute("type", "password");
+    expect(password).toHaveValue("secret");
+  });
+
   it("shows an error state for invalid credentials", async () => {
     mockFetch(() =>
       jsonResponse(401, {

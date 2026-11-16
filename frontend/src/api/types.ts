@@ -32,6 +32,23 @@ export type UpdateProfileRequestDto = {
   displayName: string;
 };
 
+export type ChangePasswordRequestDto = {
+  currentPassword: string;
+  newPassword: string;
+};
+
+/** Project cover summary — opaque id + content type only (020). */
+export type PublicProjectCoverSummaryDto = {
+  id: string;
+  contentType: string;
+};
+
+/** Board background summary — opaque id + content type only (037). */
+export type PublicProjectBoardBackgroundSummaryDto = {
+  id: string;
+  contentType: string;
+};
+
 export type PublicProjectDto = {
   id: string;
   ownerUserId: string;
@@ -39,6 +56,16 @@ export type PublicProjectDto = {
   description: string | null;
   createdAt: string;
   archivedAt: string | null;
+  cover: PublicProjectCoverSummaryDto | null;
+  boardBackground: PublicProjectBoardBackgroundSummaryDto | null;
+};
+
+export type ProjectCoverResponseDto = {
+  cover: PublicProjectCoverSummaryDto | null;
+};
+
+export type ProjectBoardBackgroundResponseDto = {
+  boardBackground: PublicProjectBoardBackgroundSummaryDto | null;
 };
 
 export type ProjectListResponseDto = {
@@ -133,6 +160,11 @@ export type ReorderStatusesRequestDto = {
   statusIds: string[];
 };
 
+export type ReorderTasksRequestDto = {
+  status: TaskStatus;
+  taskIds: string[];
+};
+
 export type ReplaceTaskLabelsRequestDto = {
   labelIds: string[];
 };
@@ -156,6 +188,8 @@ export type PublicTaskDto = {
   priority: TaskPriority;
   dueDate: string | null;
   createdAt: string;
+  /** Dense within-column rank for the task's status (031 / H). */
+  position: number;
   labels: TaskEmbeddedLabelDto[];
   cover: PublicCoverSummaryDto | null;
 };
@@ -203,8 +237,20 @@ export const COVER_IMAGE_CONTENT_TYPES = [
   "image/gif",
 ] as const;
 
+/** Q-160: project cover allowlist matches image covers. */
+export const PROJECT_COVER_ALLOWED_CONTENT_TYPES = COVER_IMAGE_CONTENT_TYPES;
+
 /** Q-133: 20 MiB per file. */
 export const ATTACHMENT_MAX_SIZE_BYTES = 20 * 1024 * 1024;
+
+/** Q-160: 5 MiB max for project covers. */
+export const PROJECT_COVER_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+
+/** Q-222: 5 MiB max for board backgrounds. */
+export const PROJECT_BOARD_BACKGROUND_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+
+export const PROJECT_BOARD_BACKGROUND_ALLOWED_CONTENT_TYPES =
+  COVER_IMAGE_CONTENT_TYPES;
 
 export function isAllowedAttachmentContentType(
   value: string,
@@ -216,6 +262,20 @@ export function isAllowedAttachmentContentType(
 
 export function isCoverImageContentType(value: string): boolean {
   return (COVER_IMAGE_CONTENT_TYPES as readonly string[]).includes(value);
+}
+
+export function isAllowedProjectCoverContentType(value: string): boolean {
+  return (PROJECT_COVER_ALLOWED_CONTENT_TYPES as readonly string[]).includes(
+    value,
+  );
+}
+
+export function isAllowedProjectBoardBackgroundContentType(
+  value: string,
+): boolean {
+  return (
+    PROJECT_BOARD_BACKGROUND_ALLOWED_CONTENT_TYPES as readonly string[]
+  ).includes(value);
 }
 
 export type TaskListResponseDto = {
@@ -244,22 +304,34 @@ export type ListTasksQueryDto = {
   labelId?: string;
 };
 
-export type DashboardProjectSummaryDto = {
-  id: string;
-  name: string;
-  taskCount: number;
-  pendingCount: number;
-  completedCount: number;
-  overdueCount: number;
+export type DashboardPieSliceDto = {
+  statusKey: string;
+  label: string;
+  count: number;
 };
 
-export type DashboardSummaryResponseDto = {
-  projectCount: number;
-  taskCount: number;
-  pendingCount: number;
-  completedCount: number;
-  overdueCount: number;
-  projects: DashboardProjectSummaryDto[];
+export type DashboardTasksBarDto = {
+  projectId: string;
+  projectName: string;
+  checklistCompletionPercent: number;
+};
+
+export type DashboardProgressRowDto = {
+  projectId: string;
+  projectName: string;
+  completedTasks: number;
+  totalTasks: number;
+};
+
+/** Membership-scoped dashboard overview (026; replaces 008/022 owner-only DTO). */
+export type DashboardOverviewResponseDto = {
+  totalProjects: number;
+  openTasks: number;
+  teamMembers: number;
+  dueSoon: number;
+  projectsPie: DashboardPieSliceDto[];
+  tasksBars: DashboardTasksBarDto[];
+  progress: DashboardProgressRowDto[];
 };
 
 export type ProjectMemberRole = "OWNER" | "EDITOR" | "VIEWER";
@@ -295,8 +367,14 @@ export type PublicCommentDto = {
   createdAt: string;
 };
 
+export type FeedPaginationQueryDto = {
+  cursor?: string;
+  limit?: number;
+};
+
 export type CommentListResponseDto = {
   comments: PublicCommentDto[];
+  nextCursor: string | null;
 };
 
 export type CreateCommentRequestDto = {
@@ -321,10 +399,17 @@ export type PublicChecklistDto = {
   name: string;
   createdAt: string;
   items: PublicChecklistItemDto[];
+  itemCount: number;
+  checkedCount: number;
 };
 
 export type ChecklistListResponseDto = {
   checklists: PublicChecklistDto[];
+};
+
+export type ChecklistItemListResponseDto = {
+  items: PublicChecklistItemDto[];
+  nextCursor: string | null;
 };
 
 export type CreateChecklistRequestDto = {
@@ -445,6 +530,7 @@ export type PublicActivityDto = {
 
 export type ActivityListResponseDto = {
   activity: PublicActivityDto[];
+  nextCursor: string | null;
 };
 
 export type ErrorEnvelope = {

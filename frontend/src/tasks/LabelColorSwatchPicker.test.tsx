@@ -39,6 +39,18 @@ describe("LabelColorSwatchPicker", () => {
       expect(screen.getByRole("radio", { name: new RegExp(color) })).toBeDisabled();
     }
   });
+
+  it("applies cursor-pointer on enabled color swatches (034 AC-004)", () => {
+    render(
+      <LabelColorSwatchPicker value="GRAY" onChange={vi.fn()} aria-label="Label color" />,
+    );
+
+    for (const color of LABEL_COLORS) {
+      expect(screen.getByRole("radio", { name: new RegExp(color) })).toHaveClass(
+        "cursor-pointer",
+      );
+    }
+  });
 });
 
 function withinRadios(group: HTMLElement): HTMLElement[] {

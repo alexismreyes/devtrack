@@ -5,7 +5,7 @@ import { MemoryRouter, RouterProvider, createMemoryRouter } from "react-router-d
 import { App } from "./App";
 import { expectNoSessionTokenStorage } from "./test/storage";
 import { DEFAULT_PROJECT_STATUSES } from "./test/statuses";
-import { UI_PALETTE_IDS, UI_PALETTE_STORAGE_KEY } from "./theme/uiPalettes";
+import { UI_PALETTES, UI_PALETTE_STORAGE_KEY } from "./theme/uiPalettes";
 
 const publicUser = {
   id: "user-1",
@@ -20,6 +20,8 @@ const activeProject = {
   description: "First project",
   createdAt: "2026-10-27T18:00:00.000Z",
   archivedAt: null as string | null,
+  cover: null as { id: string; contentType: string } | null,
+  boardBackground: null,
 };
 
 const ownerMember = {
@@ -117,6 +119,14 @@ function expectBackNextToEditAndArchive(archiveName: RegExp = /archive project/i
     "href",
     "/projects",
   );
+}
+
+function isProjectsListUrl(url: string): boolean {
+  try {
+    return new URL(url, "http://localhost:3000").pathname === "/api/projects";
+  } catch {
+    return false;
+  }
 }
 
 function isMembersListUrl(url: string): boolean {
@@ -267,7 +277,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return authenticated ? jsonResponse(200, publicUser) : unauthenticated();
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return authenticated
           ? jsonResponse(200, { projects: [] })
           : unauthenticated();
@@ -293,6 +303,8 @@ describe("App frontend shell", () => {
     expectNoProbeUi();
 
     await user.click(screen.getByRole("button", { name: /log out/i }));
+    const logoutDialog = await screen.findByRole("dialog", { name: /log out\?/i });
+    await user.click(within(logoutDialog).getByRole("button", { name: /^log out$/i }));
     expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
     expect(screen.queryByText(/signed in as/i)).not.toBeInTheDocument();
     expectNoProductSidebar();
@@ -311,7 +323,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return authenticated ? jsonResponse(200, publicUser) : unauthenticated();
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return authenticated
           ? jsonResponse(200, { projects: [] })
           : unauthenticated();
@@ -339,7 +351,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -381,7 +393,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -397,19 +409,24 @@ describe("App frontend shell", () => {
 
   it("opens /dashboard in the authenticated shell without replacing projects or composing task lists", async () => {
     const dashboard = {
-      projectCount: 1,
-      taskCount: 3,
-      pendingCount: 2,
-      completedCount: 1,
-      overdueCount: 1,
-      projects: [
+      totalProjects: 1,
+      openTasks: 2,
+      teamMembers: 3,
+      dueSoon: 1,
+      projectsPie: [{ statusKey: "TODO", label: "To do", count: 2 }],
+      tasksBars: [
         {
-          id: "proj-1",
-          name: "Alpha",
-          taskCount: 3,
-          pendingCount: 2,
-          completedCount: 1,
-          overdueCount: 1,
+          projectId: "proj-1",
+          projectName: "Alpha",
+          checklistCompletionPercent: 50,
+        },
+      ],
+      progress: [
+        {
+          projectId: "proj-1",
+          projectName: "Alpha",
+          completedTasks: 1,
+          totalTasks: 3,
         },
       ],
     };
@@ -422,7 +439,7 @@ describe("App frontend shell", () => {
         expect(init?.credentials).toBe("include");
         return jsonResponse(200, dashboard);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [{ ...activeProject }] });
       }
       return unexpectedRequest();
@@ -434,6 +451,10 @@ describe("App frontend shell", () => {
     expect(await screen.findByRole("heading", { name: /^dashboard$/i })).toBeInTheDocument();
     expectCappedAuthenticatedShell();
     expect(expectProductSidebar()).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute(
+      "href",
+      "/projects",
+    );
     expect(screen.getByRole("link", { name: /^dashboard$/i })).toHaveAttribute(
       "href",
       "/dashboard",
@@ -442,13 +463,21 @@ describe("App frontend shell", () => {
       "href",
       "/projects",
     );
-    const totals = await screen.findByRole("list", { name: /owner totals/i });
-    expect(totals).toHaveTextContent(/projects 1/i);
-    expect(totals).toHaveTextContent(/tasks 3/i);
-    expect(totals).toHaveTextContent(/pending 2/i);
-    expect(totals).toHaveTextContent(/completed 1/i);
-    expect(totals).toHaveTextContent(/overdue 1/i);
-    expect(screen.getByRole("heading", { name: /^alpha$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveClass(
+      "cursor-pointer",
+    );
+    expect(screen.getByRole("link", { name: /^dashboard$/i })).toHaveClass(
+      "cursor-pointer",
+    );
+    const kpis = await screen.findByRole("list", { name: /dashboard kpis/i });
+    expect(kpis).toHaveTextContent(/total projects/i);
+    expect(screen.getByLabelText(/total projects 1/i)).toHaveTextContent("1");
+    expect(screen.getByLabelText(/open tasks 2/i)).toHaveTextContent("2");
+    expect(screen.getByLabelText(/team members 3/i)).toHaveTextContent("3");
+    expect(screen.getByLabelText(/due soon 1/i)).toHaveTextContent("1");
+    expect(screen.getByTestId("dashboard-projects-pie-card")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-tasks-bars-card")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-progress-card")).toBeInTheDocument();
     expectNoProjectsHomeMain();
     expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
     expect(screen.queryByText(/trello/i)).not.toBeInTheDocument();
@@ -460,7 +489,7 @@ describe("App frontend shell", () => {
     expectAllCredentialsIncluded(fetchMock);
     expectNoSessionTokenStorage();
 
-    await user.click(screen.getByRole("link", { name: /^devtrack$/i }));
+    await user.click(screen.getByRole("link", { name: /^projects$/i }));
     expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
     expectProjectsHomeMain();
     expect(await screen.findByRole("list", { name: /project cards/i })).toBeInTheDocument();
@@ -470,6 +499,10 @@ describe("App frontend shell", () => {
     expect(await screen.findByRole("heading", { name: /^dashboard$/i })).toBeInTheDocument();
     expectNoProjectsHomeMain();
     expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: /^devtrack$/i }));
+    expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
+    expectProjectsHomeMain();
   });
 
   it("keeps the sidebar on projects, project detail, and profile destinations", async () => {
@@ -493,7 +526,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...project });
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [{ ...project }] });
       }
       return unexpectedRequest();
@@ -531,6 +564,10 @@ describe("App frontend shell", () => {
     expect(screen.queryByRole("columnheader")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
     expectNoProjectsHomeMain();
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute(
+      "href",
+      "/projects",
+    );
     expect(screen.getByRole("link", { name: /^dashboard$/i })).toHaveAttribute(
       "href",
       "/dashboard",
@@ -562,7 +599,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...project });
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [{ ...project }] });
       }
       return unexpectedRequest();
@@ -589,7 +626,7 @@ describe("App frontend shell", () => {
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
   });
 
-  it("keeps archive and unarchive on an archived detail URL even when the sidebar omits it", async () => {
+  it("keeps archive and unarchive on an archived detail URL and lists it under Archived in the sidebar", async () => {
     const project = { ...activeProject };
     const fetchMock = mockFetch((url, init) => {
       if (url.endsWith("/api/users/me")) {
@@ -614,11 +651,14 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...project });
       }
-      if (url.endsWith("/api/projects")) {
-        expect(url).not.toMatch(/includeArchived/i);
-        return jsonResponse(200, {
-          projects: project.archivedAt === null ? [{ ...project }] : [],
-        });
+      if (isProjectsListUrl(url)) {
+        const includeArchived = url.includes("includeArchived=true");
+        if (!includeArchived) {
+          return jsonResponse(200, {
+            projects: project.archivedAt === null ? [{ ...project }] : [],
+          });
+        }
+        return jsonResponse(200, { projects: [{ ...project }] });
       }
       return unexpectedRequest();
     });
@@ -639,7 +679,11 @@ describe("App frontend shell", () => {
     expect(await screen.findByRole("heading", { name: /your projects/i })).toBeInTheDocument();
     expectProjectsHomeMain();
     expect(await screen.findAllByText(/no projects yet/i)).not.toHaveLength(0);
-    expect(screen.queryByRole("button", { name: /^alpha$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /^projects$/i })).not.toBeInTheDocument();
+    const archivedList = await screen.findByRole("list", {
+      name: /archived projects/i,
+    });
+    expect(within(archivedList).getByRole("button", { name: /^alpha$/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
     expectAllCredentialsIncluded(fetchMock);
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(
@@ -654,14 +698,14 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects") && init?.method === "POST") {
+      if (isProjectsListUrl(url) && init?.method === "POST") {
         expect(init.body).toBe(
           JSON.stringify({ name: "Alpha", description: "First project" }),
         );
         projects.unshift(activeProject);
         return jsonResponse(201, activeProject);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [...projects] });
       }
       return unexpectedRequest();
@@ -687,7 +731,7 @@ describe("App frontend shell", () => {
     expect(screen.queryByRole("heading", { name: /^alpha$/i })).not.toBeInTheDocument();
   });
 
-  it("redirects the app root from guest register and authenticated projects", async () => {
+  it("redirects the app root from guest login and authenticated projects", async () => {
     mockFetch((url) => {
       if (url.endsWith("/api/users/me")) {
         return unauthenticated();
@@ -696,14 +740,15 @@ describe("App frontend shell", () => {
     });
 
     const { unmount } = renderApp("/");
-    expect(await screen.findByRole("heading", { name: /^register$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^register$/i })).not.toBeInTheDocument();
     unmount();
 
     mockFetch((url) => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -714,6 +759,10 @@ describe("App frontend shell", () => {
     expectProjectsHomeMain();
     expect(expectProductSidebar()).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^dashboard$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute(
+      "href",
+      "/projects",
+    );
     expect(screen.getByRole("link", { name: /^dashboard$/i })).toHaveAttribute(
       "href",
       "/dashboard",
@@ -740,7 +789,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -771,8 +820,10 @@ describe("App frontend shell", () => {
               priority: "MEDIUM",
               dueDate: null,
               createdAt: "2026-10-29T18:00:00.000Z",
+              position: 0,
               labels: [],
               cover: null,
+              boardBackground: null,
             },
           ],
         });
@@ -789,7 +840,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, { ...activeProject });
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [{ ...activeProject }] });
       }
       return unexpectedRequest();
@@ -802,6 +853,10 @@ describe("App frontend shell", () => {
     expectCappedAuthenticatedShell();
     expect(screen.getByRole("heading", { name: /^devtrack$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^devtrack$/i })).toHaveAttribute(
+      "href",
+      "/projects",
+    );
+    expect(screen.getByRole("link", { name: /^projects$/i })).toHaveAttribute(
       "href",
       "/projects",
     );
@@ -841,9 +896,11 @@ describe("App frontend shell", () => {
     expect(screen.queryByRole("combobox", { name: /color palette/i })).not.toBeInTheDocument();
     await user.click(paletteSelector);
     const palettePicker = screen.getByTestId("ui-palette-picker");
-    for (const id of UI_PALETTE_IDS) {
+    for (const item of UI_PALETTES) {
       expect(
-        within(palettePicker).getByRole("radio", { name: new RegExp(`^${id}`) }),
+        within(palettePicker).getByRole("radio", {
+          name: new RegExp(`^${item.label}(, selected)?$`),
+        }),
       ).toBeInTheDocument();
     }
   });
@@ -858,7 +915,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return jsonResponse(200, publicUser);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [] });
       }
       return unexpectedRequest();
@@ -899,7 +956,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/users/me")) {
         return authenticated ? jsonResponse(200, publicUser) : unauthenticated();
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return authenticated
           ? jsonResponse(200, { projects: [] })
           : unauthenticated();
@@ -918,6 +975,8 @@ describe("App frontend shell", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /log out/i }));
+    const logoutDialog = await screen.findByRole("dialog", { name: /log out\?/i });
+    await user.click(within(logoutDialog).getByRole("button", { name: /^log out$/i }));
     expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
     expectNoProductSidebar();
     expect(screen.queryByRole("button", { name: /color palette/i })).not.toBeInTheDocument();
@@ -1000,7 +1059,7 @@ describe("App frontend shell", () => {
       if (url.endsWith("/api/projects/proj-1")) {
         return jsonResponse(200, sharedProject);
       }
-      if (url.endsWith("/api/projects")) {
+      if (isProjectsListUrl(url)) {
         return jsonResponse(200, { projects: [sharedProject] });
       }
       return unexpectedRequest();

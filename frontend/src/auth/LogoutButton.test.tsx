@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { expectNoSessionTokenStorage } from "../test/storage";
@@ -28,6 +28,13 @@ function mockFetch(
   return fetchMock;
 }
 
+async function openLogoutConfirm(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<HTMLElement> {
+  await user.click(screen.getByRole("button", { name: /log out/i }));
+  return screen.findByRole("dialog", { name: /log out\?/i });
+}
+
 afterEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
@@ -50,19 +57,41 @@ describe("LogoutButton", () => {
     });
     const onLoggedOut = vi.fn();
     const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm");
     window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "Ocean");
 
     render(<LogoutButton onLoggedOut={onLoggedOut} />);
 
-    await user.click(screen.getByRole("button", { name: /log out/i }));
-    expect(screen.getByRole("status")).toHaveTextContent(/signing out/i);
+    const dialog = await openLogoutConfirm(user);
+    await user.click(within(dialog).getByRole("button", { name: /^log out$/i }));
+    expect(
+      within(dialog).getByRole("button", { name: /signing out/i }),
+    ).toBeDisabled();
     resolveLogout?.(new Response(null, { status: 204 }));
 
     await vi.waitFor(() => {
       expect(onLoggedOut).toHaveBeenCalledOnce();
     });
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Ocean");
+    expect(confirmSpy).not.toHaveBeenCalled();
     expectNoSessionTokenStorage();
+  });
+
+  it("does not logout when confirm is cancelled", async () => {
+    const fetchMock = mockFetch(() => {
+      throw new Error("logout should not be called");
+    });
+    const onLoggedOut = vi.fn();
+    const user = userEvent.setup();
+
+    render(<LogoutButton onLoggedOut={onLoggedOut} />);
+
+    const dialog = await openLogoutConfirm(user);
+    await user.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
+
+    expect(onLoggedOut).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("treats an unauthenticated logout response as signed out", async () => {
@@ -78,7 +107,8 @@ describe("LogoutButton", () => {
     const user = userEvent.setup();
 
     render(<LogoutButton onLoggedOut={onLoggedOut} />);
-    await user.click(screen.getByRole("button", { name: /log out/i }));
+    const dialog = await openLogoutConfirm(user);
+    await user.click(within(dialog).getByRole("button", { name: /^log out$/i }));
 
     await vi.waitFor(() => {
       expect(onLoggedOut).toHaveBeenCalledOnce();
@@ -99,7 +129,8 @@ describe("LogoutButton", () => {
     const user = userEvent.setup();
 
     render(<LogoutButton onLoggedOut={onLoggedOut} />);
-    await user.click(screen.getByRole("button", { name: /log out/i }));
+    const dialog = await openLogoutConfirm(user);
+    await user.click(within(dialog).getByRole("button", { name: /^log out$/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /database is unavailable/i,

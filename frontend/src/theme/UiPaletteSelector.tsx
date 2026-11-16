@@ -13,6 +13,8 @@ import { UI_PALETTES, type UiPaletteId } from "./uiPalettes";
 export function UiPaletteSelector() {
   const { palette, setPalette } = useUiPalette();
   const [open, setOpen] = useState(false);
+  const currentLabel =
+    UI_PALETTES.find((item) => item.id === palette)?.label ?? palette;
 
   function selectPalette(id: UiPaletteId): void {
     setPalette(id);
@@ -35,7 +37,7 @@ export function UiPaletteSelector() {
             data-preview-palette={palette}
             className="ui-palette-preview size-5 shrink-0 rounded-full border border-devtrack-bar-muted/50"
           />
-          <span className="max-w-20 truncate">{palette}</span>
+          <span className="max-w-20 truncate">{currentLabel}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent

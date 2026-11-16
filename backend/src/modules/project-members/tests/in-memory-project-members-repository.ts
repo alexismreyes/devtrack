@@ -54,6 +54,22 @@ export class InMemoryProjectMembersRepository
       .map((member) => member.projectId);
   }
 
+  async listDistinctUserIdsByProjectIds(
+    projectIds: string[],
+  ): Promise<string[]> {
+    if (projectIds.length === 0) {
+      return [];
+    }
+    const idSet = new Set(projectIds);
+    return [
+      ...new Set(
+        [...this.membersById.values()]
+          .filter((member) => idSet.has(member.projectId))
+          .map((member) => member.userId),
+      ),
+    ];
+  }
+
   async deleteByProjectAndUser(
     projectId: string,
     userId: string,

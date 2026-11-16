@@ -4,13 +4,19 @@ import {
   MembershipProjectNotFoundError,
 } from "../../project-members/domain/errors";
 import { ImmediateUnitOfWork } from "../../projects/access/unit-of-work";
-import { TaskNotFoundError, TaskParentArchivedError } from "../domain/errors";
+import {
+  InvalidTaskReorderError,
+  TaskNotFoundError,
+  TaskParentArchivedError,
+} from "../domain/errors";
 import { calendarDateFromString, Task } from "../domain/task";
 import { TasksService } from "../service/tasks-service";
 import { FakeProjectAccessPort } from "./fake-project-access-port";
+import { FakeProjectMembershipQueryPort } from "./fake-project-membership-query-port";
 import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
+import { InMemoryChecklistsRepository } from "./in-memory-checklists-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
 import { InMemoryStatusesRepository } from "./in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
@@ -61,15 +67,18 @@ async function createService(archivedAt: Date | null = null) {
   });
   await statuses.seedDefaultsForProject(PROJECT_ID);
   await statuses.seedDefaultsForProject(OTHER_PROJECT_ID);
+  const checklists = new InMemoryChecklistsRepository();
   return {
     service: new TasksService(
       tasks,
       projects,
+      new FakeProjectMembershipQueryPort(projects, authorization),
       authorization,
       activity,
       taskLabels,
       new InMemoryAttachmentsRepository(tasks),
       statuses,
+      checklists,
       new ImmediateUnitOfWork(),
     ),
     tasks,
@@ -79,6 +88,7 @@ async function createService(archivedAt: Date | null = null) {
     labels,
     taskLabels,
     statuses,
+    checklists,
   };
 }
 
@@ -222,7 +232,7 @@ describe("TasksService", () => {
     expect(tasks.tasksById.get(created.id)?.deletedAt).not.toBeNull();
   });
 
-  it("lists only that project's non-deleted tasks, newest first, with optional filters", async () => {
+  it("lists only that project's non-deleted tasks by position ascending, with optional filters", async () => {
     const { service, tasks } = await createService();
     const older = Task.create(
       PROJECT_ID,
@@ -232,6 +242,7 @@ describe("TasksService", () => {
       "LOW",
       null,
       new Date("2026-10-28T12:00:00.000Z"),
+      0,
     );
     const newer = Task.create(
       PROJECT_ID,
@@ -241,6 +252,7 @@ describe("TasksService", () => {
       "HIGH",
       null,
       new Date("2026-10-29T12:00:00.000Z"),
+      0,
     );
     tasks.tasksById.set(older.id, older);
     tasks.tasksById.set(newer.id, newer);
@@ -264,6 +276,72 @@ describe("TasksService", () => {
     expect(filtered.map((task) => task.id)).toEqual([newer.id]);
     expect(emptyMatch).toEqual([]);
     expect(listed.some((task) => task.id === other.id)).toBe(false);
+  });
+
+  it("appends on create/status change, reorders without activity, and densifies after soft-delete", async () => {
+    const { service, activity, authorization } = await createService();
+    authorization.addMember(PROJECT_ID, VIEWER_ID, "VIEWER");
+    const first = await service.create(OWNER_ID, PROJECT_ID, {
+      title: "A",
+      description: null,
+      status: "TODO",
+      dueDate: null,
+    });
+    const second = await service.create(OWNER_ID, PROJECT_ID, {
+      title: "B",
+      description: null,
+      status: "TODO",
+      dueDate: null,
+    });
+    const third = await service.create(OWNER_ID, PROJECT_ID, {
+      title: "C",
+      description: null,
+      status: "TODO",
+      dueDate: null,
+    });
+
+    expect([first.position, second.position, third.position]).toEqual([0, 1, 2]);
+
+    const reordered = await service.reorderInStatus(OWNER_ID, PROJECT_ID, "TODO", [
+      third.id,
+      first.id,
+      second.id,
+    ]);
+    expect(reordered.map((task) => task.id)).toEqual([
+      third.id,
+      first.id,
+      second.id,
+    ]);
+    expect(reordered.map((task) => task.position)).toEqual([0, 1, 2]);
+    expect(
+      [...activity.eventsById.values()].some(
+        (event) => event.kind === "TASK_FIELDS_CHANGED",
+      ),
+    ).toBe(false);
+
+    const moved = await service.update(OWNER_ID, first.id, { status: "DONE" });
+    expect(moved.status).toBe("DONE");
+    expect(moved.position).toBe(0);
+
+    const todoLeft = await service.listByProject(OWNER_ID, PROJECT_ID, {
+      status: "TODO",
+    });
+    expect(todoLeft.map((task) => task.id)).toEqual([third.id, second.id]);
+    expect(todoLeft.map((task) => task.position)).toEqual([0, 1]);
+
+    await service.softDelete(OWNER_ID, third.id);
+    const afterDelete = await service.listByProject(OWNER_ID, PROJECT_ID, {
+      status: "TODO",
+    });
+    expect(afterDelete.map((task) => task.id)).toEqual([second.id]);
+    expect(afterDelete[0]!.position).toBe(0);
+
+    await expect(
+      service.reorderInStatus(VIEWER_ID, PROJECT_ID, "TODO", [second.id]),
+    ).rejects.toBeInstanceOf(MembershipForbiddenError);
+    await expect(
+      service.reorderInStatus(OWNER_ID, PROJECT_ID, "TODO", [first.id]),
+    ).rejects.toBeInstanceOf(InvalidTaskReorderError);
   });
 
   it("updates allowed fields without changing identity or projectId", async () => {
@@ -335,19 +413,20 @@ describe("TasksService", () => {
     expect(listed).toEqual([]);
   });
 
-  it("returns zeros for an owner with no active projects", async () => {
+  it("returns zeros for an actor with no active membership projects", async () => {
     const { service } = await createService();
     const now = new Date("2026-10-31T15:00:00.000Z");
 
     const summary = await service.getDashboard(EMPTY_OWNER_ID, now);
 
     expect(summary).toEqual({
-      projectCount: 0,
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [],
+      totalProjects: 0,
+      openTasks: 0,
+      teamMembers: 0,
+      dueSoon: 0,
+      projectsPie: [],
+      tasksBars: [],
+      progress: [],
     });
   });
 
@@ -358,26 +437,32 @@ describe("TasksService", () => {
     const summary = await service.getDashboard(OWNER_ID, now);
 
     expect(summary).toEqual({
-      projectCount: 1,
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [
+      totalProjects: 1,
+      openTasks: 0,
+      teamMembers: 1,
+      dueSoon: 0,
+      projectsPie: [],
+      tasksBars: [
         {
-          id: PROJECT_ID,
-          name: "Roadmap",
-          taskCount: 0,
-          pendingCount: 0,
-          completedCount: 0,
-          overdueCount: 0,
+          projectId: PROJECT_ID,
+          projectName: "Roadmap",
+          checklistCompletionPercent: 0,
+        },
+      ],
+      progress: [
+        {
+          projectId: PROJECT_ID,
+          projectName: "Roadmap",
+          completedTasks: 0,
+          totalTasks: 0,
         },
       ],
     });
   });
 
-  it("aggregates owner-scoped pending, completed, and overdue counts", async () => {
-    const { service, tasks, projects, authorization } = await createService();
+  it("aggregates membership-scoped KPIs, pie, checklist %, and progress", async () => {
+    const { service, tasks, projects, authorization, checklists } =
+      await createService();
     const now = new Date("2026-10-31T15:00:00.000Z");
     const emptyProjectId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
     const archivedProjectId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -394,7 +479,7 @@ describe("TasksService", () => {
       archivedAt: new Date("2026-10-29T12:00:00.000Z"),
     });
 
-    await service.create(OWNER_ID, PROJECT_ID, {
+    const pastTodo = await service.create(OWNER_ID, PROJECT_ID, {
       title: "Past todo",
       description: null,
       status: "TODO",
@@ -433,51 +518,71 @@ describe("TasksService", () => {
     tasks.tasksById.set(archivedTask.id, archivedTask);
     await service.softDelete(OWNER_ID, nullDue.id);
 
+    const checklist = await checklists.create({
+      taskId: pastTodo.id,
+      name: "Setup",
+    });
+    const itemA = await checklists.createItem({
+      checklistId: checklist.id,
+      text: "A",
+    });
+    await checklists.createItem({ checklistId: checklist.id, text: "B" });
+    await checklists.updateItem(itemA.id, { checked: true });
+
     const summary = await service.getDashboard(OWNER_ID, now);
     const otherSummary = await service.getDashboard(OTHER_ID, now);
 
-    expect(summary.projectCount).toBe(2);
-    expect(summary.taskCount).toBe(3);
-    expect(summary.pendingCount).toBe(2);
-    expect(summary.completedCount).toBe(1);
-    expect(summary.overdueCount).toBe(1);
-    expect(summary.pendingCount + summary.completedCount).toBe(summary.taskCount);
-    expect(summary.projects.map((project) => project.id)).toEqual([
-      PROJECT_ID,
-      emptyProjectId,
+    expect(summary.totalProjects).toBe(2);
+    expect(summary.openTasks).toBe(2);
+    expect(summary.teamMembers).toBe(1);
+    expect(summary.dueSoon).toBe(1);
+    expect(summary.projectsPie.map((slice) => slice.statusKey).sort()).toEqual([
+      "DONE",
+      "IN_PROGRESS",
+      "TODO",
     ]);
-    expect(summary.projects[0]).toEqual({
-      id: PROJECT_ID,
-      name: "Roadmap",
-      taskCount: 3,
-      pendingCount: 2,
-      completedCount: 1,
-      overdueCount: 1,
-    });
-    expect(summary.projects[1]).toEqual({
-      id: emptyProjectId,
-      name: "Empty",
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-    });
-    expect(otherSummary.projects.map((project) => project.id)).toEqual([
+    expect(summary.tasksBars).toEqual([
+      {
+        projectId: PROJECT_ID,
+        projectName: "Roadmap",
+        checklistCompletionPercent: 50,
+      },
+      {
+        projectId: emptyProjectId,
+        projectName: "Empty",
+        checklistCompletionPercent: 0,
+      },
+    ]);
+    expect(summary.progress).toEqual([
+      {
+        projectId: PROJECT_ID,
+        projectName: "Roadmap",
+        completedTasks: 1,
+        totalTasks: 3,
+      },
+      {
+        projectId: emptyProjectId,
+        projectName: "Empty",
+        completedTasks: 0,
+        totalTasks: 0,
+      },
+    ]);
+    expect(otherSummary.progress.map((row) => row.projectId)).toEqual([
       OTHER_PROJECT_ID,
     ]);
-    expect(otherSummary.taskCount).toBe(1);
-    expect(otherSummary.overdueCount).toBe(1);
-    expect(otherSummary.projects[0]?.id).not.toBe(PROJECT_ID);
+    expect(otherSummary.openTasks).toBe(1);
+    expect(otherSummary.dueSoon).toBe(0);
+    expect(otherSummary.progress[0]?.projectId).not.toBe(PROJECT_ID);
     expect(tasks.tasksById.get(nullDue.id)?.deletedAt).not.toBeNull();
     expect(tasks.tasksById.has(archivedTask.id)).toBe(true);
     expect(tasks.tasksById.has(otherOwned.id)).toBe(true);
-    expect(summary.projects.some((project) => project.id === archivedProjectId)).toBe(
-      false,
-    );
+    expect(
+      summary.progress.some((row) => row.projectId === archivedProjectId),
+    ).toBe(false);
   });
 
   it("drops an archived project and restores it after unarchive", async () => {
-    const { service, projects } = await createService();
+    const { service, projects, authorization } = await createService();
     const now = new Date("2026-10-31T15:00:00.000Z");
     await service.create(OWNER_ID, PROJECT_ID, {
       title: "Live",
@@ -486,14 +591,14 @@ describe("TasksService", () => {
     });
 
     const before = await service.getDashboard(OWNER_ID, now);
-    projects.seed({
+    seedBoth(projects, authorization, {
       id: PROJECT_ID,
       ownerUserId: OWNER_ID,
       name: "Roadmap",
       archivedAt: new Date("2026-10-31T12:00:00.000Z"),
     });
     const archived = await service.getDashboard(OWNER_ID, now);
-    projects.seed({
+    seedBoth(projects, authorization, {
       id: PROJECT_ID,
       ownerUserId: OWNER_ID,
       name: "Roadmap",
@@ -501,18 +606,19 @@ describe("TasksService", () => {
     });
     const restored = await service.getDashboard(OWNER_ID, now);
 
-    expect(before.projectCount).toBe(1);
-    expect(before.taskCount).toBe(1);
+    expect(before.totalProjects).toBe(1);
+    expect(before.openTasks).toBe(1);
     expect(archived).toEqual({
-      projectCount: 0,
-      taskCount: 0,
-      pendingCount: 0,
-      completedCount: 0,
-      overdueCount: 0,
-      projects: [],
+      totalProjects: 0,
+      openTasks: 0,
+      teamMembers: 0,
+      dueSoon: 0,
+      projectsPie: [],
+      tasksBars: [],
+      progress: [],
     });
-    expect(restored.projectCount).toBe(1);
-    expect(restored.taskCount).toBe(1);
+    expect(restored.totalProjects).toBe(1);
+    expect(restored.openTasks).toBe(1);
   });
 
   it("lets OWNER and EDITOR write tasks and VIEWER only read them", async () => {
@@ -585,27 +691,42 @@ describe("TasksService", () => {
     expect(asOwner.title).toBe("Live");
   });
 
-  it("does not include member-only projects in owner-scoped dashboard counts", async () => {
+  it("includes EDITOR and VIEWER membership projects in dashboard aggregates", async () => {
     const { service, authorization } = await createService();
     authorization.addMember(PROJECT_ID, EDITOR_ID, "EDITOR");
+    authorization.addMember(PROJECT_ID, VIEWER_ID, "VIEWER");
     await service.create(EDITOR_ID, PROJECT_ID, {
       title: "Shared work",
       description: null,
-      dueDate: null,
+      dueDate: calendarDateFromString("2026-11-02"),
     });
 
     const editorDashboard = await service.getDashboard(
       EDITOR_ID,
       new Date("2026-10-31T15:00:00.000Z"),
     );
+    const viewerDashboard = await service.getDashboard(
+      VIEWER_ID,
+      new Date("2026-10-31T15:00:00.000Z"),
+    );
     const ownerDashboard = await service.getDashboard(
       OWNER_ID,
       new Date("2026-10-31T15:00:00.000Z"),
     );
+    const strangerDashboard = await service.getDashboard(
+      EMPTY_OWNER_ID,
+      new Date("2026-10-31T15:00:00.000Z"),
+    );
 
-    expect(editorDashboard.projectCount).toBe(0);
-    expect(editorDashboard.taskCount).toBe(0);
-    expect(ownerDashboard.projectCount).toBe(1);
-    expect(ownerDashboard.taskCount).toBe(1);
+    expect(editorDashboard.totalProjects).toBe(1);
+    expect(editorDashboard.openTasks).toBe(1);
+    expect(editorDashboard.teamMembers).toBe(3);
+    expect(editorDashboard.dueSoon).toBe(1);
+    expect(viewerDashboard.totalProjects).toBe(1);
+    expect(viewerDashboard.openTasks).toBe(1);
+    expect(ownerDashboard.totalProjects).toBe(1);
+    expect(ownerDashboard.openTasks).toBe(1);
+    expect(strangerDashboard.totalProjects).toBe(0);
+    expect(strangerDashboard.openTasks).toBe(0);
   });
 });

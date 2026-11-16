@@ -181,6 +181,24 @@ export class PrismaProjectMembersRepository implements ProjectMembersRepository 
     }
   }
 
+  async listDistinctUserIdsByProjectIds(
+    projectIds: string[],
+  ): Promise<string[]> {
+    if (projectIds.length === 0) {
+      return [];
+    }
+    try {
+      const rows = await this.client().projectMember.findMany({
+        where: { projectId: { in: projectIds } },
+        distinct: ["userId"],
+        select: { userId: true },
+      });
+      return rows.map((row) => row.userId);
+    } catch (err) {
+      rethrowMapped(err);
+    }
+  }
+
   async deleteByProjectAndUser(
     projectId: string,
     userId: string,

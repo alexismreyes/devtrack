@@ -24,8 +24,25 @@ const LABEL_CHIP_CLASSES: Record<LabelColor, string> = {
   GRAY: "bg-zinc-500/85 text-white",
 };
 
+/** Soft status-color tint for Kanban column header strips (readable foreground). */
+const LABEL_SOFT_TINT_CLASSES: Record<LabelColor, string> = {
+  RED: "bg-red-600/15 text-foreground",
+  ORANGE: "bg-orange-500/15 text-foreground",
+  YELLOW: "bg-yellow-400/20 text-foreground",
+  GREEN: "bg-green-600/15 text-foreground",
+  TEAL: "bg-teal-600/15 text-foreground",
+  BLUE: "bg-blue-600/15 text-foreground",
+  PURPLE: "bg-violet-600/15 text-foreground",
+  PINK: "bg-pink-500/15 text-foreground",
+  GRAY: "bg-zinc-500/15 text-foreground",
+};
+
 export function labelChipClassName(color: LabelColor): string {
   return LABEL_CHIP_CLASSES[color];
+}
+
+export function labelSoftTintClassName(color: LabelColor): string {
+  return LABEL_SOFT_TINT_CLASSES[color];
 }
 
 export function isLabelColor(value: unknown): value is LabelColor {

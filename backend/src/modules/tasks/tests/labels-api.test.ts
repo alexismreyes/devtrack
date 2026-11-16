@@ -5,6 +5,10 @@ import { createApp } from "../../../app";
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "../../projects/tests/in-memory-project-board-backgrounds-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "../../projects/tests/in-memory-project-board-background-storage";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
@@ -62,6 +66,10 @@ function createLabelsApp() {
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -313,7 +321,7 @@ describe("labels HTTP API", () => {
 
     expect(activityRepository.eventsById.size).toBe(before);
     expect(comments.status).toBe(200);
-    expect(comments.body).toEqual({ comments: [] });
+    expect(comments.body).toEqual({ comments: [], nextCursor: null });
     expect(activity.status).toBe(200);
     expect(activity.body.activity).toHaveLength(1);
     expect(activity.body.activity[0].kind).toBe("TASK_CREATED");

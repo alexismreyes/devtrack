@@ -27,7 +27,7 @@ IDs below are labels from the 2026-10-31 product discussion, not spec folder IDs
 | E | Labels / tags | Trello labels | Filter + card face | Medium |
 | F | Checklists / sub-items | Trello checklists | Keep out of Kanban columns at first | Medium |
 | G | Card cover / attachments | Trello covers | Needs storage and validation | Large |
-| H | Within-column card order | Trello list order | Needs `position` + migration; deferred in `006` | Medium |
+| H | Within-column card order | Trello list order | **Verified** in `specs/031-within-column-rank/` | Medium |
 | I | Search tasks/projects | Jira/Trello search | Start title/description, authorized scope | Medium |
 | J | In-app notifications | Trello/Jira notifications | Better after members + comments | Medium–large |
 | K | Calendar / due-date view | Trello/Jira calendar | Uses existing `dueDate` | Medium |

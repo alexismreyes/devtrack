@@ -87,7 +87,7 @@ describe("CommentsService", () => {
     expect(created.body).toBe("Hello");
   });
 
-  it("lists live comments oldest-first for readers including VIEWER", async () => {
+  it("lists live comments newest-first for readers including VIEWER", async () => {
     const { service, tasks } = createHarness();
     const task = await seedLiveTask(tasks);
     const first = await service.create(OWNER_ID, task.id, "First");
@@ -95,7 +95,31 @@ describe("CommentsService", () => {
     const second = await service.create(EDITOR_ID, task.id, "Second");
 
     const listed = await service.listByTask(VIEWER_ID, task.id);
-    expect(listed.map((c) => c.id)).toEqual([first.id, second.id]);
+    expect(listed.comments.map((c) => c.id)).toEqual([second.id, first.id]);
+    expect(listed.nextCursor).toBeNull();
+  });
+
+  it("paginates comments with default limit 5 and cursor continuation", async () => {
+    const { service, tasks } = createHarness();
+    const task = await seedLiveTask(tasks);
+    const created = [];
+    for (let i = 0; i < 6; i += 1) {
+      created.push(await service.create(OWNER_ID, task.id, `Comment ${i}`));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    const firstPage = await service.listByTask(VIEWER_ID, task.id);
+    expect(firstPage.comments).toHaveLength(5);
+    expect(firstPage.nextCursor).not.toBeNull();
+    expect(firstPage.comments.map((c) => c.id)).toEqual(
+      [...created].reverse().slice(0, 5).map((c) => c.id),
+    );
+
+    const secondPage = await service.listByTask(VIEWER_ID, task.id, {
+      cursor: firstPage.nextCursor!,
+    });
+    expect(secondPage.comments.map((c) => c.id)).toEqual([created[0]!.id]);
+    expect(secondPage.nextCursor).toBeNull();
   });
 
   it("rejects VIEWER create and stranger create/list", async () => {
@@ -226,6 +250,7 @@ describe("CommentsService", () => {
     await service.softDelete(OWNER_ID, task.id, gone.id);
 
     const listed = await service.listByTask(OWNER_ID, task.id);
-    expect(listed.map((c) => c.id)).toEqual([kept.id]);
+    expect(listed.comments.map((c) => c.id)).toEqual([kept.id]);
+    expect(listed.nextCursor).toBeNull();
   });
 });

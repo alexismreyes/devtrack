@@ -21,4 +21,20 @@ export function loadEnvFiles(): void {
   ) {
     process.env.ATTACHMENTS_ROOT = "./data/attachments";
   }
+
+  // Host/tests fallback when Compose env is not injected (Q-159).
+  if (
+    process.env.PROJECT_COVERS_ROOT === undefined ||
+    process.env.PROJECT_COVERS_ROOT.trim() === ""
+  ) {
+    process.env.PROJECT_COVERS_ROOT = "./data/project-covers";
+  }
+
+  // Host/tests fallback when Compose env is not injected (Q-223).
+  if (
+    process.env.PROJECT_BOARD_BACKGROUNDS_ROOT === undefined ||
+    process.env.PROJECT_BOARD_BACKGROUNDS_ROOT.trim() === ""
+  ) {
+    process.env.PROJECT_BOARD_BACKGROUNDS_ROOT = "./data/project-board-backgrounds";
+  }
 }

@@ -8,6 +8,7 @@ import {
   type ActivityListResponseDto,
 } from "../dto/activity-dtos";
 import type { ActivityService } from "../service/activity-service";
+import { readFeedPaginationQuery } from "../validators/feed-pagination-query";
 
 function requireActorId(req: Request): string {
   const actorId = req.actor?.userId;
@@ -30,12 +31,14 @@ export class ActivityController {
 
   async list(req: Request, res: Response): Promise<void> {
     const actorId = requireActorId(req);
-    const activity = await this.service.listByTask(
-      actorId,
-      requireTaskId(req),
-    );
+    const query = readFeedPaginationQuery(req);
+    const page = await this.service.listByTask(actorId, requireTaskId(req), {
+      cursor: query.cursor,
+      limit: query.limit,
+    });
     const body: ActivityListResponseDto = {
-      activity: activity.map(toPublicActivityDto),
+      activity: page.activity.map(toPublicActivityDto),
+      nextCursor: page.nextCursor,
     };
     res.status(200).json(body);
   }

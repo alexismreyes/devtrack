@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { expectNoSessionTokenStorage } from "../test/storage";
@@ -14,6 +14,7 @@ const task = {
   priority: "MEDIUM" as const,
   dueDate: "2026-11-01" as string | null,
   createdAt: "2026-10-29T18:00:00.000Z",
+  position: 0,
   labels: [] as Array<{ id: string; name: string; color: "RED" | "BLUE" }>,
   cover: null as { attachmentId: string; contentType: string } | null,
 };
@@ -72,11 +73,15 @@ function mockFetch(
 }
 
 function isCommentsListUrl(url: string): boolean {
-  return url === "http://localhost:3000/api/tasks/task-1/comments";
+  return /^http:\/\/localhost:3000\/api\/tasks\/task-1\/comments(?:\?.*)?$/.test(
+    url,
+  );
 }
 
 function isActivityListUrl(url: string): boolean {
-  return url === "http://localhost:3000/api/tasks/task-1/activity";
+  return /^http:\/\/localhost:3000\/api\/tasks\/task-1\/activity(?:\?.*)?$/.test(
+    url,
+  );
 }
 
 function isLabelsListUrl(url: string): boolean {
@@ -91,6 +96,12 @@ function isChecklistsListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/tasks/task-1/checklists";
 }
 
+function isChecklistItemsListUrl(url: string): boolean {
+  return /^http:\/\/localhost:3000\/api\/tasks\/task-1\/checklists\/[^/]+\/items(?:\?|$)/.test(
+    url,
+  );
+}
+
 function isAttachmentsListUrl(url: string): boolean {
   return url === "http://localhost:3000/api/tasks/task-1/attachments";
 }
@@ -103,12 +114,13 @@ function defaultTaskHandler(
   labels: unknown[] = [],
   checklists: unknown[] = [],
   attachments: unknown[] = [],
+  checklistItemsById: Record<string, unknown[]> = {},
 ): Response {
   if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-    return jsonResponse(200, { comments });
+    return jsonResponse(200, { comments, nextCursor: null });
   }
   if (isActivityListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
-    return jsonResponse(200, { activity: activityEvents });
+    return jsonResponse(200, { activity: activityEvents, nextCursor: null });
   }
   if (isLabelsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { labels });
@@ -118,6 +130,16 @@ function defaultTaskHandler(
   }
   if (isChecklistsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { checklists });
+  }
+  if (isChecklistItemsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+    const match = url.match(
+      /\/checklists\/([^/?]+)\/items/,
+    );
+    const checklistId = match?.[1] ?? "";
+    return jsonResponse(200, {
+      items: checklistItemsById[checklistId] ?? [],
+      nextCursor: null,
+    });
   }
   if (isAttachmentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
     return jsonResponse(200, { attachments });
@@ -130,27 +152,31 @@ function defaultTaskHandler(
   });
 }
 
+const sampleChecklistItems = [
+  {
+    id: "item-1",
+    checklistId: "checklist-1",
+    text: "Write tests",
+    checked: true,
+    createdAt: "2026-11-05T12:00:00.000Z",
+  },
+  {
+    id: "item-2",
+    checklistId: "checklist-1",
+    text: "Review PR",
+    checked: false,
+    createdAt: "2026-11-05T12:30:00.000Z",
+  },
+];
+
 const sampleChecklist = {
   id: "checklist-1",
   taskId: "task-1",
   name: "QA",
   createdAt: "2026-11-05T11:00:00.000Z",
-  items: [
-    {
-      id: "item-1",
-      checklistId: "checklist-1",
-      text: "Write tests",
-      checked: true,
-      createdAt: "2026-11-05T12:00:00.000Z",
-    },
-    {
-      id: "item-2",
-      checklistId: "checklist-1",
-      text: "Review PR",
-      checked: false,
-      createdAt: "2026-11-05T12:30:00.000Z",
-    },
-  ],
+  items: [],
+  itemCount: 2,
+  checkedCount: 1,
 };
 
 const createdActivity = {
@@ -444,7 +470,7 @@ describe("TaskDetail", () => {
             },
           });
         }
-        return jsonResponse(200, { activity: [] });
+        return jsonResponse(200, { activity: [], nextCursor: null });
       }
       return defaultTaskHandler(url, init);
     });
@@ -471,7 +497,7 @@ describe("TaskDetail", () => {
     expect(await screen.findByText(/activity unavailable/i)).toBeInTheDocument();
   });
 
-  it("soft-deletes with DELETE and an empty 204 body", async () => {
+  it("soft-deletes with DELETE and an empty 204 body after confirm", async () => {
     const onDeleted = vi.fn();
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
@@ -481,6 +507,38 @@ describe("TaskDetail", () => {
       }
       return defaultTaskHandler(url, init);
     });
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm");
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={onDeleted}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /delete task/i }));
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE"),
+    ).toBe(false);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(/delete task\?/i);
+    await user.click(within(dialog).getByRole("button", { name: /^delete$/i }));
+    expect(onDeleted).toHaveBeenCalledOnce();
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE"),
+    ).toBe(true);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
+  });
+
+  it("does not soft-delete when delete confirm is cancelled", async () => {
+    const onDeleted = vi.fn();
+    const fetchMock = mockFetch((url, init) => defaultTaskHandler(url, init));
     const user = userEvent.setup();
 
     render(
@@ -495,11 +553,13 @@ describe("TaskDetail", () => {
     );
 
     await user.click(await screen.findByRole("button", { name: /delete task/i }));
-    expect(onDeleted).toHaveBeenCalledOnce();
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
+    expect(onDeleted).not.toHaveBeenCalled();
     expect(
       fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE"),
-    ).toBe(true);
-    expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
+    ).toBe(false);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("shows a forbidden state when GET returns 403", async () => {
@@ -682,12 +742,196 @@ describe("TaskDetail", () => {
       fetchMock.mock.calls.some(
         ([url, init]) =>
           typeof url === "string" &&
-          url === "http://localhost:3000/api/tasks/task-1/comments" &&
+          isCommentsListUrl(url) &&
           init?.method === "GET" &&
           init.credentials === "include",
       ),
     ).toBe(true);
     expectNoSessionTokenStorage();
+  });
+
+  it("loads first pages with limit 5 and Next replaces the window (AC-002/AC-006)", async () => {
+    const olderComment = {
+      ...ownComment,
+      id: "comment-older",
+      body: "Older page note",
+      createdAt: "2026-11-03T09:00:00.000Z",
+    };
+    const olderActivity = {
+      ...createdActivity,
+      id: "activity-older",
+      createdAt: "2026-11-03T08:00:00.000Z",
+    };
+    const user = userEvent.setup();
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        if (url.includes("cursor=")) {
+          return jsonResponse(200, {
+            comments: [olderComment],
+            nextCursor: null,
+          });
+        }
+        expect(url).toContain("limit=5");
+        return jsonResponse(200, {
+          comments: [ownComment],
+          nextCursor: "comments-cursor-1",
+        });
+      }
+      if (isActivityListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        if (url.includes("cursor=")) {
+          return jsonResponse(200, {
+            activity: [olderActivity],
+            nextCursor: null,
+          });
+        }
+        expect(url).toContain("limit=5");
+        return jsonResponse(200, {
+          activity: [fieldsChangedActivity],
+          nextCursor: "activity-cursor-1",
+        });
+      }
+      return defaultTaskHandler(url, init);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("First note")).toBeInTheDocument();
+    expect(screen.getByText(/fields changed/i)).toBeInTheDocument();
+    expect(screen.queryByText("Older page note")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^previous$/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^next$/i }));
+
+    expect(await screen.findByText("Older page note")).toBeInTheDocument();
+    expect(screen.getByText(/task created/i)).toBeInTheDocument();
+    expect(screen.queryByText("First note")).not.toBeInTheDocument();
+    expect(screen.queryByText(/fields changed/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^next$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^previous$/i })).toBeEnabled();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) =>
+          typeof url === "string" &&
+          isCommentsListUrl(url) &&
+          url.includes("cursor=comments-cursor-1"),
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) =>
+          typeof url === "string" &&
+          isActivityListUrl(url) &&
+          url.includes("cursor=activity-cursor-1"),
+      ),
+    ).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: /^previous$/i }));
+    expect(await screen.findByText("First note")).toBeInTheDocument();
+    expect(screen.getByText(/fields changed/i)).toBeInTheDocument();
+    expect(screen.queryByText("Older page note")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^previous$/i })).toBeDisabled();
+  });
+
+  it("resets to newest window after create (AC-005)", async () => {
+    const olderComment = {
+      ...ownComment,
+      id: "comment-older",
+      body: "Older page note",
+      createdAt: "2026-11-03T09:00:00.000Z",
+    };
+    const created = {
+      ...ownComment,
+      id: "comment-3",
+      body: "Fresh comment",
+      createdAt: "2026-11-04T12:00:00.000Z",
+    };
+    let firstPageComments = [ownComment];
+    let firstPageNextCursor: string | null = "comments-cursor-1";
+    const user = userEvent.setup();
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (isCommentsListUrl(url) && init?.method === "POST") {
+        expect(init.body).toBe(JSON.stringify({ body: "Fresh comment" }));
+        firstPageComments = [created, ownComment];
+        firstPageNextCursor = null;
+        return jsonResponse(201, created);
+      }
+      if (isCommentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        if (url.includes("cursor=")) {
+          return jsonResponse(200, {
+            comments: [olderComment],
+            nextCursor: null,
+          });
+        }
+        expect(url).toContain("limit=5");
+        return jsonResponse(200, {
+          comments: firstPageComments,
+          nextCursor: firstPageNextCursor,
+        });
+      }
+      if (isActivityListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        expect(url).toContain("limit=5");
+        return jsonResponse(200, {
+          activity: [fieldsChangedActivity],
+          nextCursor: null,
+        });
+      }
+      return defaultTaskHandler(url, init);
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        currentUserId="user-1"
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("First note")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^next$/i }));
+    expect(await screen.findByText("Older page note")).toBeInTheDocument();
+
+    const firstPageGetsBefore = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        !url.includes("cursor=") &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+
+    await user.type(await screen.findByLabelText(/new comment/i), "Fresh comment");
+    await user.click(screen.getByRole("button", { name: /add comment/i }));
+    expect(await screen.findByText(/comment added/i)).toBeInTheDocument();
+    expect(screen.getByText("Fresh comment")).toBeInTheDocument();
+    expect(screen.queryByText("Older page note")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^previous$/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+
+    const firstPageGetsAfter = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        !url.includes("cursor=") &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
+    expect(firstPageGetsAfter).toBeGreaterThan(firstPageGetsBefore);
   });
 
   it("lets a writer create a comment and keeps viewer create chrome hidden", async () => {
@@ -697,13 +941,15 @@ describe("TaskDetail", () => {
       body: "Fresh comment",
       createdAt: "2026-11-04T12:00:00.000Z",
     };
+    let listed = [ownComment];
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
       if (isCommentsListUrl(url) && init?.method === "POST") {
         expect(init.body).toBe(JSON.stringify({ body: "Fresh comment" }));
+        listed = [created, ownComment];
         return jsonResponse(201, created);
       }
-      return defaultTaskHandler(url, init, [ownComment]);
+      return defaultTaskHandler(url, init, listed);
     });
     const user = userEvent.setup();
 
@@ -720,6 +966,12 @@ describe("TaskDetail", () => {
       />,
     );
 
+    const commentsGetsBefore = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsBefore = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
@@ -739,12 +991,19 @@ describe("TaskDetail", () => {
           init?.method === "POST",
       ),
     ).toBe(true);
+    const commentsGetsAfter = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsAfter = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
         isActivityListUrl(url) &&
         (init?.method === "GET" || init?.method === undefined),
     ).length;
+    expect(commentsGetsAfter).toBeGreaterThan(commentsGetsBefore);
     expect(activityGetsAfter).toBeGreaterThan(activityGetsBefore);
 
     rerender(
@@ -829,6 +1088,12 @@ describe("TaskDetail", () => {
       within(otherItem as HTMLElement).queryByRole("button", { name: /delete comment/i }),
     ).not.toBeInTheDocument();
 
+    const commentsGetsBeforeEdit = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsBeforeEdit = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
@@ -846,12 +1111,19 @@ describe("TaskDetail", () => {
     await user.click(screen.getByRole("button", { name: /save comment/i }));
     expect(await screen.findByText(/comment updated/i)).toBeInTheDocument();
     expect(screen.getByText("Edited note")).toBeInTheDocument();
+    const commentsGetsAfterEdit = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsAfterEdit = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
         isActivityListUrl(url) &&
         (init?.method === "GET" || init?.method === undefined),
     ).length;
+    expect(commentsGetsAfterEdit).toBeGreaterThan(commentsGetsBeforeEdit);
     expect(activityGetsAfterEdit).toBeGreaterThan(activityGetsBeforeEdit);
 
     await user.click(screen.getByRole("button", { name: /delete comment/i }));
@@ -866,12 +1138,19 @@ describe("TaskDetail", () => {
           init?.method === "DELETE",
       ),
     ).toBe(true);
+    const commentsGetsAfterDelete = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        isCommentsListUrl(url) &&
+        (init?.method === "GET" || init?.method === undefined),
+    ).length;
     const activityGetsAfterDelete = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === "string" &&
         isActivityListUrl(url) &&
         (init?.method === "GET" || init?.method === undefined),
     ).length;
+    expect(commentsGetsAfterDelete).toBeGreaterThan(commentsGetsAfterEdit);
     expect(activityGetsAfterDelete).toBeGreaterThan(activityGetsAfterEdit);
     expectNoSessionTokenStorage();
   });
@@ -970,7 +1249,7 @@ describe("TaskDetail", () => {
       fetchMock.mock.calls.some(
         ([url, init]) =>
           typeof url === "string" &&
-          url === "http://localhost:3000/api/tasks/task-1/activity" &&
+          isActivityListUrl(url) &&
           init?.method === "GET" &&
           init.credentials === "include",
       ),
@@ -989,11 +1268,20 @@ describe("TaskDetail", () => {
       ) {
         expect(init.body).toBe(JSON.stringify({ checked: true }));
         return jsonResponse(200, {
-          ...sampleChecklist.items[1],
+          ...sampleChecklistItems[1],
           checked: true,
         });
       }
-      return defaultTaskHandler(url, init, [], [], [], [sampleChecklist]);
+      return defaultTaskHandler(
+        url,
+        init,
+        [],
+        [],
+        [],
+        [sampleChecklist],
+        [],
+        { "checklist-1": sampleChecklistItems },
+      );
     });
 
     const { rerender } = render(
@@ -1077,9 +1365,12 @@ describe("TaskDetail", () => {
       }),
     ).toBeDisabled();
     expect(await screen.findByTestId("checklist-block-checklist-1")).toHaveClass(
-      "bg-card",
+      "bg-eyecandy-surface",
       "border",
     );
+    expect(
+      screen.getByTestId("checklist-block-checklist-1").className,
+    ).not.toMatch(/(^|\s)bg-card(\s|$)/);
     expectNoSessionTokenStorage();
   });
 
@@ -1090,6 +1381,8 @@ describe("TaskDetail", () => {
       name: "Checklist",
       createdAt: "2026-11-05T13:00:00.000Z",
       items: [],
+      itemCount: 0,
+      checkedCount: 0,
     };
     const fetchMock = mockFetch((url, init) => {
       expect(init?.credentials).toBe("include");
@@ -1135,9 +1428,12 @@ describe("TaskDetail", () => {
       screen.getByText((content) => content.startsWith("0%")),
     ).toBeInTheDocument();
     expect(screen.getByTestId("checklist-block-checklist-2")).toHaveClass(
-      "bg-card",
+      "bg-eyecandy-surface",
       "border",
     );
+    expect(
+      screen.getByTestId("checklist-block-checklist-2").className,
+    ).not.toMatch(/(^|\s)bg-card(\s|$)/);
     expect(screen.queryByLabelText(/new checklist name/i)).not.toBeInTheDocument();
     const activityGetsAfter = fetchMock.mock.calls.filter(
       ([url, init]) =>
@@ -1354,6 +1650,7 @@ describe("TaskDetail", () => {
                 },
               },
             ],
+            nextCursor: null,
           });
         }
       }
@@ -1536,6 +1833,7 @@ describe("TaskDetail", () => {
               },
             },
           ],
+          nextCursor: null,
         });
       }
       return defaultTaskHandler(url, init, [], [], [], [], [sampleImageAttachment]);
@@ -1623,6 +1921,179 @@ describe("TaskDetail", () => {
       ),
     ).toBe(false);
     expect(onUpdated).toHaveBeenCalled();
+    expectNoSessionTokenStorage();
+  });
+
+  it("shows a short non-interactive cover hero when cover is set (AC-001/AC-004/Q-241/Q-242)", async () => {
+    const coverSummary = {
+      attachmentId: "att-2",
+      contentType: "image/png",
+    };
+    const fetchMock = mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (
+        url ===
+        "http://localhost:3000/api/tasks/task-1/attachments/att-2/content"
+      ) {
+        expect(url).not.toMatch(/\/uploads\b/);
+        return new Response(new Uint8Array([137, 80, 78, 71]), {
+          status: 200,
+          headers: { "Content-Type": "image/png", "Cache-Control": "private" },
+        });
+      }
+      if (
+        url.endsWith("/api/tasks/task-1") &&
+        (init?.method === "GET" || init?.method === undefined)
+      ) {
+        return jsonResponse(200, { ...task, cover: coverSummary });
+      }
+      return defaultTaskHandler(url, init, [], [], [], [], [
+        sampleImageAttachment,
+      ]);
+    });
+    const createObjectURL = vi.fn(() => "blob:task-detail-cover");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL,
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    const hero = await screen.findByTestId("task-detail-cover-hero");
+    expect(hero).toHaveAttribute("src", "blob:task-detail-cover");
+    expect(hero).toHaveAttribute("data-cover-attachment-id", "att-2");
+    expect(hero).toHaveClass("max-h-36", "object-cover", "w-full");
+    expect(hero).toHaveClass("pointer-events-none");
+    expect(hero.onclick).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.endsWith("/api/tasks/task-1/attachments/att-2/content") &&
+          init?.credentials === "include",
+      ),
+    ).toBe(true);
+    expectNoSessionTokenStorage();
+  });
+
+  it("omits the cover hero when cover is null (AC-002/Q-239)", async () => {
+    mockFetch((url, init) => defaultTaskHandler(url, init));
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("task-detail-layout");
+    expect(screen.queryByTestId("task-detail-cover-hero")).not.toBeInTheDocument();
+    expect(screen.getByTestId("task-detail-body")).toBeInTheDocument();
+  });
+
+  it("hides and restores the cover hero when cover is cleared then set (AC-003)", async () => {
+    const user = userEvent.setup();
+    const coverSummary = {
+      attachmentId: "att-2",
+      contentType: "image/png",
+    };
+    let coverCleared = false;
+    mockFetch((url, init) => {
+      expect(init?.credentials).toBe("include");
+      if (
+        url ===
+        "http://localhost:3000/api/tasks/task-1/attachments/att-2/content"
+      ) {
+        return new Response(new Uint8Array([137, 80, 78, 71]), {
+          status: 200,
+          headers: { "Content-Type": "image/png", "Cache-Control": "private" },
+        });
+      }
+      if (
+        url === "http://localhost:3000/api/tasks/task-1/cover" &&
+        init?.method === "DELETE"
+      ) {
+        coverCleared = true;
+        return jsonResponse(200, { cover: null });
+      }
+      if (
+        url === "http://localhost:3000/api/tasks/task-1/cover" &&
+        init?.method === "PUT"
+      ) {
+        coverCleared = false;
+        return jsonResponse(200, { cover: coverSummary });
+      }
+      if (
+        url.endsWith("/api/tasks/task-1") &&
+        (init?.method === "GET" || init?.method === undefined)
+      ) {
+        return jsonResponse(200, {
+          ...task,
+          cover: coverCleared ? null : coverSummary,
+        });
+      }
+      if (isAttachmentsListUrl(url) && (init?.method === "GET" || init?.method === undefined)) {
+        return jsonResponse(200, {
+          attachments: [
+            {
+              ...sampleImageAttachment,
+              isCover: !coverCleared,
+            },
+            sampleAttachment,
+          ],
+        });
+      }
+      return defaultTaskHandler(url, init, [], [], [], [], [
+        sampleImageAttachment,
+        sampleAttachment,
+      ]);
+    });
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:task-detail-cover"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    render(
+      <TaskDetail
+        taskId="task-1"
+        archived={false}
+        canWrite={true}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onUnauthenticated={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("task-detail-cover-hero");
+    const panel = await screen.findByTestId("task-attachments");
+    await user.click(within(panel).getByRole("button", { name: /clear cover/i }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("task-detail-cover-hero")).not.toBeInTheDocument();
+    });
+
+    await user.click(
+      within(panel).getByRole("button", { name: /set as cover/i }),
+    );
+    expect(await screen.findByTestId("task-detail-cover-hero")).toBeInTheDocument();
     expectNoSessionTokenStorage();
   });
 });

@@ -5,6 +5,10 @@ import { createApp } from "../../../app";
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "../../projects/tests/in-memory-project-board-backgrounds-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "../../projects/tests/in-memory-project-board-background-storage";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
@@ -62,6 +66,10 @@ function createCommentsApp() {
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -243,7 +251,7 @@ describe("task comments HTTP API", () => {
     expect(serverOwned.status).toBe(400);
   });
 
-  it("lists live comments oldest-first and empty lists (AC-004)", async () => {
+  it("lists live comments newest-first with nextCursor and empty pages (AC-001)", async () => {
     const { app } = createCommentsApp();
     const { agent } = await registerAgent(app);
     const project = await createOwnedProject(agent);
@@ -251,7 +259,7 @@ describe("task comments HTTP API", () => {
 
     const empty = await agent.get(`/api/tasks/${task.id}/comments`);
     expect(empty.status).toBe(200);
-    expect(empty.body).toEqual({ comments: [] });
+    expect(empty.body).toEqual({ comments: [], nextCursor: null });
 
     const first = await agent
       .post(`/api/tasks/${task.id}/comments`)
@@ -264,10 +272,80 @@ describe("task comments HTTP API", () => {
     const listed = await agent.get(`/api/tasks/${task.id}/comments`);
     expect(listed.status).toBe(200);
     expect(listed.body.comments.map((c: { id: string }) => c.id)).toEqual([
-      first.body.id,
       second.body.id,
+      first.body.id,
     ]);
+    expect(listed.body.nextCursor).toBeNull();
     assertNoSecrets(listed.body);
+  });
+
+  it("defaults comments limit to 5 and continues with cursor (AC-001, AC-003)", async () => {
+    const { app } = createCommentsApp();
+    const { agent } = await registerAgent(app);
+    const project = await createOwnedProject(agent);
+    const task = await createTask(agent, project.id);
+    const createdIds: string[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const created = await agent
+        .post(`/api/tasks/${task.id}/comments`)
+        .send({ body: `Comment ${i}` });
+      expect(created.status).toBe(201);
+      createdIds.push(created.body.id);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    const firstPage = await agent.get(`/api/tasks/${task.id}/comments`);
+    expect(firstPage.status).toBe(200);
+    expect(firstPage.body.comments).toHaveLength(5);
+    expect(typeof firstPage.body.nextCursor).toBe("string");
+    expect(firstPage.body.comments.map((c: { id: string }) => c.id)).toEqual(
+      [...createdIds].reverse().slice(0, 5),
+    );
+
+    const secondPage = await agent
+      .get(`/api/tasks/${task.id}/comments`)
+      .query({ cursor: firstPage.body.nextCursor });
+    expect(secondPage.status).toBe(200);
+    expect(secondPage.body.comments.map((c: { id: string }) => c.id)).toEqual([
+      createdIds[0],
+    ]);
+    expect(secondPage.body.nextCursor).toBeNull();
+
+    const allIds = [
+      ...firstPage.body.comments.map((c: { id: string }) => c.id),
+      ...secondPage.body.comments.map((c: { id: string }) => c.id),
+    ];
+    expect(new Set(allIds).size).toBe(6);
+  });
+
+  it("rejects invalid comments pagination query (AC-004)", async () => {
+    const { app } = createCommentsApp();
+    const { agent } = await registerAgent(app);
+    const project = await createOwnedProject(agent);
+    const task = await createTask(agent, project.id);
+
+    const zero = await agent
+      .get(`/api/tasks/${task.id}/comments`)
+      .query({ limit: 0 });
+    const negative = await agent
+      .get(`/api/tasks/${task.id}/comments`)
+      .query({ limit: -1 });
+    const overMax = await agent
+      .get(`/api/tasks/${task.id}/comments`)
+      .query({ limit: 51 });
+    const badCursor = await agent
+      .get(`/api/tasks/${task.id}/comments`)
+      .query({ cursor: "not-a-cursor" });
+    const unknown = await agent
+      .get(`/api/tasks/${task.id}/comments`)
+      .query({ page: 1 });
+
+    expect(zero.status).toBe(400);
+    expect(zero.body).toMatchObject(envelope("VALIDATION_ERROR"));
+    expect(negative.status).toBe(400);
+    expect(overMax.status).toBe(400);
+    expect(badCursor.status).toBe(400);
+    expect(unknown.status).toBe(400);
   });
 
   it("allows VIEWER list and forbids VIEWER create (AC-005)", async () => {

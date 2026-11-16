@@ -24,7 +24,7 @@ describe("InMemoryCommentsRepository", () => {
     expect((await repo.findById(created.id))?.deletedAt).not.toBeNull();
   });
 
-  it("lists live comments for a task oldest-first and omits other tasks", async () => {
+  it("lists live comments newest-first with pagination and omits other tasks", async () => {
     const repo = new InMemoryCommentsRepository();
     const first = await repo.create({
       taskId: TASK_ID,
@@ -44,8 +44,13 @@ describe("InMemoryCommentsRepository", () => {
     });
     await repo.softDelete(first.id);
 
-    const listed = await repo.listByTaskId(TASK_ID);
-    expect(listed.map((c) => c.id)).toEqual([second.id]);
+    const listed = await repo.listPage({
+      taskId: TASK_ID,
+      limit: 5,
+      cursor: null,
+    });
+    expect(listed.items.map((c) => c.id)).toEqual([second.id]);
+    expect(listed.nextCursor).toBeNull();
   });
 
   it("updateBody and softDelete reject missing or already-deleted comments", async () => {

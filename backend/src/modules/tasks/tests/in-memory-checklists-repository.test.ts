@@ -9,7 +9,7 @@ const TASK_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_TASK_ID = "22222222-2222-4222-8222-222222222222";
 
 describe("InMemoryChecklistsRepository", () => {
-  it("creates and lists checklists with nested items by createdAt ascending", async () => {
+  it("creates and lists checklists without nested items; pages items oldest-first", async () => {
     const repo = new InMemoryChecklistsRepository();
     const first = await repo.create({ taskId: TASK_ID, name: "First" });
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -28,11 +28,31 @@ describe("InMemoryChecklistsRepository", () => {
 
     const listed = await repo.listByTaskId(TASK_ID);
     expect(listed.map((entry) => entry.id)).toEqual([first.id, second.id]);
-    expect(listed[0]?.items.map((item) => item.id)).toEqual([
+    expect(listed[0]?.items).toEqual([]);
+    expect(listed[1]?.items).toEqual([]);
+
+    const page = await repo.listItemsPage({
+      checklistId: first.id,
+      limit: 10,
+      cursor: null,
+    });
+    expect(page.items.map((item) => item.id)).toEqual([
       olderItem.id,
       newerItem.id,
     ]);
-    expect(listed[1]?.items).toEqual([]);
+    expect(page.nextCursor).toBeNull();
+
+    const tallies = await repo.countItemTalliesByChecklistIds([
+      first.id,
+      second.id,
+    ]);
+    expect(tallies).toEqual([
+      {
+        checklistId: first.id,
+        totalItems: 2,
+        checkedItems: 0,
+      },
+    ]);
   });
 
   it("hard-deletes checklist cascading items and returns name snapshot", async () => {

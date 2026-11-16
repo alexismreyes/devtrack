@@ -1,83 +1,90 @@
 import { useCallback, useEffect, useState } from "react";
 import { getDashboard, isUnauthenticated, toUserMessage } from "../api/client";
-import type {
-  DashboardProjectSummaryDto,
-  DashboardSummaryResponseDto,
-} from "../api/types";
+import type { DashboardOverviewResponseDto } from "../api/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { useSession } from "../session/SessionContext";
+import { EYECANDY_SURFACE_CLASS } from "../theme/uiPalettes";
+import { isEmptyOverview } from "./dashboardChartData";
+import { DashboardCharts } from "./DashboardCharts";
 
 type DashboardState =
   | { kind: "loading" }
-  | { kind: "empty"; summary: DashboardSummaryResponseDto }
-  | { kind: "success"; summary: DashboardSummaryResponseDto }
+  | { kind: "empty"; overview: DashboardOverviewResponseDto }
+  | { kind: "success"; overview: DashboardOverviewResponseDto }
   | { kind: "error"; message: string }
   | { kind: "unauthenticated"; message: string };
 
-function CountList({
-  label,
-  taskCount,
-  pendingCount,
-  completedCount,
-  overdueCount,
-  projectCount,
-}: {
+const KPI_CARDS: {
+  key: keyof Pick<
+    DashboardOverviewResponseDto,
+    "totalProjects" | "openTasks" | "teamMembers" | "dueSoon"
+  >;
   label: string;
-  taskCount: number;
-  pendingCount: number;
-  completedCount: number;
-  overdueCount: number;
-  projectCount?: number;
-}) {
+  accentClass: string;
+  testId: string;
+}[] = [
+  {
+    key: "totalProjects",
+    label: "Total Projects",
+    accentClass: "bg-[oklch(0.55_0.1_195)]",
+    testId: "dashboard-kpi-total-projects",
+  },
+  {
+    key: "openTasks",
+    label: "Open Tasks",
+    accentClass: "bg-[oklch(0.58_0.18_25)]",
+    testId: "dashboard-kpi-open-tasks",
+  },
+  {
+    key: "teamMembers",
+    label: "Team Members",
+    accentClass: "bg-[oklch(0.72_0.14_85)]",
+    testId: "dashboard-kpi-team-members",
+  },
+  {
+    key: "dueSoon",
+    label: "Due Soon",
+    accentClass: "bg-[oklch(0.55_0.14_145)]",
+    testId: "dashboard-kpi-due-soon",
+  },
+];
+
+function KpiRow({ overview }: { overview: DashboardOverviewResponseDto }) {
   return (
-    <ul aria-label={label} className="grid gap-1 text-sm">
-      {projectCount !== undefined ? <li>Projects {projectCount}</li> : null}
-      <li>Tasks {taskCount}</li>
-      <li>Pending {pendingCount}</li>
-      <li>Completed {completedCount}</li>
-      <li>Overdue {overdueCount}</li>
+    <ul
+      aria-label="Dashboard KPIs"
+      className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+      data-testid="dashboard-kpi-row"
+    >
+      {KPI_CARDS.map((card) => (
+        <li key={card.key}>
+          <Card
+            className={cn(EYECANDY_SURFACE_CLASS, "overflow-hidden p-0 gap-0")}
+            data-testid={card.testId}
+          >
+            <CardHeader
+              className={cn(
+                "rounded-none border-b border-border/40 px-4 py-2.5 text-primary-foreground",
+                card.accentClass,
+              )}
+            >
+              <h3 className="text-xs font-semibold uppercase tracking-wide">
+                {card.label}
+              </h3>
+            </CardHeader>
+            <CardContent className="px-4 py-4">
+              <p
+                className="text-3xl font-semibold tabular-nums tracking-tight"
+                aria-label={`${card.label} ${overview[card.key]}`}
+              >
+                {overview[card.key]}
+              </p>
+            </CardContent>
+          </Card>
+        </li>
+      ))}
     </ul>
-  );
-}
-
-function OwnerTotals({ summary }: { summary: DashboardSummaryResponseDto }) {
-  return (
-    <Card>
-      <CardHeader>
-        <h3 className="text-base font-semibold tracking-tight">Owner totals</h3>
-      </CardHeader>
-      <CardContent>
-        <CountList
-          label="Owner totals"
-          projectCount={summary.projectCount}
-          taskCount={summary.taskCount}
-          pendingCount={summary.pendingCount}
-          completedCount={summary.completedCount}
-          overdueCount={summary.overdueCount}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
-function ProjectSummaryRow({ project }: { project: DashboardProjectSummaryDto }) {
-  return (
-    <li>
-      <Card>
-        <CardHeader>
-          <h3 className="text-base font-semibold tracking-tight">{project.name}</h3>
-        </CardHeader>
-        <CardContent>
-          <CountList
-            label={`${project.name} counts`}
-            taskCount={project.taskCount}
-            pendingCount={project.pendingCount}
-            completedCount={project.completedCount}
-            overdueCount={project.overdueCount}
-          />
-        </CardContent>
-      </Card>
-    </li>
   );
 }
 
@@ -88,12 +95,12 @@ export function DashboardPage() {
   const loadDashboard = useCallback(async () => {
     setState({ kind: "loading" });
     try {
-      const summary = await getDashboard();
-      if (summary.projectCount === 0) {
-        setState({ kind: "empty", summary });
+      const overview = await getDashboard();
+      if (isEmptyOverview(overview)) {
+        setState({ kind: "empty", overview });
         return;
       }
-      setState({ kind: "success", summary });
+      setState({ kind: "success", overview });
     } catch (err) {
       if (isUnauthenticated(err)) {
         setState({ kind: "unauthenticated", message: toUserMessage(err) });
@@ -123,18 +130,17 @@ export function DashboardPage() {
       ) : null}
       {state.kind === "empty" ? (
         <>
-          <OwnerTotals summary={state.summary} />
-          <p className="text-sm text-muted-foreground">No projects yet.</p>
+          <KpiRow overview={state.overview} />
+          <DashboardCharts overview={state.overview} />
+          <p className="text-sm text-muted-foreground" role="status">
+            No projects in your membership set yet.
+          </p>
         </>
       ) : null}
       {state.kind === "success" ? (
         <>
-          <OwnerTotals summary={state.summary} />
-          <ul aria-label="Project summaries" className="grid gap-4">
-            {state.summary.projects.map((project) => (
-              <ProjectSummaryRow key={project.id} project={project} />
-            ))}
-          </ul>
+          <KpiRow overview={state.overview} />
+          <DashboardCharts overview={state.overview} />
         </>
       ) : null}
       {state.kind === "unauthenticated" ? (
