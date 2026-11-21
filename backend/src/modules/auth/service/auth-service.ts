@@ -1,6 +1,9 @@
+import type { UnitOfWork } from "../../projects/access/unit-of-work";
 import type { AuthSession } from "../domain/auth-session";
 import {
   InvalidCredentialsError,
+  InvalidCurrentPasswordError,
+  PasswordPolicyError,
   UnauthenticatedError,
 } from "../domain/errors";
 import { hashPassword, verifyPassword } from "../domain/password-hasher";
@@ -14,6 +17,8 @@ import type {
 const SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const MIN_PASSWORD_LENGTH = 8;
+
 export type RegisterInput = {
   email: string;
   password: string;
@@ -23,6 +28,11 @@ export type RegisterInput = {
 export type LoginInput = {
   email: string;
   password: string;
+};
+
+export type ChangePasswordInput = {
+  currentPassword: string;
+  newPassword: string;
 };
 
 export type AuthenticatedActor = {
@@ -39,6 +49,7 @@ export class AuthService {
   constructor(
     private readonly auth: AuthRepository,
     private readonly users: UsersIdentityPort,
+    private readonly unitOfWork: UnitOfWork,
   ) {}
 
   async register(input: RegisterInput): Promise<AuthSuccess> {
@@ -76,6 +87,42 @@ export class AuthService {
 
   async logout(sessionId: string): Promise<void> {
     await this.auth.revokeSession(sessionId);
+  }
+
+  async changePassword(
+    actor: AuthenticatedActor,
+    input: ChangePasswordInput,
+  ): Promise<void> {
+    const currentPassword = input.currentPassword;
+    const newPassword = input.newPassword;
+
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new PasswordPolicyError(
+        "Password must be at least 8 characters",
+      );
+    }
+    if (newPassword === currentPassword) {
+      throw new PasswordPolicyError(
+        "New password must differ from the current password",
+      );
+    }
+
+    const passwordHash = await this.auth.findPasswordHashByUserId(actor.userId);
+    const matches =
+      passwordHash !== null &&
+      (await verifyPassword(passwordHash, currentPassword));
+    if (!matches) {
+      throw new InvalidCurrentPasswordError();
+    }
+
+    const nextHash = await hashPassword(newPassword);
+    await this.unitOfWork.run(async () => {
+      await this.auth.savePasswordHash(actor.userId, nextHash);
+      await this.auth.revokeSessionsForUserExcept(
+        actor.userId,
+        actor.sessionId,
+      );
+    });
   }
 
   async authenticate(sessionId: string | undefined): Promise<AuthenticatedActor> {

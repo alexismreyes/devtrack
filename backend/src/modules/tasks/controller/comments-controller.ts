@@ -10,6 +10,7 @@ import {
   type UpdateCommentRequestDto,
 } from "../dto/comment-dtos";
 import type { CommentsService } from "../service/comments-service";
+import { readFeedPaginationQuery } from "../validators/feed-pagination-query";
 
 function requireActorId(req: Request): string {
   const actorId = req.actor?.userId;
@@ -51,12 +52,14 @@ export class CommentsController {
 
   async list(req: Request, res: Response): Promise<void> {
     const actorId = requireActorId(req);
-    const comments = await this.service.listByTask(
-      actorId,
-      requireTaskId(req),
-    );
+    const query = readFeedPaginationQuery(req);
+    const page = await this.service.listByTask(actorId, requireTaskId(req), {
+      cursor: query.cursor,
+      limit: query.limit,
+    });
     const body: CommentListResponseDto = {
-      comments: comments.map(toPublicCommentDto),
+      comments: page.comments.map(toPublicCommentDto),
+      nextCursor: page.nextCursor,
     };
     res.status(200).json(body);
   }

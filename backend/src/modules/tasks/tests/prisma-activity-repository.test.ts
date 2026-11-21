@@ -76,10 +76,18 @@ describe("PrismaActivityRepository", () => {
       await activity.create(older);
       await activity.create(newer);
 
-      const listed = await activity.listByTaskId(task.id);
-      expect(listed.map((event) => event.id)).toEqual([newer.id, older.id]);
-      expect(listed[0]?.kind).toBe("TASK_FIELDS_CHANGED");
-      expect(listed[0]?.payload).toEqual({
+      const listed = await activity.listPage({
+        taskId: task.id,
+        limit: 5,
+        cursor: null,
+      });
+      expect(listed.items.map((event) => event.id)).toEqual([
+        newer.id,
+        older.id,
+      ]);
+      expect(listed.nextCursor).toBeNull();
+      expect(listed.items[0]?.kind).toBe("TASK_FIELDS_CHANGED");
+      expect(listed.items[0]?.payload).toEqual({
         changes: [
           {
             field: "status",

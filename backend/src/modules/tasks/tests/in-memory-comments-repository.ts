@@ -1,8 +1,11 @@
+import { takeNewestPage } from "../domain/feed-cursor";
 import { CommentNotFoundError } from "../domain/errors";
 import { TaskComment } from "../domain/task-comment";
 import type {
+  CommentsPageResult,
   CommentsRepository,
   CreateCommentInput,
+  ListCommentsPageInput,
 } from "../repository/comments-repository";
 
 export class InMemoryCommentsRepository implements CommentsRepository {
@@ -22,12 +25,12 @@ export class InMemoryCommentsRepository implements CommentsRepository {
     return this.commentsById.get(id) ?? null;
   }
 
-  async listByTaskId(taskId: string): Promise<TaskComment[]> {
-    return [...this.commentsById.values()]
-      .filter(
-        (comment) => comment.taskId === taskId && comment.deletedAt === null,
-      )
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  async listPage(input: ListCommentsPageInput): Promise<CommentsPageResult> {
+    const live = [...this.commentsById.values()].filter(
+      (comment) =>
+        comment.taskId === input.taskId && comment.deletedAt === null,
+    );
+    return takeNewestPage(live, input.limit, input.cursor);
   }
 
   async updateBody(id: string, body: string): Promise<TaskComment> {

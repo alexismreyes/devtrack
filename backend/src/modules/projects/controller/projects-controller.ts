@@ -8,6 +8,7 @@ import {
   type ProjectListResponseDto,
 } from "../dto/project-dtos";
 import type { ProjectsService } from "../service/projects-service";
+import { readListProjectsQuery } from "../validators/list-projects-query";
 
 function requireActorId(req: Request): string {
   const actorId = req.actor?.userId;
@@ -40,7 +41,10 @@ export class ProjectsController {
 
   async list(req: Request, res: Response): Promise<void> {
     const actorId = requireActorId(req);
-    const projects = await this.service.listAuthorized(actorId);
+    const query = readListProjectsQuery(req);
+    const projects = await this.service.listAuthorized(actorId, {
+      includeArchived: query.includeArchived === true,
+    });
     const body: ProjectListResponseDto = {
       projects: projects.map(toPublicProjectDto),
     };

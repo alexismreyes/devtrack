@@ -31,9 +31,10 @@ describe("Q-028/Q-029 frontend dependencies and copied UI", () => {
     expect(all["next-themes"]).toBeUndefined();
   });
 
-  it("records only @dnd-kit/core for Kanban drag-and-drop", () => {
+  it("records @dnd-kit/core plus sortable/utilities for Kanban (028 Q-191)", () => {
     expect(all["@dnd-kit/core"]).toBeDefined();
-    expect(all["@dnd-kit/sortable"]).toBeUndefined();
+    expect(all["@dnd-kit/sortable"]).toBeDefined();
+    expect(all["@dnd-kit/utilities"]).toBeDefined();
     expect(all["react-beautiful-dnd"]).toBeUndefined();
     expect(all["@hello-pangea/dnd"]).toBeUndefined();
     expect(all["react-dnd"]).toBeUndefined();
@@ -50,9 +51,10 @@ describe("Q-028/Q-029 frontend dependencies and copied UI", () => {
     expect(all["react-dnd"]).toBeUndefined();
     expect(all["vue-router"]).toBeUndefined();
     expect(all["next-themes"]).toBeUndefined();
-    expect(all.recharts).toBeUndefined();
+    expect(all.recharts).toBeDefined();
     expect(all["chart.js"]).toBeUndefined();
     expect(all["react-chartjs-2"]).toBeUndefined();
+    expect(all["@nivo/core"]).toBeUndefined();
     expect(all.nodemailer).toBeUndefined();
     expect(all.resend).toBeUndefined();
     expect(all["@sendgrid/mail"]).toBeUndefined();

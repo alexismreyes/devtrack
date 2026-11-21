@@ -36,4 +36,16 @@ export class AuthController {
     clearSessionCookie(res);
     res.status(204).end();
   }
+
+  async changePassword(req: Request, res: Response): Promise<void> {
+    const actor = req.actor;
+    if (actor === undefined) {
+      throw new Error("Authenticated actor is required");
+    }
+    await this.service.changePassword(actor, {
+      currentPassword: req.body.currentPassword,
+      newPassword: req.body.newPassword,
+    });
+    res.status(204).end();
+  }
 }

@@ -6,6 +6,7 @@ import {
 import {
   toPublicChecklistDto,
   toPublicChecklistItemDto,
+  type ChecklistItemListResponseDto,
   type ChecklistListResponseDto,
   type CreateChecklistItemRequestDto,
   type CreateChecklistRequestDto,
@@ -13,6 +14,7 @@ import {
   type UpdateChecklistRequestDto,
 } from "../dto/checklist-dtos";
 import type { ChecklistsService } from "../service/checklists-service";
+import { readFeedPaginationQuery } from "../validators/feed-pagination-query";
 
 function requireActorId(req: Request): string {
   const actorId = req.actor?.userId;
@@ -57,6 +59,25 @@ export class ChecklistsController {
     );
     const body: ChecklistListResponseDto = {
       checklists: checklists.map(toPublicChecklistDto),
+    };
+    res.status(200).json(body);
+  }
+
+  async listItems(req: Request, res: Response): Promise<void> {
+    const actorId = requireActorId(req);
+    const query = readFeedPaginationQuery(req);
+    const page = await this.service.listItems(
+      actorId,
+      requireTaskId(req),
+      requireChecklistId(req),
+      {
+        cursor: query.cursor,
+        limit: query.limit,
+      },
+    );
+    const body: ChecklistItemListResponseDto = {
+      items: page.items.map(toPublicChecklistItemDto),
+      nextCursor: page.nextCursor,
     };
     res.status(200).json(body);
   }

@@ -1,12 +1,19 @@
 import type { TaskAuthorizationPort } from "../../project-members/access/task-authorization-port";
 import type { UnitOfWork } from "../../projects/access/unit-of-work";
 import type { UsersIdentityPort } from "../../users/identity/users-identity-port";
+import { validationError } from "../../../infrastructure/http/app-error";
 import {
   CommentForbiddenError,
   CommentNotFoundError,
   TaskNotFoundError,
   TaskParentArchivedError,
 } from "../domain/errors";
+import {
+  DEFAULT_FEED_LIMIT,
+  MAX_FEED_LIMIT,
+  decodeFeedCursor,
+  encodeFeedCursor,
+} from "../domain/feed-cursor";
 import type { TaskComment } from "../domain/task-comment";
 import { TaskActivityEvent } from "../domain/task-activity";
 import type { ActivityRepository } from "../repository/activity-repository";
@@ -20,6 +27,16 @@ export type CommentView = {
   authorDisplayName: string;
   body: string;
   createdAt: Date;
+};
+
+export type CommentListPage = {
+  comments: CommentView[];
+  nextCursor: string | null;
+};
+
+export type ListCommentsOptions = {
+  cursor?: string;
+  limit?: number;
 };
 
 export class CommentsService {
@@ -61,15 +78,30 @@ export class CommentsService {
     });
   }
 
-  async listByTask(actorId: string, taskId: string): Promise<CommentView[]> {
+  async listByTask(
+    actorId: string,
+    taskId: string,
+    options: ListCommentsOptions = {},
+  ): Promise<CommentListPage> {
     const task = await this.requireLiveTask(taskId);
     await this.authorization.requireTaskRead(actorId, task.projectId);
-    const comments = await this.comments.listByTaskId(task.id);
+    const limit = normalizeFeedLimit(options.limit);
+    const cursor =
+      options.cursor === undefined ? null : parseFeedCursor(options.cursor);
+    const page = await this.comments.listPage({
+      taskId: task.id,
+      limit,
+      cursor,
+    });
     const views: CommentView[] = [];
-    for (const comment of comments) {
+    for (const comment of page.items) {
       views.push(await this.toView(comment));
     }
-    return views;
+    return {
+      comments: views,
+      nextCursor:
+        page.nextCursor === null ? null : encodeFeedCursor(page.nextCursor),
+    };
   }
 
   async updateBody(
@@ -155,5 +187,27 @@ export class CommentsService {
       body: comment.body,
       createdAt: comment.createdAt,
     };
+  }
+}
+
+function normalizeFeedLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return DEFAULT_FEED_LIMIT;
+  }
+  if (
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > MAX_FEED_LIMIT
+  ) {
+    throw validationError("Invalid request query");
+  }
+  return limit;
+}
+
+function parseFeedCursor(token: string) {
+  try {
+    return decodeFeedCursor(token);
+  } catch {
+    throw validationError("Invalid request query");
   }
 }

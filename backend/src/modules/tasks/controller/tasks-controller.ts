@@ -3,11 +3,12 @@ import {
   unauthenticated,
   validationError,
 } from "../../../infrastructure/http/app-error";
-import { toDashboardSummaryDto } from "../dto/dashboard-dtos";
+import { toDashboardOverviewDto } from "../dto/dashboard-dtos";
 import {
   toPublicTaskDto,
   type CreateTaskRequestDto,
   type ListTasksQueryDto,
+  type ReorderTasksRequestDto,
   type TaskListResponseDto,
   type UpdateTaskRequestDto,
 } from "../dto/task-dtos";
@@ -83,8 +84,8 @@ export class TasksController {
 
   async getDashboard(req: Request, res: Response): Promise<void> {
     const actorId = requireActorId(req);
-    const summary = await this.service.getDashboard(actorId);
-    res.status(200).json(toDashboardSummaryDto(summary));
+    const overview = await this.service.getDashboard(actorId);
+    res.status(200).json(toDashboardOverviewDto(overview));
   }
 
   async getById(req: Request, res: Response): Promise<void> {
@@ -104,5 +105,20 @@ export class TasksController {
     const actorId = requireActorId(req);
     await this.service.softDelete(actorId, requireTaskId(req));
     res.status(204).send();
+  }
+
+  async reorder(req: Request, res: Response): Promise<void> {
+    const actorId = requireActorId(req);
+    const body = req.body as ReorderTasksRequestDto;
+    const tasks = await this.service.reorderInStatus(
+      actorId,
+      requireProjectId(req),
+      body.status,
+      body.taskIds,
+    );
+    const response: TaskListResponseDto = {
+      tasks: tasks.map(toPublicTaskDto),
+    };
+    res.status(200).json(response);
   }
 }

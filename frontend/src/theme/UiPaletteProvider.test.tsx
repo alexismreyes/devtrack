@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { expectNoSessionTokenStorage } from "../test/storage";
 import { UiPaletteProvider } from "./UiPaletteProvider";
 import { UiPaletteSelector } from "./UiPaletteSelector";
-import { UI_PALETTE_IDS, UI_PALETTE_STORAGE_KEY } from "./uiPalettes";
+import { UI_PALETTES, UI_PALETTE_STORAGE_KEY } from "./uiPalettes";
 
 afterEach(() => {
   window.localStorage.clear();
@@ -40,6 +40,18 @@ describe("UiPaletteProvider", () => {
     );
   });
 
+  it("falls back to Forest for removed stored id Obsidian (AC-004)", () => {
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "Obsidian");
+    renderSelector();
+    expect(document.documentElement.dataset.palette).toBe("Forest");
+  });
+
+  it("falls back to Forest for removed stored id VioletNight (AC-004)", () => {
+    window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "VioletNight");
+    renderSelector();
+    expect(document.documentElement.dataset.palette).toBe("Forest");
+  });
+
   it("applies a valid stored palette without a guest-only rewrite", () => {
     window.localStorage.setItem(UI_PALETTE_STORAGE_KEY, "Glacier");
     renderSelector();
@@ -47,18 +59,20 @@ describe("UiPaletteProvider", () => {
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Glacier");
   });
 
-  it("writes the selected catalog id via circular previews and lists the full Q-041 catalog", async () => {
+  it("writes the selected catalog id via circular previews and lists the full catalog", async () => {
     const user = userEvent.setup();
     renderSelector();
     const trigger = screen.getByRole("button", { name: /color palette/i });
     expect(trigger).toHaveAccessibleName(/color palette/i);
     await user.click(trigger);
     const picker = screen.getByTestId("ui-palette-picker");
-    for (const id of UI_PALETTE_IDS) {
-      const option = within(picker).getByRole("radio", { name: new RegExp(`^${id}`) });
+    for (const item of UI_PALETTES) {
+      const option = within(picker).getByRole("radio", {
+        name: new RegExp(`^${item.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(, selected)?$`),
+      });
       expect(option).toBeInTheDocument();
       expect(
-        option.querySelector(`.ui-palette-preview[data-preview-palette="${id}"]`),
+        option.querySelector(`.ui-palette-preview[data-preview-palette="${item.id}"]`),
       ).not.toBeNull();
     }
     await user.click(within(picker).getByRole("radio", { name: /^Ocean$/i }));
@@ -66,5 +80,34 @@ describe("UiPaletteProvider", () => {
     expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("Ocean");
     expect(window.sessionStorage.length).toBe(0);
     expectNoSessionTokenStorage();
+  });
+
+  it("persists Midnight Aurora under catalog id MidnightAurora (AC-001)", async () => {
+    const user = userEvent.setup();
+    renderSelector();
+    await user.click(screen.getByRole("button", { name: /color palette/i }));
+    await user.click(
+      within(screen.getByTestId("ui-palette-picker")).getByRole("radio", {
+        name: /^Midnight Aurora$/i,
+      }),
+    );
+    expect(document.documentElement.dataset.palette).toBe("MidnightAurora");
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("MidnightAurora");
+    expect(screen.getByRole("button", { name: /color palette/i })).toHaveTextContent(
+      "Midnight Aurora",
+    );
+  });
+
+  it("persists Obsidian & Gold under catalog id ObsidianGold (AC-001)", async () => {
+    const user = userEvent.setup();
+    renderSelector();
+    await user.click(screen.getByRole("button", { name: /color palette/i }));
+    await user.click(
+      within(screen.getByTestId("ui-palette-picker")).getByRole("radio", {
+        name: /^Obsidian & Gold$/i,
+      }),
+    );
+    expect(document.documentElement.dataset.palette).toBe("ObsidianGold");
+    expect(window.localStorage.getItem(UI_PALETTE_STORAGE_KEY)).toBe("ObsidianGold");
   });
 });

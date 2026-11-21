@@ -18,6 +18,10 @@ export interface AuthRepository {
   createSession(userId: string): Promise<AuthSession>;
   findSessionById(id: string): Promise<AuthSession | null>;
   revokeSession(id: string): Promise<void>;
+  revokeSessionsForUserExcept(
+    userId: string,
+    sessionId: string,
+  ): Promise<void>;
   createRegisteredUser(
     input: RegisterPersistenceInput,
   ): Promise<RegisteredAuthRecord>;

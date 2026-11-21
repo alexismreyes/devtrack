@@ -16,11 +16,17 @@ export function NotFoundPage() {
         <CardContent className="space-y-3">
           <p className="text-muted-foreground">This page does not exist.</p>
           {authenticated ? (
-            <Link to="/projects" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+            <Link
+              to="/projects"
+              className="cursor-pointer text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
               Go to projects
             </Link>
           ) : (
-            <Link to="/login" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+            <Link
+              to="/login"
+              className="cursor-pointer text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
               Go to login
             </Link>
           )}

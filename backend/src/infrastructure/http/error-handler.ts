@@ -65,6 +65,15 @@ export function errorHandler(
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
       }
+      case "InvalidCurrentPasswordError": {
+        sendError(
+          res,
+          400,
+          ERROR_CODES.INVALID_CREDENTIALS,
+          err.message,
+        );
+        return;
+      }
       case "UnauthenticatedError":
       case "SessionNotFoundError":
       case "UserNotFoundError": {
@@ -89,7 +98,9 @@ export function errorHandler(
       case "StatusNotFoundError":
       case "ChecklistNotFoundError":
       case "ChecklistItemNotFoundError":
-      case "AttachmentNotFoundError": {
+      case "AttachmentNotFoundError":
+      case "ProjectCoverNotFoundError":
+      case "ProjectBoardBackgroundNotFoundError": {
         const mapped = notFound(err.message);
         sendError(res, mapped.status, mapped.code, mapped.message);
         return;
@@ -112,6 +123,7 @@ export function errorHandler(
       case "InvalidUserEmailError":
       case "InvalidDisplayNameError":
       case "InvalidPasswordError":
+      case "PasswordPolicyError":
       case "InvalidProjectNameError":
       case "InvalidTaskTitleError":
       case "InvalidTaskStatusError":
@@ -124,6 +136,8 @@ export function errorHandler(
       case "InvalidStatusColorError":
       case "InvalidStatusKeyError":
       case "InvalidStatusReorderError":
+      case "InvalidTaskReorderError":
+      case "InvalidTaskPositionError":
       case "InvalidChecklistNameError":
       case "InvalidChecklistItemTextError":
       case "InvalidAttachmentFilenameError":
@@ -131,6 +145,12 @@ export function errorHandler(
       case "AttachmentSizeExceededError":
       case "AttachmentCountExceededError":
       case "InvalidCoverAttachmentError":
+      case "InvalidProjectCoverFilenameError":
+      case "InvalidProjectCoverContentTypeError":
+      case "ProjectCoverSizeExceededError":
+      case "InvalidProjectBoardBackgroundFilenameError":
+      case "InvalidProjectBoardBackgroundContentTypeError":
+      case "ProjectBoardBackgroundSizeExceededError":
       case "InvalidProjectMemberRoleError":
         sendError(res, 400, ERROR_CODES.VALIDATION_ERROR, err.message);
         return;
@@ -140,6 +160,22 @@ export function errorHandler(
           503,
           ERROR_CODES.SERVICE_UNAVAILABLE,
           "Attachment storage is unavailable",
+        );
+        return;
+      case "ProjectCoverStorageError":
+        sendError(
+          res,
+          503,
+          ERROR_CODES.SERVICE_UNAVAILABLE,
+          "Project cover storage is unavailable",
+        );
+        return;
+      case "ProjectBoardBackgroundStorageError":
+        sendError(
+          res,
+          503,
+          ERROR_CODES.SERVICE_UNAVAILABLE,
+          "Project board background storage is unavailable",
         );
         return;
       case "DatabaseUnavailableError":

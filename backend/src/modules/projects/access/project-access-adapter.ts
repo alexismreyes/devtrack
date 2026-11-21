@@ -37,4 +37,16 @@ export class ProjectAccessAdapter implements ProjectAccessPort {
       archivedAt: project.archivedAt,
     }));
   }
+
+  async listActiveProjectsByIds(
+    ids: string[],
+  ): Promise<OwnedProjectSnapshot[]> {
+    const projects = await this.projects.listActiveByIds(ids);
+    return projects.map((project) => ({
+      id: project.id,
+      ownerUserId: project.ownerUserId,
+      name: project.name,
+      archivedAt: project.archivedAt,
+    }));
+  }
 }

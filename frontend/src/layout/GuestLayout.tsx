@@ -9,10 +9,16 @@ export function GuestLayout() {
       >
         <h1 className="text-lg font-semibold tracking-tight">DevTrack</h1>
         <nav aria-label="Account" className="ml-auto flex items-center gap-4 text-sm font-medium">
-          <Link to="/register" className="underline-offset-4 hover:underline">
+          <Link
+            to="/register"
+            className="cursor-pointer underline-offset-4 hover:underline"
+          >
             Register
           </Link>
-          <Link to="/login" className="underline-offset-4 hover:underline">
+          <Link
+            to="/login"
+            className="cursor-pointer underline-offset-4 hover:underline"
+          >
             Log in
           </Link>
         </nav>

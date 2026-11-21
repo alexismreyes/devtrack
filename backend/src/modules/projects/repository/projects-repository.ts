@@ -16,6 +16,7 @@ export interface ProjectsRepository {
   findById(id: string): Promise<Project | null>;
   listByOwnerId(ownerUserId: string): Promise<Project[]>;
   listActiveByIds(ids: string[]): Promise<Project[]>;
+  listArchivedByOwnerId(ownerUserId: string): Promise<Project[]>;
   update(id: string, input: UpdateProjectInput): Promise<Project>;
   archive(id: string): Promise<Project>;
   unarchive(id: string): Promise<Project>;

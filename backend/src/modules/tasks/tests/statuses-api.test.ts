@@ -5,6 +5,10 @@ import { createApp } from "../../../app";
 import { InMemoryAuthRepository } from "../../auth/tests/in-memory-auth-repository";
 import { InMemoryProjectMembersRepository } from "../../project-members/tests/in-memory-project-members-repository";
 import { InMemoryProjectsRepository } from "../../projects/tests/in-memory-projects-repository";
+import { InMemoryProjectCoverStorage } from "../../projects/tests/in-memory-project-cover-storage";
+import { InMemoryProjectCoversRepository } from "../../projects/tests/in-memory-project-covers-repository";
+import { InMemoryProjectBoardBackgroundsRepository } from "../../projects/tests/in-memory-project-board-backgrounds-repository";
+import { InMemoryProjectBoardBackgroundStorage } from "../../projects/tests/in-memory-project-board-background-storage";
 import { DatabaseUnavailableError } from "../../system/domain/errors";
 import { SystemProbe } from "../../system/domain/system-probe";
 import type { SystemRepository } from "../../system/repository/system-repository";
@@ -62,6 +66,10 @@ function createStatusesApp() {
     usersRepository,
     authRepository,
     projectsRepository,
+    projectCoversRepository: new InMemoryProjectCoversRepository(),
+    projectCoverStorage: new InMemoryProjectCoverStorage(),
+    projectBoardBackgroundsRepository: new InMemoryProjectBoardBackgroundsRepository(),
+    projectBoardBackgroundStorage: new InMemoryProjectBoardBackgroundStorage(),
     tasksRepository,
     commentsRepository,
     activityRepository,
@@ -268,9 +276,10 @@ describe("statuses HTTP API", () => {
 
     const before = await agent.get("/api/dashboard");
     expect(before.status).toBe(200);
-    expect(before.body.pendingCount).toBe(1);
-    expect(before.body.completedCount).toBe(1);
-    expect(before.body.overdueCount).toBe(1);
+    expect(before.body.openTasks).toBe(1);
+    expect(before.body.progress[0].completedTasks).toBe(1);
+    expect(before.body.progress[0].totalTasks).toBe(2);
+    expect(before.body.dueSoon).toBe(0);
 
     await agent
       .patch(`/api/projects/${project.id}/statuses/${done.id}`)
@@ -281,9 +290,10 @@ describe("statuses HTTP API", () => {
     expect(flippedTask.status).toBe(201);
 
     const after = await agent.get("/api/dashboard");
-    expect(after.body.pendingCount).toBe(2);
-    expect(after.body.completedCount).toBe(1);
-    expect(after.body.overdueCount).toBe(2);
+    expect(after.body.openTasks).toBe(2);
+    expect(after.body.progress[0].completedTasks).toBe(1);
+    expect(after.body.progress[0].totalTasks).toBe(3);
+    expect(after.body.dueSoon).toBe(0);
   });
 
   it("enforces authz matrix and validation (AC-007)", async () => {

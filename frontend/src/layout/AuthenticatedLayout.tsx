@@ -31,7 +31,7 @@ export function AuthenticatedLayout() {
         className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-devtrack-bar bg-devtrack-bar px-4 text-devtrack-bar-foreground"
       >
         <h1 className="text-lg font-semibold tracking-tight">
-          <Link to="/projects" className="hover:opacity-90">
+          <Link to="/projects" className="cursor-pointer hover:opacity-90">
             DevTrack
           </Link>
         </h1>
@@ -41,14 +41,20 @@ export function AuthenticatedLayout() {
         <div className="ml-auto flex items-center gap-3">
           <UiPaletteSelector />
           <Link
+            to="/projects"
+            className="cursor-pointer text-sm font-medium underline-offset-4 hover:underline"
+          >
+            Projects
+          </Link>
+          <Link
             to="/dashboard"
-            className="text-sm font-medium underline-offset-4 hover:underline"
+            className="cursor-pointer text-sm font-medium underline-offset-4 hover:underline"
           >
             Dashboard
           </Link>
           <Link
             to="/profile"
-            className="text-sm font-medium underline-offset-4 hover:underline"
+            className="cursor-pointer text-sm font-medium underline-offset-4 hover:underline"
           >
             Profile
           </Link>

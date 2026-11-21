@@ -15,10 +15,10 @@ describe("popover theme tokens", () => {
     );
 
     const paletteCount = (css.match(/\[data-palette="/g) ?? []).length;
-    expect(paletteCount).toBeGreaterThanOrEqual(12);
+    expect(paletteCount).toBeGreaterThanOrEqual(18);
 
     const popoverDefs = css.match(/^\s*--popover:/gm) ?? [];
-    expect(popoverDefs.length).toBeGreaterThanOrEqual(12);
+    expect(popoverDefs.length).toBeGreaterThanOrEqual(18);
     expect(css.match(/^\s*--popover-foreground:/gm)?.length).toBe(
       popoverDefs.length,
     );

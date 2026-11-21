@@ -15,9 +15,11 @@ import {
 import { StatusesService } from "../service/statuses-service";
 import { TasksService } from "../service/tasks-service";
 import { FakeProjectAccessPort } from "./fake-project-access-port";
+import { FakeProjectMembershipQueryPort } from "./fake-project-membership-query-port";
 import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
+import { InMemoryChecklistsRepository } from "./in-memory-checklists-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
 import { InMemoryStatusesRepository } from "./in-memory-statuses-repository";
 import { InMemoryTaskLabelsRepository } from "./in-memory-task-labels-repository";
@@ -77,11 +79,13 @@ async function createHarness(archivedAt: Date | null = null) {
     tasksService: new TasksService(
       tasks,
       projects,
+      new FakeProjectMembershipQueryPort(projects, authorization),
       authorization,
       activity,
       taskLabels,
       new InMemoryAttachmentsRepository(tasks),
       statuses,
+      new InMemoryChecklistsRepository(),
       unitOfWork,
     ),
     statuses,

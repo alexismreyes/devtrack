@@ -22,9 +22,16 @@ export type PublicTaskDto = {
   priority: TaskPriority;
   dueDate: string | null;
   createdAt: string;
+  /** Dense within-column rank for the task's status (031 / H). */
+  position: number;
   labels: TaskEmbeddedLabelDto[];
   /** Cover summary only — never a full attachments array (Q-140). */
   cover: PublicCoverSummaryDto | null;
+};
+
+export type ReorderTasksRequestDto = {
+  status: TaskStatus;
+  taskIds: string[];
 };
 
 export type TaskListResponseDto = {
@@ -63,6 +70,7 @@ export function toPublicTaskDto(task: TaskView): PublicTaskDto {
     priority: task.priority,
     dueDate: task.dueDate === null ? null : formatCalendarDate(task.dueDate),
     createdAt: task.createdAt.toISOString(),
+    position: task.position,
     labels: task.labels.map(toTaskEmbeddedLabelDto),
     cover:
       task.cover === null

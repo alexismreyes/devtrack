@@ -76,6 +76,24 @@ describe("RegisterForm", () => {
     expectNoSessionTokenStorage();
   });
 
+  it("toggles password visibility without clearing the value", async () => {
+    const user = userEvent.setup();
+
+    render(<RegisterForm onSuccess={vi.fn()} />);
+
+    const password = screen.getByLabelText(/^password$/i);
+    expect(password).toHaveAttribute("type", "password");
+    await user.type(password, "secret");
+
+    await user.click(screen.getByRole("button", { name: /^show password$/i }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(password).toHaveValue("secret");
+
+    await user.click(screen.getByRole("button", { name: /^hide password$/i }));
+    expect(password).toHaveAttribute("type", "password");
+    expect(password).toHaveValue("secret");
+  });
+
   it("shows an error state when registration is rejected", async () => {
     mockFetch(() =>
       jsonResponse(409, {

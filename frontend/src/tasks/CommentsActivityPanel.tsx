@@ -49,6 +49,13 @@ type TimelineItem =
       event: PublicActivityDto;
     };
 
+type FeedNavState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "error"; message: string };
+
+export const FEED_WINDOW_SIZE = 5;
+
 type CommentsActivityPanelProps = {
   canWrite: boolean;
   commentMutationsDisabled: boolean;
@@ -69,6 +76,11 @@ type CommentsActivityPanelProps = {
   onDeleteComment: (commentId: string) => void;
   canEditComment: (comment: PublicCommentDto) => boolean;
   canSoftDeleteComment: (comment: PublicCommentDto) => boolean;
+  canGoPrev?: boolean;
+  canGoNext?: boolean;
+  feedNavState?: FeedNavState;
+  onPrevFeedWindow?: () => void;
+  onNextFeedWindow?: () => void;
 };
 
 function formatActivityFieldValue(value: string | null): string {
@@ -186,6 +198,15 @@ export function buildCommentsActivityTimeline(
   return items;
 }
 
+/** Q-182: interleave current pages only, then take newest ≤ windowSize. */
+export function buildCommentsActivityWindow(
+  comments: PublicCommentDto[],
+  activity: PublicActivityDto[],
+  windowSize: number = FEED_WINDOW_SIZE,
+): TimelineItem[] {
+  return buildCommentsActivityTimeline(comments, activity).slice(0, windowSize);
+}
+
 export function CommentsActivityPanel({
   canWrite,
   commentMutationsDisabled,
@@ -206,13 +227,23 @@ export function CommentsActivityPanel({
   onDeleteComment,
   canEditComment,
   canSoftDeleteComment,
+  canGoPrev = false,
+  canGoNext = false,
+  feedNavState = { kind: "idle" },
+  onPrevFeedWindow,
+  onNextFeedWindow,
 }: CommentsActivityPanelProps) {
-  const timeline = buildCommentsActivityTimeline(comments, activity);
+  const timeline = buildCommentsActivityWindow(comments, activity);
   const commentsReady =
     commentsLoadState.kind === "success" || commentsLoadState.kind === "empty";
   const activityReady =
     activityLoadState.kind === "success" || activityLoadState.kind === "empty";
   const showTimeline = commentsReady || activityReady;
+  const navBusy = feedNavState.kind === "loading";
+  const showFeedNav =
+    showTimeline &&
+    (timeline.length > 0 || canGoPrev || canGoNext) &&
+    (onPrevFeedWindow !== undefined || onNextFeedWindow !== undefined);
 
   return (
     <section
@@ -406,6 +437,40 @@ export function CommentsActivityPanel({
             );
           })}
         </ul>
+      ) : null}
+
+      {showFeedNav ? (
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {onPrevFeedWindow ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onPrevFeedWindow}
+                disabled={!canGoPrev || navBusy}
+              >
+                Previous
+              </Button>
+            ) : null}
+            {onNextFeedWindow ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onNextFeedWindow}
+                disabled={!canGoNext || navBusy}
+              >
+                {navBusy ? "Loading…" : "Next"}
+              </Button>
+            ) : null}
+          </div>
+          {feedNavState.kind === "error" ? (
+            <p className="text-sm text-destructive" role="alert">
+              {feedNavState.message}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {commentActionState.kind === "creating" ? (

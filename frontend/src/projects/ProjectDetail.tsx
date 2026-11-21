@@ -344,6 +344,13 @@ export function ProjectDetail({
             onSubmit={(input) => {
               void onSave(input);
             }}
+            onCoverChange={(cover) => {
+              applyProject({ ...project, cover });
+            }}
+            onBoardBackgroundChange={(boardBackground) => {
+              applyProject({ ...project, boardBackground });
+            }}
+            onUnauthenticated={onUnauthenticated}
           />
           <MembersDialog
             open={membersOpen}
@@ -375,6 +382,7 @@ export function ProjectDetail({
           <TasksPanel
             projectId={projectId}
             archived={archived}
+            boardBackground={project.boardBackground}
             canWriteTasks={writeTasks}
             canManageMembers={showMembers}
             currentUserId={actorUserId}

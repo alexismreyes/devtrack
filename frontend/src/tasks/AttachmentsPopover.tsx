@@ -137,7 +137,7 @@ export function AttachmentsPopover({
               accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,text/plain"
               disabled={mutationsDisabled}
               onChange={(event) => void onUploadSelected(event)}
-              className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-secondary-foreground"
+              className="block w-full cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-secondary-foreground"
             />
           </Label>
           <p className="text-xs text-muted-foreground">

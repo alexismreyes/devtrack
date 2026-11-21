@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import { useEffect, useId, useRef, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,8 +17,10 @@ type CreateProjectDialogProps = {
   onOpenChange: (open: boolean) => void;
   name: string;
   description: string;
+  coverFile: File | null;
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
+  onCoverFileChange: (file: File | null) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   creating: boolean;
   errorMessage?: string;
@@ -29,12 +31,26 @@ export function CreateProjectDialog({
   onOpenChange,
   name,
   description,
+  coverFile,
   onNameChange,
   onDescriptionChange,
+  onCoverFileChange,
   onSubmit,
   creating,
   errorMessage,
 }: CreateProjectDialogProps) {
+  const fileInputId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (coverFile !== null) {
+      return;
+    }
+    if (fileInputRef.current !== null) {
+      fileInputRef.current.value = "";
+    }
+  }, [coverFile]);
+
   return (
     <Dialog
       open={open}
@@ -49,7 +65,8 @@ export function CreateProjectDialog({
         <DialogHeader>
           <DialogTitle id="create-project-heading">Create project</DialogTitle>
           <DialogDescription>
-            Enter a name and an optional description.
+            Enter a name and an optional description. You can also attach an
+            optional cover image.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -76,6 +93,32 @@ export function CreateProjectDialog({
               disabled={creating}
             />
           </Label>
+          <div className="grid gap-2">
+            <p className="text-sm font-medium">Cover image (optional)</p>
+            <Input
+              ref={fileInputRef}
+              id={fileInputId}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              disabled={creating}
+              className="max-w-xs cursor-pointer file:cursor-pointer"
+              aria-label="Optional project cover"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                onCoverFileChange(file ?? null);
+              }}
+            />
+            {coverFile !== null ? (
+              <p className="text-sm text-muted-foreground" data-testid="create-cover-file-name">
+                Selected: {coverFile.name}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                jpeg, png, webp, or gif up to 5 MiB. Uploaded after the project
+                is created.
+              </p>
+            )}
+          </div>
           {creating ? (
             <p className="text-sm text-muted-foreground" role="status">
               Creating project…

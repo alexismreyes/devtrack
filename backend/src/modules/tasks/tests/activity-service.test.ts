@@ -11,10 +11,12 @@ import { ActivityService } from "../service/activity-service";
 import { CommentsService } from "../service/comments-service";
 import { TasksService } from "../service/tasks-service";
 import { FakeProjectAccessPort } from "./fake-project-access-port";
+import { FakeProjectMembershipQueryPort } from "./fake-project-membership-query-port";
 import { FakeTaskAuthorizationPort } from "./fake-task-authorization-port";
 import { FakeUsersIdentityPort } from "./fake-users-identity-port";
 import { InMemoryActivityRepository } from "./in-memory-activity-repository";
 import { InMemoryAttachmentsRepository } from "./in-memory-attachments-repository";
+import { InMemoryChecklistsRepository } from "./in-memory-checklists-repository";
 import { InMemoryCommentsRepository } from "./in-memory-comments-repository";
 import { InMemoryLabelsRepository } from "./in-memory-labels-repository";
 import { InMemoryStatusesRepository } from "./in-memory-statuses-repository";
@@ -35,8 +37,8 @@ class FailingActivityRepository implements ActivityRepository {
     throw new Error("activity insert failed");
   }
 
-  async listByTaskId(): Promise<TaskActivityEvent[]> {
-    return [];
+  async listPage() {
+    return { items: [], nextCursor: null };
   }
 }
 
@@ -138,11 +140,13 @@ async function createHarness(activity: ActivityRepository = new InMemoryActivity
   const tasksService = new TasksService(
     tasks,
     projects,
+    new FakeProjectMembershipQueryPort(projects, authorization),
     authorization,
     activity,
     taskLabels,
     new InMemoryAttachmentsRepository(tasks),
     statuses,
+    new InMemoryChecklistsRepository(),
     unitOfWork,
   );
   const commentsService = new CommentsService(
@@ -180,8 +184,9 @@ describe("ActivityService and emission", () => {
     });
 
     const listed = await activityService.listByTask(VIEWER_ID, task.id);
-    expect(listed).toHaveLength(1);
-    expect(listed[0]).toMatchObject({
+    expect(listed.activity).toHaveLength(1);
+    expect(listed.nextCursor).toBeNull();
+    expect(listed.activity[0]).toMatchObject({
       taskId: task.id,
       kind: "TASK_CREATED",
       actorUserId: OWNER_ID,
@@ -208,9 +213,9 @@ describe("ActivityService and emission", () => {
       status: "TODO",
     });
     let listed = await activityService.listByTask(OWNER_ID, task.id);
-    expect(listed.filter((e) => e.kind === "TASK_FIELDS_CHANGED")).toHaveLength(
-      0,
-    );
+    expect(
+      listed.activity.filter((e) => e.kind === "TASK_FIELDS_CHANGED"),
+    ).toHaveLength(0);
 
     await tasksService.update(EDITOR_ID, task.id, {
       title: "Revised",
@@ -218,7 +223,9 @@ describe("ActivityService and emission", () => {
       priority: "HIGH",
     });
     listed = await activityService.listByTask(OWNER_ID, task.id);
-    const changes = listed.filter((e) => e.kind === "TASK_FIELDS_CHANGED");
+    const changes = listed.activity.filter(
+      (e) => e.kind === "TASK_FIELDS_CHANGED",
+    );
     expect(changes).toHaveLength(1);
     expect(changes[0]?.payload).toEqual({
       changes: [
@@ -271,7 +278,9 @@ describe("ActivityService and emission", () => {
     await commentsService.softDelete(EDITOR_ID, task.id, comment.id);
 
     const listed = await activityService.listByTask(VIEWER_ID, task.id);
-    const commentEvents = listed.filter((e) => e.kind === "COMMENT_ADDED");
+    const commentEvents = listed.activity.filter(
+      (e) => e.kind === "COMMENT_ADDED",
+    );
     expect(commentEvents).toHaveLength(1);
     expect(commentEvents[0]?.payload).toEqual({
       commentId: comment.id,
@@ -308,7 +317,7 @@ describe("ActivityService list authz", () => {
     );
 
     await expect(activityService.listByTask(VIEWER_ID, task.id)).resolves.toEqual(
-      [],
+      { activity: [], nextCursor: null },
     );
     await expect(
       activityService.listByTask(STRANGER_ID, task.id),
@@ -323,7 +332,7 @@ describe("ActivityService list authz", () => {
     ).rejects.toBeInstanceOf(TaskNotFoundError);
   });
 
-  it("returns newest-first full list (AC-016)", async () => {
+  it("returns newest-first pages with default limit and cursor (supersedes AC-016)", async () => {
     const { tasksService, commentsService, activityService } = await createHarness();
     const task = await tasksService.create(OWNER_ID, PROJECT_ID, {
       title: "Write",
@@ -336,11 +345,32 @@ describe("ActivityService list authz", () => {
     await commentsService.create(EDITOR_ID, task.id, "Note");
 
     const listed = await activityService.listByTask(VIEWER_ID, task.id);
-    expect(listed.map((event) => event.kind)).toEqual([
+    expect(listed.activity.map((event) => event.kind)).toEqual([
       "COMMENT_ADDED",
       "TASK_FIELDS_CHANGED",
       "TASK_CREATED",
     ]);
+    expect(listed.nextCursor).toBeNull();
+
+    for (let i = 0; i < 4; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await tasksService.update(OWNER_ID, task.id, {
+        title: `Write ${i}`,
+      });
+    }
+
+    const firstPage = await activityService.listByTask(VIEWER_ID, task.id);
+    expect(firstPage.activity).toHaveLength(5);
+    expect(firstPage.nextCursor).not.toBeNull();
+    const secondPage = await activityService.listByTask(VIEWER_ID, task.id, {
+      cursor: firstPage.nextCursor!,
+    });
+    expect(secondPage.activity.length).toBeGreaterThan(0);
+    const ids = [
+      ...firstPage.activity.map((e) => e.id),
+      ...secondPage.activity.map((e) => e.id),
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("fails the write when activity insert fails in the same unit of work (AC-015)", async () => {

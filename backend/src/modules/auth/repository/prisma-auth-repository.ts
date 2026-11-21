@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import { currentPrisma } from "../../../infrastructure/prisma/prisma-context";
 import { AuthSession } from "../domain/auth-session";
 import {
   DatabaseUnavailableError,
@@ -103,11 +104,19 @@ function toSession(row: {
 export class PrismaAuthRepository implements AuthRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  private client() {
+    return currentPrisma(this.prisma);
+  }
+
   async savePasswordHash(userId: string, passwordHash: string): Promise<void> {
     try {
-      await this.prisma.authPasswordCredential.create({
-        data: {
+      await this.client().authPasswordCredential.upsert({
+        where: { userId },
+        create: {
           userId,
+          passwordHash,
+        },
+        update: {
           passwordHash,
         },
       });
@@ -118,7 +127,7 @@ export class PrismaAuthRepository implements AuthRepository {
 
   async findPasswordHashByUserId(userId: string): Promise<string | null> {
     try {
-      const row = await this.prisma.authPasswordCredential.findUnique({
+      const row = await this.client().authPasswordCredential.findUnique({
         where: { userId },
         select: { passwordHash: true },
       });
@@ -131,7 +140,7 @@ export class PrismaAuthRepository implements AuthRepository {
   async createSession(userId: string): Promise<AuthSession> {
     const session = AuthSession.issue(userId);
     try {
-      const row = await this.prisma.authSession.create({
+      const row = await this.client().authSession.create({
         data: {
           id: session.id,
           userId: session.userId,
@@ -148,7 +157,7 @@ export class PrismaAuthRepository implements AuthRepository {
 
   async findSessionById(id: string): Promise<AuthSession | null> {
     try {
-      const row = await this.prisma.authSession.findUnique({
+      const row = await this.client().authSession.findUnique({
         where: { id },
       });
       return row === null ? null : toSession(row);
@@ -159,12 +168,12 @@ export class PrismaAuthRepository implements AuthRepository {
 
   async revokeSession(id: string): Promise<void> {
     try {
-      const result = await this.prisma.authSession.updateMany({
+      const result = await this.client().authSession.updateMany({
         where: { id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
       if (result.count === 0) {
-        const existing = await this.prisma.authSession.findUnique({
+        const existing = await this.client().authSession.findUnique({
           where: { id },
           select: { id: true },
         });
@@ -172,6 +181,24 @@ export class PrismaAuthRepository implements AuthRepository {
           throw new SessionNotFoundError();
         }
       }
+    } catch (err) {
+      rethrowMapped(err);
+    }
+  }
+
+  async revokeSessionsForUserExcept(
+    userId: string,
+    sessionId: string,
+  ): Promise<void> {
+    try {
+      await this.client().authSession.updateMany({
+        where: {
+          userId,
+          id: { not: sessionId },
+          revokedAt: null,
+        },
+        data: { revokedAt: new Date() },
+      });
     } catch (err) {
       rethrowMapped(err);
     }

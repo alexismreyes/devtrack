@@ -7,16 +7,20 @@ import {
   isConflict,
   isForbidden,
   isUnauthenticated,
+  listTaskChecklistItems,
   listTaskChecklists,
   toUserMessage,
   updateTaskChecklist,
   updateTaskChecklistItem,
 } from "../api/client";
-import type { PublicChecklistDto } from "../api/types";
+import type { PublicChecklistDto, PublicChecklistItemDto } from "../api/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { EYECANDY_SURFACE_CLASS } from "../theme/uiPalettes";
+
+export const CHECKLIST_ITEMS_WINDOW_SIZE = 10;
 
 export type ChecklistsLoadState =
   | { kind: "loading" }
@@ -38,6 +42,23 @@ type ChecklistActionState =
   | { kind: "error"; message: string }
   | { kind: "conflict"; message: string };
 
+type ChecklistItemsNavState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "error"; message: string };
+
+type ChecklistItemsWindowSnapshot = {
+  items: PublicChecklistItemDto[];
+  nextCursor: string | null;
+};
+
+type ChecklistItemsWindowState = {
+  items: PublicChecklistItemDto[];
+  nextCursor: string | null;
+  stack: ChecklistItemsWindowSnapshot[];
+  navState: ChecklistItemsNavState;
+};
+
 type TaskChecklistsPanelProps = {
   taskId: string;
   canWrite: boolean;
@@ -58,6 +79,15 @@ export function checklistProgressPercent(
   return Math.round((checkedCount / totalCount) * 100);
 }
 
+function emptyWindowState(): ChecklistItemsWindowState {
+  return {
+    items: [],
+    nextCursor: null,
+    stack: [],
+    navState: { kind: "idle" },
+  };
+}
+
 export function TaskChecklistsPanel({
   taskId,
   canWrite,
@@ -69,6 +99,9 @@ export function TaskChecklistsPanel({
   const sectionRef = useRef<HTMLElement | null>(null);
   const headingId = useId();
   const [checklists, setChecklists] = useState<PublicChecklistDto[]>([]);
+  const [itemsByChecklist, setItemsByChecklist] = useState<
+    Record<string, ChecklistItemsWindowState>
+  >({});
   const [loadState, setLoadState] = useState<ChecklistsLoadState>({
     kind: "loading",
   });
@@ -83,6 +116,20 @@ export function TaskChecklistsPanel({
   );
   const [editChecklistName, setEditChecklistName] = useState("");
 
+  async function fetchFirstItemsPage(
+    checklistId: string,
+  ): Promise<ChecklistItemsWindowState> {
+    const page = await listTaskChecklistItems(taskId, checklistId, {
+      limit: CHECKLIST_ITEMS_WINDOW_SIZE,
+    });
+    return {
+      items: page.items,
+      nextCursor: page.nextCursor,
+      stack: [],
+      navState: { kind: "idle" },
+    };
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -94,6 +141,16 @@ export function TaskChecklistsPanel({
           return;
         }
         setChecklists(result.checklists);
+        const windows = await Promise.all(
+          result.checklists.map(async (checklist) => {
+            const windowState = await fetchFirstItemsPage(checklist.id);
+            return [checklist.id, windowState] as const;
+          }),
+        );
+        if (cancelled) {
+          return;
+        }
+        setItemsByChecklist(Object.fromEntries(windows));
         setLoadState(
           result.checklists.length === 0
             ? { kind: "empty" }
@@ -133,6 +190,8 @@ export function TaskChecklistsPanel({
     return () => {
       cancelled = true;
     };
+    // fetchFirstItemsPage closes over taskId; reload when task changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional taskId-driven reload
   }, [onUnauthenticated, taskId]);
 
   useEffect(() => {
@@ -145,6 +204,10 @@ export function TaskChecklistsPanel({
       }
       return [...current, ingestCreatedChecklist];
     });
+    setItemsByChecklist((current) => ({
+      ...current,
+      [ingestCreatedChecklist.id]: emptyWindowState(),
+    }));
     setLoadState({ kind: "success" });
     const section = sectionRef.current;
     if (section !== null && typeof section.scrollIntoView === "function") {
@@ -183,6 +246,14 @@ export function TaskChecklistsPanel({
     setLoadState(next.length === 0 ? { kind: "empty" } : { kind: "success" });
   }
 
+  async function resetItemsWindow(checklistId: string): Promise<void> {
+    const windowState = await fetchFirstItemsPage(checklistId);
+    setItemsByChecklist((current) => ({
+      ...current,
+      [checklistId]: windowState,
+    }));
+  }
+
   async function onSaveChecklistName(checklistId: string): Promise<void> {
     setActionState({ kind: "saving", checklistId });
     try {
@@ -192,7 +263,11 @@ export function TaskChecklistsPanel({
       applyChecklists(
         checklists.map((checklist) =>
           checklist.id === checklistId
-            ? { ...updated, items: checklist.items }
+            ? {
+                ...updated,
+                itemCount: checklist.itemCount,
+                checkedCount: checklist.checkedCount,
+              }
             : checklist,
         ),
       );
@@ -218,6 +293,11 @@ export function TaskChecklistsPanel({
       applyChecklists(
         checklists.filter((checklist) => checklist.id !== checklistId),
       );
+      setItemsByChecklist((current) => {
+        const next = { ...current };
+        delete next[checklistId];
+        return next;
+      });
       if (editingChecklistId === checklistId) {
         setEditingChecklistId(null);
         setEditChecklistName("");
@@ -244,16 +324,17 @@ export function TaskChecklistsPanel({
     const text = newItemTextByChecklist[checklistId] ?? "";
     setActionState({ kind: "item_creating", checklistId });
     try {
-      const created = await createTaskChecklistItem(taskId, checklistId, {
+      await createTaskChecklistItem(taskId, checklistId, {
         text,
       });
       applyChecklists(
         checklists.map((checklist) =>
           checklist.id === checklistId
-            ? { ...checklist, items: [...checklist.items, created] }
+            ? { ...checklist, itemCount: checklist.itemCount + 1 }
             : checklist,
         ),
       );
+      await resetItemsWindow(checklistId);
       setNewItemTextByChecklist((current) => ({
         ...current,
         [checklistId]: "",
@@ -278,24 +359,20 @@ export function TaskChecklistsPanel({
   ): Promise<void> {
     setActionState({ kind: "item_saving", itemId });
     try {
-      const updated = await updateTaskChecklistItem(
-        taskId,
-        checklistId,
-        itemId,
-        { checked },
-      );
+      await updateTaskChecklistItem(taskId, checklistId, itemId, { checked });
       applyChecklists(
-        checklists.map((checklist) =>
-          checklist.id === checklistId
-            ? {
-                ...checklist,
-                items: checklist.items.map((item) =>
-                  item.id === itemId ? updated : item,
-                ),
-              }
-            : checklist,
-        ),
+        checklists.map((checklist) => {
+          if (checklist.id !== checklistId) {
+            return checklist;
+          }
+          const delta = checked ? 1 : -1;
+          return {
+            ...checklist,
+            checkedCount: Math.max(0, checklist.checkedCount + delta),
+          };
+        }),
       );
+      await resetItemsWindow(checklistId);
       setActionState({
         kind: "success",
         message: checked
@@ -320,18 +397,26 @@ export function TaskChecklistsPanel({
     itemId: string,
   ): Promise<void> {
     setActionState({ kind: "item_deleting", itemId });
+    const currentWindow = itemsByChecklist[checklistId];
+    const deletedItem = currentWindow?.items.find((item) => item.id === itemId);
     try {
       await deleteTaskChecklistItem(taskId, checklistId, itemId);
       applyChecklists(
-        checklists.map((checklist) =>
-          checklist.id === checklistId
-            ? {
-                ...checklist,
-                items: checklist.items.filter((item) => item.id !== itemId),
-              }
-            : checklist,
-        ),
+        checklists.map((checklist) => {
+          if (checklist.id !== checklistId) {
+            return checklist;
+          }
+          return {
+            ...checklist,
+            itemCount: Math.max(0, checklist.itemCount - 1),
+            checkedCount:
+              deletedItem?.checked === true
+                ? Math.max(0, checklist.checkedCount - 1)
+                : checklist.checkedCount,
+          };
+        }),
       );
+      await resetItemsWindow(checklistId);
       setActionState({ kind: "success", message: "Checklist item deleted." });
     } catch (err) {
       if (handleAuthzError(err)) {
@@ -343,6 +428,83 @@ export function TaskChecklistsPanel({
       }
       setActionState({ kind: "error", message: toUserMessage(err) });
     }
+  }
+
+  async function onNextItemsWindow(checklistId: string): Promise<void> {
+    const current = itemsByChecklist[checklistId] ?? emptyWindowState();
+    if (current.nextCursor === null) {
+      return;
+    }
+    setItemsByChecklist((windows) => ({
+      ...windows,
+      [checklistId]: {
+        ...current,
+        navState: { kind: "loading" },
+      },
+    }));
+    try {
+      const page = await listTaskChecklistItems(taskId, checklistId, {
+        cursor: current.nextCursor,
+        limit: CHECKLIST_ITEMS_WINDOW_SIZE,
+      });
+      setItemsByChecklist((windows) => {
+        const latest = windows[checklistId] ?? current;
+        return {
+          ...windows,
+          [checklistId]: {
+            items: page.items,
+            nextCursor: page.nextCursor,
+            stack: [
+              ...latest.stack,
+              {
+                items: latest.items,
+                nextCursor: latest.nextCursor,
+              },
+            ],
+            navState: { kind: "idle" },
+          },
+        };
+      });
+    } catch (err) {
+      if (isUnauthenticated(err)) {
+        setItemsByChecklist((windows) => ({
+          ...windows,
+          [checklistId]: {
+            ...current,
+            navState: { kind: "error", message: toUserMessage(err) },
+          },
+        }));
+        onUnauthenticated();
+        return;
+      }
+      setItemsByChecklist((windows) => ({
+        ...windows,
+        [checklistId]: {
+          ...current,
+          navState: { kind: "error", message: toUserMessage(err) },
+        },
+      }));
+    }
+  }
+
+  function onPrevItemsWindow(checklistId: string): void {
+    const current = itemsByChecklist[checklistId];
+    if (current === undefined || current.stack.length === 0) {
+      return;
+    }
+    const previous = current.stack[current.stack.length - 1];
+    if (previous === undefined) {
+      return;
+    }
+    setItemsByChecklist((windows) => ({
+      ...windows,
+      [checklistId]: {
+        items: previous.items,
+        nextCursor: previous.nextCursor,
+        stack: current.stack.slice(0, -1),
+        navState: { kind: "idle" },
+      },
+    }));
   }
 
   return (
@@ -382,16 +544,22 @@ export function TaskChecklistsPanel({
       {checklists.length > 0 ? (
         <ul className="grid gap-4" aria-label="Task checklists">
           {checklists.map((checklist) => {
-            const checkedCount = checklist.items.filter(
-              (item) => item.checked,
-            ).length;
-            const totalCount = checklist.items.length;
+            const windowState =
+              itemsByChecklist[checklist.id] ?? emptyWindowState();
+            const checkedCount = checklist.checkedCount;
+            const totalCount = checklist.itemCount;
             const percent = checklistProgressPercent(checkedCount, totalCount);
             const isEditing = editingChecklistId === checklist.id;
+            const navBusy = windowState.navState.kind === "loading";
+            const canGoPrev = windowState.stack.length > 0;
+            const canGoNext = windowState.nextCursor !== null;
             return (
               <li
                 key={checklist.id}
-                className="grid gap-3 rounded-lg border border-border bg-card p-3"
+                className={cn(
+                  "grid gap-3 rounded-lg border border-border p-3",
+                  EYECANDY_SURFACE_CLASS,
+                )}
                 data-testid={`checklist-block-${checklist.id}`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -495,21 +663,28 @@ export function TaskChecklistsPanel({
                   </p>
                 </div>
 
-                {checklist.items.length === 0 ? (
+                {windowState.items.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No items yet.</p>
                 ) : (
                   <ul
                     className="grid gap-2"
                     aria-label={`${checklist.name} items`}
+                    data-testid={`checklist-items-${checklist.id}`}
                   >
-                    {checklist.items.map((item) => (
+                    {windowState.items.map((item) => (
                       <li
                         key={item.id}
                         className="flex flex-wrap items-center gap-2"
                       >
-                        <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                        <label
+                          className={cn(
+                            "flex min-w-0 flex-1 items-center gap-2 text-sm",
+                            !mutationsDisabled && "cursor-pointer",
+                          )}
+                        >
                           <input
                             type="checkbox"
+                            className={cn(!mutationsDisabled && "cursor-pointer")}
                             checked={item.checked}
                             disabled={mutationsDisabled}
                             onChange={(event) =>
@@ -552,6 +727,37 @@ export function TaskChecklistsPanel({
                     ))}
                   </ul>
                 )}
+
+                {canGoPrev || canGoNext ? (
+                  <div
+                    className="flex flex-wrap gap-2"
+                    data-testid={`checklist-items-nav-${checklist.id}`}
+                  >
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onPrevItemsWindow(checklist.id)}
+                      disabled={!canGoPrev || navBusy}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void onNextItemsWindow(checklist.id)}
+                      disabled={!canGoNext || navBusy}
+                    >
+                      {navBusy ? "Loading…" : "Next"}
+                    </Button>
+                  </div>
+                ) : null}
+                {windowState.navState.kind === "error" ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {windowState.navState.message}
+                  </p>
+                ) : null}
 
                 {canWrite ? (
                   <form

@@ -11,6 +11,7 @@ export type PublicCommentDto = {
 
 export type CommentListResponseDto = {
   comments: PublicCommentDto[];
+  nextCursor: string | null;
 };
 
 export type CreateCommentRequestDto = {

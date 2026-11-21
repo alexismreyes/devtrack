@@ -8,5 +8,5 @@ export function RootRedirect() {
     return <Navigate to="/projects" replace />;
   }
 
-  return <Navigate to="/register" replace />;
+  return <Navigate to="/login" replace />;
 }
